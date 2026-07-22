@@ -27,7 +27,7 @@ const mockOpp = {
   id: '', pipeline_id: '', stage_id: '', contact_id: null, title: 'Oportunidad de ejemplo',
   value: '50000', status: 'open', position: 0, created_at: new Date().toISOString(),
   source: 'Referido', business_name: 'Tech Innovators Inc.', tags: ['vip', 'caliente'], owner_id: null, owner_name: 'Juan Díaz',
-  contact_first_name: 'María', contact_last_name: 'González', contact_email: 'maria@corp.com', contact_phone: '+58 412 5551234',
+  notes_count: 2, contact_first_name: 'María', contact_last_name: 'González', contact_email: 'maria@corp.com', contact_phone: '+58 412 5551234',
 } as unknown as Opportunity;
 const previewOpp = computed(() => props.sample ?? mockOpp);
 

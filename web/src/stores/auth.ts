@@ -3,34 +3,50 @@ import { ref } from 'vue';
 import { api, setToken, getToken } from '../api';
 import type { User } from '../types';
 
-const USER_KEY = 'crm_user';
-const storedUser = (): User | null => JSON.parse(localStorage.getItem(USER_KEY) ?? 'null');
-
 export const useAuthStore = defineStore('auth', () => {
-  const user = ref<User | null>(storedUser());
+  const user = ref<User | null>(null);
+  const preferences = ref<Record<string, unknown>>({});
   const isAuthenticated = ref(!!getToken());
 
-  function persist(res: { token: string; user: User }) {
-    setToken(res.token);
-    localStorage.setItem(USER_KEY, JSON.stringify(res.user));
-    user.value = res.user;
+  function setSession(u: User) {
+    user.value = u;
+    preferences.value = u.preferences ?? {};
     isAuthenticated.value = true;
   }
 
   async function login(email: string, password: string) {
-    persist(await api.post<{ token: string; user: User }>('/auth/login', { email, password }));
+    const res = await api.post<{ token: string; user: User }>('/auth/login', { email, password });
+    setToken(res.token);
+    setSession(res.user);
   }
 
   async function register(payload: { organizationName: string; name: string; email: string; password: string }) {
-    persist(await api.post<{ token: string; user: User }>('/auth/register', payload));
+    const res = await api.post<{ token: string; user: User }>('/auth/register', payload);
+    setToken(res.token);
+    setSession(res.user);
+  }
+
+  // Rehidrata la sesión al recargar la app (los datos viven en la cuenta, no en el navegador).
+  async function init() {
+    if (!getToken()) return;
+    try {
+      setSession(await api.get<User>('/me'));
+    } catch {
+      logout(); // token inválido/expirado
+    }
+  }
+
+  // Guarda preferencias en la cuenta (merge en backend) y actualiza el estado local.
+  async function savePreferences(patch: Record<string, unknown>) {
+    preferences.value = await api.put<Record<string, unknown>>('/me/preferences', patch);
   }
 
   function logout() {
     setToken(null);
-    localStorage.removeItem(USER_KEY);
     user.value = null;
+    preferences.value = {};
     isAuthenticated.value = false;
   }
 
-  return { user, isAuthenticated, login, register, logout };
+  return { user, preferences, isAuthenticated, login, register, init, savePreferences, logout };
 });

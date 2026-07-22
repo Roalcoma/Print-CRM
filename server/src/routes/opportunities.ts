@@ -9,7 +9,8 @@ export const opportunitiesRouter = Router();
 // SELECT base con contacto y responsable embebidos.
 const BASE_SELECT = `
   SELECT o.*, c.first_name AS contact_first_name, c.last_name AS contact_last_name,
-         c.email AS contact_email, c.phone AS contact_phone, u.name AS owner_name
+         c.email AS contact_email, c.phone AS contact_phone, u.name AS owner_name,
+         (SELECT count(*)::int FROM opportunity_notes n WHERE n.opportunity_id = o.id) AS notes_count
   FROM opportunities o
   LEFT JOIN contacts c ON c.id = o.contact_id
   LEFT JOIN users u ON u.id = o.owner_id`;

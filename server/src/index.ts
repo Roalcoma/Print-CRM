@@ -8,6 +8,7 @@ import { pipelinesRouter } from './routes/pipelines.ts';
 import { stagesRouter } from './routes/stages.ts';
 import { opportunitiesRouter } from './routes/opportunities.ts';
 import { usersRouter } from './routes/users.ts';
+import { meRouter } from './routes/me.ts';
 
 const app = express();
 app.use(cors());
@@ -22,6 +23,7 @@ app.use('/api/pipelines', requireAuth, pipelinesRouter);
 app.use('/api/stages', requireAuth, stagesRouter);
 app.use('/api/opportunities', requireAuth, opportunitiesRouter);
 app.use('/api/users', requireAuth, usersRouter);
+app.use('/api/me', requireAuth, meRouter);
 
 // Manejador de errores central: cualquier throw async cae aquí sin tumbar el server.
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

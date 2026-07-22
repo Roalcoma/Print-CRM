@@ -25,16 +25,11 @@ export const DEFAULT_CARD_CONFIG: CardConfig = {
   layout: 'default',
 };
 
-const KEY = 'crm_card_config';
-
-export function loadCardConfig(): CardConfig {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return { ...DEFAULT_CARD_CONFIG, ...JSON.parse(raw) };
-  } catch { /* config corrupta → usa defaults */ }
-  return { ...DEFAULT_CARD_CONFIG, fields: [...DEFAULT_CARD_CONFIG.fields] };
-}
-
-export function saveCardConfig(c: CardConfig) {
-  localStorage.setItem(KEY, JSON.stringify(c));
+// Normaliza la config guardada en la cuenta (o defaults si no hay).
+export function normalizeCardConfig(raw: unknown): CardConfig {
+  const c = (raw ?? {}) as Partial<CardConfig>;
+  return {
+    fields: Array.isArray(c.fields) ? c.fields : [...DEFAULT_CARD_CONFIG.fields],
+    layout: c.layout === 'compact' ? 'compact' : 'default',
+  };
 }

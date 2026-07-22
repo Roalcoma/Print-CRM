@@ -8,7 +8,9 @@ export interface AuthClaims {
 }
 
 export function signToken(claims: AuthClaims): string {
-  return jwt.sign(claims, env.jwtSecret, { expiresIn: '7d' });
+  // Sesión larga: el usuario puede dejar el CRM logueado (como GHL).
+  // ponytail: token de larga duración; migrar a refresh tokens si se necesita revocación.
+  return jwt.sign(claims, env.jwtSecret, { expiresIn: '30d' });
 }
 
 export function verifyToken(token: string): AuthClaims {

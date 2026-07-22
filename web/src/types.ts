@@ -4,6 +4,7 @@ export interface User {
   name: string;
   role: string;
   organizationId: string;
+  preferences?: Record<string, unknown>;
 }
 
 export interface Contact {
@@ -48,6 +49,7 @@ export interface Opportunity {
   tags: string[];
   owner_id: string | null;
   owner_name: string | null;
+  notes_count: number;
   contact_first_name: string | null;
   contact_last_name: string | null;
   contact_email: string | null;

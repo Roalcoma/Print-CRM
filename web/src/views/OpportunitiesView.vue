@@ -9,7 +9,8 @@ import Spinner from '../components/Spinner.vue';
 import LoadingState from '../components/LoadingState.vue';
 import OpportunityCard from '../components/OpportunityCard.vue';
 import CustomizeCardPanel from '../components/CustomizeCardPanel.vue';
-import { loadCardConfig, saveCardConfig, type CardConfig } from '../cardConfig';
+import { normalizeCardConfig, type CardConfig } from '../cardConfig';
+import { useAuthStore } from '../stores/auth';
 
 const pipelines = ref<Pipeline[]>([]);
 const users = ref<User[]>([]);
@@ -19,10 +20,14 @@ const dragId = ref<string | null>(null);
 const loading = ref(true);
 const reloading = ref(false);
 
-// Personalización de tarjetas (persistida en localStorage).
-const cardConfig = ref<CardConfig>(loadCardConfig());
+// Personalización de tarjetas (persistida en la cuenta del usuario).
+const auth = useAuthStore();
+const cardConfig = computed<CardConfig>(() => normalizeCardConfig(auth.preferences.cardConfig));
 const showCustomize = ref(false);
-function applyCardConfig(c: CardConfig) { cardConfig.value = c; saveCardConfig(c); showCustomize.value = false; }
+async function applyCardConfig(c: CardConfig) {
+  showCustomize.value = false;
+  await auth.savePreferences({ cardConfig: c });
+}
 
 const search = ref('');
 const showFilters = ref(false);
@@ -157,9 +162,9 @@ function openCreate() {
   form.value = blankForm();
   showForm.value = true;
 }
-async function openEdit(o: Opportunity) {
+async function openEdit(o: Opportunity, tab: 'detalles' | 'notas' = 'detalles') {
   editing.value = o;
-  modalTab.value = 'detalles';
+  modalTab.value = tab;
   form.value = {
     title: o.title, value: Number(o.value), status: o.status, pipeline_id: o.pipeline_id, stage_id: o.stage_id,
     source: o.source ?? '', business_name: o.business_name ?? '', tags: [...(o.tags ?? [])], owner_id: o.owner_id ?? '',
@@ -350,6 +355,7 @@ async function deleteNote(id: string) {
               class="cursor-grab active:cursor-grabbing"
               @dragstart="onDragStart(opp.id)"
               @click="openEdit(opp)"
+              @action="(tab: 'detalles' | 'notas') => openEdit(opp, tab)"
             />
           </TransitionGroup>
           <p v-if="stageOpps(stage.id).length === 0" class="py-8 text-center text-xs text-slate-400">Sin oportunidades</p>
