@@ -49,6 +49,16 @@ html {
 .expand-enter-to,
 .expand-leave-from { max-height: 600px; }
 
+/* Slide-over (panel lateral derecho) */
+.slideover-enter-active,
+.slideover-leave-active { transition: opacity 0.2s ease; }
+.slideover-enter-from,
+.slideover-leave-to { opacity: 0; }
+.slideover-enter-active .slideover-panel,
+.slideover-leave-active .slideover-panel { transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+.slideover-enter-from .slideover-panel,
+.slideover-leave-to .slideover-panel { transform: translateX(100%); }
+
 /* Dropdown / menús flotantes */
 .dropdown-enter-active,
 .dropdown-leave-active { transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1); }

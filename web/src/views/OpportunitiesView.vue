@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { Plus, Search, Filter, Download, Upload, X, Trash2, MoreVertical, ChevronDown, Check, UserRound, Briefcase, Kanban, StickyNote, UserPlus, Link2 } from 'lucide-vue-next';
+import { Plus, Search, Filter, Download, Upload, X, Trash2, MoreVertical, ChevronDown, Check, UserRound, Briefcase, Kanban, StickyNote, UserPlus, Link2, SlidersHorizontal } from 'lucide-vue-next';
 import { api, getToken } from '../api';
 import type { Pipeline, Opportunity, FilterCondition, FilterOp, Note, User } from '../types';
 import OppTabs from '../components/OppTabs.vue';
 import Dropdown from '../components/Dropdown.vue';
 import Spinner from '../components/Spinner.vue';
 import LoadingState from '../components/LoadingState.vue';
+import OpportunityCard from '../components/OpportunityCard.vue';
+import CustomizeCardPanel from '../components/CustomizeCardPanel.vue';
+import { loadCardConfig, saveCardConfig, type CardConfig } from '../cardConfig';
 
 const pipelines = ref<Pipeline[]>([]);
 const users = ref<User[]>([]);
@@ -15,6 +18,11 @@ const opps = ref<Opportunity[]>([]);
 const dragId = ref<string | null>(null);
 const loading = ref(true);
 const reloading = ref(false);
+
+// Personalización de tarjetas (persistida en localStorage).
+const cardConfig = ref<CardConfig>(loadCardConfig());
+const showCustomize = ref(false);
+function applyCardConfig(c: CardConfig) { cardConfig.value = c; saveCardConfig(c); showCustomize.value = false; }
 
 const search = ref('');
 const showFilters = ref(false);
@@ -25,7 +33,6 @@ const current = computed(() => pipelines.value.find(p => p.id === currentId.valu
 const totalLeads = computed(() => opps.value.length);
 const money = (n: number) => n.toLocaleString('es-VE', { style: 'currency', currency: 'USD' });
 const dateTime = (d: string) => new Date(d).toLocaleString('es-VE', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-const shortDate = (d: string) => new Date(d).toLocaleDateString('es-VE', { day: '2-digit', month: 'short' });
 
 // ── Catálogo de campos filtrables ─────────────────────────────────────────────
 const FIELDS = [
@@ -92,8 +99,6 @@ function onSearch() { clearTimeout(searchTimer); searchTimer = setTimeout(loadOp
 // ── Kanban helpers ───────────────────────────────────────────────────────────
 function stageOpps(stageId: string) { return opps.value.filter(o => o.stage_id === stageId); }
 function stageSum(stageId: string) { return money(stageOpps(stageId).reduce((s, o) => s + Number(o.value), 0)); }
-const statusBadge: Record<string, string> = { open: 'bg-blue-50 text-blue-600', won: 'bg-emerald-50 text-emerald-600', lost: 'bg-red-50 text-red-600' };
-const statusLabel: Record<string, string> = { open: 'Abierta', won: 'Ganada', lost: 'Perdida' };
 
 // ── Drag & drop ──────────────────────────────────────────────────────────────
 function onDragStart(id: string) { dragId.value = id; }
@@ -266,6 +271,10 @@ async function deleteNote(id: string) {
           <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="fileInput?.click()">
             <Upload class="h-4 w-4 text-slate-400" /> Importar CSV
           </button>
+          <div class="my-1 border-t border-slate-100"></div>
+          <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="showCustomize = true">
+            <SlidersHorizontal class="h-4 w-4 text-slate-400" /> Personalizar tarjetas
+          </button>
         </Dropdown>
         <input ref="fileInput" type="file" accept=".csv" class="hidden" @change="onImportFile" />
 
@@ -332,27 +341,16 @@ async function deleteNote(id: string) {
         </div>
         <div class="flex-1 overflow-y-auto bg-slate-50/50 p-2.5">
           <TransitionGroup name="list" tag="div" class="space-y-2.5">
-          <div v-for="opp in stageOpps(stage.id)" :key="opp.id" draggable="true"
-            class="cursor-grab rounded-md border border-slate-200 bg-white p-3 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-elevated active:cursor-grabbing"
-            @dragstart="onDragStart(opp.id)" @click="openEdit(opp)">
-            <div class="flex items-start justify-between gap-2">
-              <p class="text-sm font-semibold text-slate-900">{{ opp.title }}</p>
-              <span class="flex-shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" :class="statusBadge[opp.status]">{{ statusLabel[opp.status] }}</span>
-            </div>
-            <p class="mt-1.5 text-base font-bold text-emerald-600">{{ money(Number(opp.value)) }}</p>
-            <div v-if="opp.tags?.length" class="mt-2 flex flex-wrap gap-1">
-              <span v-for="t in opp.tags" :key="t" class="rounded-sm bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-600">{{ t }}</span>
-            </div>
-            <div v-if="opp.contact_first_name || opp.business_name" class="mt-2 border-t border-slate-100 pt-2">
-              <p v-if="opp.contact_first_name" class="text-xs font-medium text-slate-700">{{ opp.contact_first_name }} {{ opp.contact_last_name }}</p>
-              <p v-if="opp.business_name" class="text-xs text-slate-400">{{ opp.business_name }}</p>
-              <p v-if="opp.contact_email" class="truncate text-xs text-slate-400">{{ opp.contact_email }}</p>
-            </div>
-            <div class="mt-2 flex items-center justify-between text-[11px] text-slate-400">
-              <span>{{ shortDate(opp.created_at) }}</span>
-              <span v-if="opp.owner_name" class="rounded-full bg-slate-100 px-1.5 py-0.5 font-medium text-slate-500">{{ opp.owner_name }}</span>
-            </div>
-          </div>
+            <OpportunityCard
+              v-for="opp in stageOpps(stage.id)"
+              :key="opp.id"
+              :opp="opp"
+              :config="cardConfig"
+              draggable="true"
+              class="cursor-grab active:cursor-grabbing"
+              @dragstart="onDragStart(opp.id)"
+              @click="openEdit(opp)"
+            />
           </TransitionGroup>
           <p v-if="stageOpps(stage.id).length === 0" class="py-8 text-center text-xs text-slate-400">Sin oportunidades</p>
         </div>
@@ -512,6 +510,17 @@ async function deleteNote(id: string) {
         </div>
       </div>
     </div>
+    </Transition>
+
+    <!-- Panel de personalización de tarjetas -->
+    <Transition name="slideover">
+      <CustomizeCardPanel
+        v-if="showCustomize"
+        :config="cardConfig"
+        :sample="opps[0] ?? null"
+        @apply="applyCardConfig"
+        @close="showCustomize = false"
+      />
     </Transition>
   </div>
 </template>
