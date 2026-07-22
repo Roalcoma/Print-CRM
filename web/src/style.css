@@ -1,0 +1,16 @@
+@import 'tailwindcss';
+
+/* Tema del CRM (Data-Dense Dashboard): indigo primario + emerald CTA.
+   Tailwind v4 usa @theme para exponer tokens como utilidades (bg-primary, etc.). */
+@theme {
+  --color-primary: #6366f1;
+  --color-primary-dark: #4f46e5;
+  --color-cta: #10b981;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+html {
+  font-family: var(--font-sans);
+}
