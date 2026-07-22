@@ -214,6 +214,7 @@ async function deleteNote(id: string) {
     </div>
 
     <!-- Panel de filtros -->
+    <Transition name="expand">
     <div v-if="showFilters" class="border-b border-slate-200 bg-slate-50 px-6 py-4">
       <div class="mb-3 flex items-center gap-2 text-sm">
         <span class="font-medium text-slate-600">Coincidir con</span>
@@ -247,6 +248,7 @@ async function deleteNote(id: string) {
       </div>
       <button class="mt-3 cursor-pointer rounded-sm border border-dashed border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:border-primary hover:text-primary" @click="addCondition"><Plus class="mr-1 inline h-4 w-4" />Añadir condición</button>
     </div>
+    </Transition>
 
     <!-- Tablero kanban -->
     <div class="flex flex-1 gap-4 overflow-x-auto bg-slate-100/50 p-6">
@@ -258,7 +260,8 @@ async function deleteNote(id: string) {
           </div>
           <span class="text-xs font-medium text-slate-600">{{ stageSum(stage.id) }}</span>
         </div>
-        <div class="flex-1 space-y-2.5 overflow-y-auto bg-slate-50/50 p-2.5">
+        <div class="flex-1 overflow-y-auto bg-slate-50/50 p-2.5">
+          <TransitionGroup name="list" tag="div" class="space-y-2.5">
           <div v-for="opp in stageOpps(stage.id)" :key="opp.id" draggable="true"
             class="cursor-grab rounded-sm border border-slate-200 bg-white p-3 transition-shadow duration-150 hover:shadow-md active:cursor-grabbing"
             @dragstart="onDragStart(opp.id)" @click="openEdit(opp)">
@@ -280,14 +283,16 @@ async function deleteNote(id: string) {
               <span v-if="opp.owner_name" class="rounded-full bg-slate-100 px-1.5 py-0.5 font-medium text-slate-500">{{ opp.owner_name }}</span>
             </div>
           </div>
+          </TransitionGroup>
           <p v-if="stageOpps(stage.id).length === 0" class="py-8 text-center text-xs text-slate-400">Sin oportunidades</p>
         </div>
       </div>
     </div>
 
     <!-- Modal formulario completo -->
+    <Transition name="modal">
     <div v-if="showForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="showForm = false">
-      <div class="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-sm bg-white shadow-xl">
+      <div class="modal-panel flex max-h-[92vh] w-full max-w-2xl flex-col rounded-sm bg-white shadow-xl">
         <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h2 class="text-base font-semibold text-slate-900">{{ editing ? form.title || 'Editar oportunidad' : 'Nueva oportunidad' }}</h2>
           <button class="cursor-pointer rounded-sm p-1 text-slate-400 hover:bg-slate-100" @click="showForm = false"><X class="h-5 w-5" /></button>
@@ -416,5 +421,6 @@ async function deleteNote(id: string) {
         </div>
       </div>
     </div>
+    </Transition>
   </div>
 </template>

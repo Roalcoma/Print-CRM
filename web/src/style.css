@@ -14,3 +14,52 @@
 html {
   font-family: var(--font-sans);
 }
+
+/* ── Transiciones reutilizables (Vue <Transition>) ──────────────────────────
+   Sutiles y rápidas (150-220ms), solo transform/opacity para rendimiento. */
+
+/* Fade genérico: overlays y cambio de ruta */
+.fade-enter-active,
+.fade-leave-active { transition: opacity 0.18s ease; }
+.fade-enter-from,
+.fade-leave-to { opacity: 0; }
+
+/* Modal: fade del overlay + scale/slide del panel (.modal-panel) */
+.modal-enter-active,
+.modal-leave-active { transition: opacity 0.2s ease; }
+.modal-enter-from,
+.modal-leave-to { opacity: 0; }
+.modal-enter-active .modal-panel,
+.modal-leave-active .modal-panel { transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease; }
+.modal-enter-from .modal-panel,
+.modal-leave-to .modal-panel { transform: scale(0.96) translateY(8px); opacity: 0; }
+
+/* Expand: paneles que se despliegan (filtros) */
+.expand-enter-active,
+.expand-leave-active { transition: opacity 0.2s ease, max-height 0.25s ease, transform 0.2s ease; overflow: hidden; }
+.expand-enter-from,
+.expand-leave-to { opacity: 0; max-height: 0; transform: translateY(-6px); }
+.expand-enter-to,
+.expand-leave-from { max-height: 600px; }
+
+/* Listas (TransitionGroup): entrada/salida + reordenamiento FLIP */
+.list-move,
+.list-enter-active,
+.list-leave-active { transition: transform 0.25s ease, opacity 0.25s ease; }
+.list-enter-from,
+.list-leave-to { opacity: 0; transform: translateY(8px); }
+.list-leave-active { position: absolute; width: calc(100% - 1.25rem); }
+
+/* Feedback táctil al presionar botones */
+button:active:not(:disabled) { transform: scale(0.97); }
+button { transition: transform 0.08s ease; }
+
+/* Accesibilidad: respeta a quien prefiere menos movimiento */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

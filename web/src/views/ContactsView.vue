@@ -46,6 +46,7 @@ async function remove(id: string) {
     </div>
 
     <!-- Formulario inline -->
+    <Transition name="expand">
     <form v-if="showForm" class="mb-6 grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-5 sm:grid-cols-2" @submit.prevent="create">
       <input v-model="form.first_name" placeholder="Nombre *" required class="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/30 focus:outline-none" />
       <input v-model="form.last_name" placeholder="Apellido" class="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/30 focus:outline-none" />
@@ -57,6 +58,7 @@ async function remove(id: string) {
         </button>
       </div>
     </form>
+    </Transition>
 
     <!-- Buscador -->
     <div class="relative mb-4">
