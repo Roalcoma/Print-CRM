@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Phone, Mail, StickyNote, PanelRightOpen } from 'lucide-vue-next';
+import { Phone, Mail, StickyNote, PanelRightOpen, Tag } from 'lucide-vue-next';
 import type { Opportunity } from '../types';
 import type { CardConfig } from '../cardConfig';
 
@@ -14,7 +14,9 @@ const statusBadge: Record<string, string> = { open: 'bg-blue-50 text-blue-600', 
 const statusLabel: Record<string, string> = { open: 'Abierta', won: 'Ganada', lost: 'Perdida' };
 
 const showOwner = computed(() => props.config.fields.includes('owner'));
-const bodyFields = computed(() => props.config.fields.filter(k => k !== 'owner'));
+// Las etiquetas NO se dibujan en el cuerpo: van como ícono con tooltip en la fila de acciones.
+const bodyFields = computed(() => props.config.fields.filter(k => k !== 'owner' && k !== 'tags'));
+const showTags = computed(() => props.config.fields.includes('tags') && (props.opp.tags?.length ?? 0) > 0);
 const labeled = computed(() => props.config.layout === 'default');
 
 const ownerInitials = computed(() => {
@@ -22,11 +24,6 @@ const ownerInitials = computed(() => {
   return n ? n.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() : '';
 });
 const contactName = computed(() => [props.opp.contact_first_name, props.opp.contact_last_name].filter(Boolean).join(' '));
-
-// Etiquetas: máximo 3 visibles + contador, para que la tarjeta no cambie de tamaño.
-const MAX_TAGS = 3;
-const visibleTags = computed(() => (props.opp.tags ?? []).slice(0, MAX_TAGS));
-const extraTags = computed(() => Math.max(0, (props.opp.tags?.length ?? 0) - MAX_TAGS));
 </script>
 
 <template>
@@ -46,12 +43,6 @@ const extraTags = computed(() => Math.max(0, (props.opp.tags?.length ?? 0) - MAX
         <span v-if="key === 'status'" class="inline-block rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" :class="statusBadge[opp.status]">{{ statusLabel[opp.status] }}</span>
 
         <p v-else-if="key === 'value'" class="text-base font-bold text-emerald-600">{{ money(Number(opp.value)) }}</p>
-
-        <!-- Etiquetas limitadas -->
-        <div v-else-if="key === 'tags' && opp.tags?.length" class="flex flex-wrap items-center gap-1">
-          <span v-for="t in visibleTags" :key="t" class="max-w-[110px] truncate rounded-sm bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-600">{{ t }}</span>
-          <span v-if="extraTags" class="rounded-sm bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">+{{ extraTags }}</span>
-        </div>
 
         <p v-else-if="key === 'contact_name' && contactName" class="text-xs font-medium text-slate-700">{{ contactName }}</p>
 
@@ -81,6 +72,20 @@ const extraTags = computed(() => Math.max(0, (props.opp.tags?.length ?? 0) - MAX
       <a v-if="opp.contact_email" :href="`mailto:${opp.contact_email}`" class="cursor-pointer rounded-md p-1.5 transition-colors hover:bg-slate-100 hover:text-primary" title="Enviar email" @click.stop>
         <Mail class="h-4 w-4" />
       </a>
+      <!-- Etiquetas: ícono + tooltip flotante al pasar el mouse -->
+      <div v-if="showTags" class="group/tags relative">
+        <button class="relative cursor-pointer rounded-md p-1.5 transition-colors hover:bg-slate-100 hover:text-primary" title="Etiquetas" @click.stop="emit('action', 'detalles')">
+          <Tag class="h-4 w-4" />
+          <span class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-indigo-500 px-1 text-[9px] font-bold text-white ring-2 ring-white">{{ opp.tags.length }}</span>
+        </button>
+        <div class="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 hidden -translate-x-1/2 group-hover/tags:block">
+          <div class="flex max-w-[220px] flex-wrap justify-center gap-1 rounded-md border border-slate-200 bg-white p-2 shadow-dropdown">
+            <span v-for="t in opp.tags" :key="t" class="whitespace-nowrap rounded-sm bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-600">{{ t }}</span>
+          </div>
+          <div class="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1 rotate-45 border-b border-r border-slate-200 bg-white"></div>
+        </div>
+      </div>
+
       <button class="relative cursor-pointer rounded-md p-1.5 transition-colors hover:bg-slate-100 hover:text-primary" title="Notas" @click.stop="emit('action', 'notas')">
         <StickyNote class="h-4 w-4" />
         <span v-if="opp.notes_count > 0" class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-white ring-2 ring-white">{{ opp.notes_count }}</span>
