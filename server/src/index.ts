@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { env } from './env.ts';
 import { requireAuth } from './auth/middleware.ts';
+import { requireModule } from './auth/perms.ts';
 import { authRouter } from './routes/auth.ts';
 import { contactsRouter } from './routes/contacts.ts';
 import { pipelinesRouter } from './routes/pipelines.ts';
@@ -18,10 +19,10 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.use('/api/auth', authRouter);
 // Todo lo de abajo exige token válido.
-app.use('/api/contacts', requireAuth, contactsRouter);
-app.use('/api/pipelines', requireAuth, pipelinesRouter);
-app.use('/api/stages', requireAuth, stagesRouter);
-app.use('/api/opportunities', requireAuth, opportunitiesRouter);
+app.use('/api/contacts', requireAuth, requireModule('contacts'), contactsRouter);
+app.use('/api/pipelines', requireAuth, requireModule('opportunities'), pipelinesRouter);
+app.use('/api/stages', requireAuth, requireModule('opportunities'), stagesRouter);
+app.use('/api/opportunities', requireAuth, requireModule('opportunities'), opportunitiesRouter);
 app.use('/api/users', requireAuth, usersRouter);
 app.use('/api/me', requireAuth, meRouter);
 

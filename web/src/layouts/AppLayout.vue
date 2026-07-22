@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router';
-import { LayoutDashboard, Users, Kanban, LogOut, Search, Bell } from 'lucide-vue-next';
+import { LayoutDashboard, Users, Kanban, LogOut, Search, Bell, Settings } from 'lucide-vue-next';
 import { useAuthStore } from '../stores/auth';
 
 const auth = useAuthStore();
@@ -9,10 +9,11 @@ const router = useRouter();
 const route = useRoute();
 
 const nav = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, match: ['/dashboard'] },
-  { to: '/contacts', label: 'Contactos', icon: Users, match: ['/contacts'] },
-  { to: '/opportunities', label: 'Oportunidades', icon: Kanban, match: ['/opportunities', '/pipelines'] },
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, match: ['/dashboard'], module: null as string | null },
+  { to: '/contacts', label: 'Contactos', icon: Users, match: ['/contacts'], module: 'contacts' },
+  { to: '/opportunities', label: 'Oportunidades', icon: Kanban, match: ['/opportunities', '/pipelines'], module: 'opportunities' },
 ];
+const visibleNav = computed(() => nav.filter(i => !i.module || auth.can(i.module)));
 const isActive = (m: string[]) => m.some(p => route.path.startsWith(p));
 
 const title = computed(() => (route.meta.title as string) ?? 'CRM');
@@ -40,7 +41,7 @@ function logout() {
         <p class="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-600">Menú</p>
         <div class="space-y-0.5">
           <RouterLink
-            v-for="item in nav"
+            v-for="item in visibleNav"
             :key="item.to"
             :to="item.to"
             class="group relative flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-medium transition-all duration-200"
@@ -56,6 +57,17 @@ function logout() {
       </nav>
 
       <div class="border-t border-slate-800/70 p-3">
+        <RouterLink
+          v-if="auth.isAdmin"
+          to="/settings"
+          class="mb-1 flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-medium transition-all duration-200"
+          :class="route.path.startsWith('/settings')
+            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40'
+            : 'text-slate-400 hover:translate-x-0.5 hover:bg-slate-800 hover:text-white'"
+        >
+          <Settings class="h-[18px] w-[18px]" />
+          Configuración
+        </RouterLink>
         <div class="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
           <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-xs font-semibold text-white shadow-sm">{{ initials }}</div>
           <div class="min-w-0 flex-1">

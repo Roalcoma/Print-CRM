@@ -14,6 +14,7 @@ interface UserRow {
   name: string;
   role: string;
   preferences?: Record<string, unknown>;
+  permissions?: string[];
 }
 
 // Registro: crea organización + usuario owner en una transacción lógica simple.
@@ -67,5 +68,5 @@ authRouter.post('/login', async (req, res) => {
 });
 
 function publicUser(u: UserRow) {
-  return { id: u.id, email: u.email, name: u.name, role: u.role, organizationId: u.organization_id, preferences: u.preferences ?? {} };
+  return { id: u.id, email: u.email, name: u.name, role: u.role, organizationId: u.organization_id, preferences: u.preferences ?? {}, permissions: u.permissions ?? [] };
 }

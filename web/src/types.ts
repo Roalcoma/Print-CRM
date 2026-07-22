@@ -5,6 +5,8 @@ export interface User {
   role: string;
   organizationId: string;
   preferences?: Record<string, unknown>;
+  permissions?: string[];
+  created_at?: string;
 }
 
 export interface Contact {

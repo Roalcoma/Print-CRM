@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { api, setToken, getToken } from '../api';
 import type { User } from '../types';
 
@@ -7,6 +7,13 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null);
   const preferences = ref<Record<string, unknown>>({});
   const isAuthenticated = ref(!!getToken());
+
+  const isAdmin = computed(() => user.value?.role === 'owner' || user.value?.role === 'admin');
+  // ¿El usuario puede acceder a este módulo? Admin/owner siempre; el resto según permisos.
+  function can(module: string) {
+    if (isAdmin.value) return true;
+    return (user.value?.permissions ?? []).includes(module);
+  }
 
   function setSession(u: User) {
     user.value = u;
@@ -26,8 +33,14 @@ export const useAuthStore = defineStore('auth', () => {
     setSession(res.user);
   }
 
-  // Rehidrata la sesión al recargar la app (los datos viven en la cuenta, no en el navegador).
-  async function init() {
+  // Rehidrata la sesión al recargar (memoizado: corre una sola vez aunque se
+  // llame desde App.vue y desde el guard del router).
+  let initPromise: Promise<void> | null = null;
+  function init() {
+    if (!initPromise) initPromise = doInit();
+    return initPromise;
+  }
+  async function doInit() {
     if (!getToken()) return;
     try {
       setSession(await api.get<User>('/me'));
@@ -48,5 +61,5 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated.value = false;
   }
 
-  return { user, preferences, isAuthenticated, login, register, init, savePreferences, logout };
+  return { user, preferences, isAuthenticated, isAdmin, can, login, register, init, savePreferences, logout };
 });
