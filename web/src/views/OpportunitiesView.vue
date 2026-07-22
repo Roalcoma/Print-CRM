@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { Plus, Search, Filter, Download, Upload, X, Trash2, MoreVertical, ChevronDown, Check } from 'lucide-vue-next';
+import { Plus, Search, Filter, Download, Upload, X, Trash2, MoreVertical, ChevronDown, Check, UserRound, Briefcase, Kanban, StickyNote, UserPlus, Link2 } from 'lucide-vue-next';
 import { api, getToken } from '../api';
 import type { Pipeline, Opportunity, FilterCondition, FilterOp, Note, User } from '../types';
 import OppTabs from '../components/OppTabs.vue';
@@ -166,6 +166,15 @@ async function openEdit(o: Opportunity) {
 }
 const formPipeline = computed(() => pipelines.value.find(p => p.id === form.value.pipeline_id) ?? null);
 function onFormPipelineChange() { form.value.stage_id = formPipeline.value?.stages[0]?.id ?? ''; }
+
+// Avatar e indicador de contacto (nuevo vs. existente vinculado).
+const contactInitials = computed(() => {
+  const n = form.value.contact_name.trim();
+  if (!n) return '?';
+  return n.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+});
+const isExistingContact = computed(() => !!editing.value?.contact_first_name);
+const hasContactData = computed(() => !!(form.value.contact_name || form.value.contact_email || form.value.contact_phone));
 
 function addTag() {
   const t = tagInput.value.trim();
@@ -354,57 +363,76 @@ async function deleteNote(id: string) {
     <Transition name="modal">
     <div v-if="showForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="showForm = false">
       <div class="modal-panel flex max-h-[92vh] w-full max-w-2xl flex-col rounded-md bg-white shadow-modal">
-        <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <h2 class="text-base font-semibold text-slate-900">{{ editing ? form.title || 'Editar oportunidad' : 'Nueva oportunidad' }}</h2>
-          <button class="cursor-pointer rounded-sm p-1 text-slate-400 hover:bg-slate-100" @click="showForm = false"><X class="h-5 w-5" /></button>
+        <div class="flex items-start justify-between border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white px-6 py-4">
+          <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm shadow-indigo-500/30">
+              <Kanban class="h-5 w-5" />
+            </div>
+            <div>
+              <h2 class="text-base font-semibold text-slate-900">{{ editing ? form.title || 'Editar oportunidad' : 'Nueva oportunidad' }}</h2>
+              <p class="text-xs text-slate-500">{{ editing ? 'Actualiza los datos de la oportunidad y su contacto' : 'Crea la oportunidad junto con su contacto' }}</p>
+            </div>
+          </div>
+          <button class="cursor-pointer rounded-md p-1 text-slate-400 hover:bg-slate-100" @click="showForm = false"><X class="h-5 w-5" /></button>
         </div>
 
         <!-- Tabs del modal -->
         <div class="flex gap-1 border-b border-slate-200 px-6">
-          <button class="border-b-2 px-3 py-2.5 text-sm font-medium transition-colors" :class="modalTab === 'detalles' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-800'" @click="modalTab = 'detalles'">Detalles</button>
-          <button v-if="editing" class="border-b-2 px-3 py-2.5 text-sm font-medium transition-colors" :class="modalTab === 'notas' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-800'" @click="modalTab = 'notas'">Notas <span class="ml-1 rounded-full bg-slate-100 px-1.5 text-xs text-slate-500">{{ notes.length }}</span></button>
+          <button class="flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors" :class="modalTab === 'detalles' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-800'" @click="modalTab = 'detalles'"><Briefcase class="h-4 w-4" /> Detalles</button>
+          <button v-if="editing" class="flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors" :class="modalTab === 'notas' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-800'" @click="modalTab = 'notas'"><StickyNote class="h-4 w-4" /> Notas <span class="ml-0.5 rounded-full bg-slate-100 px-1.5 text-xs text-slate-500">{{ notes.length }}</span></button>
         </div>
 
         <div class="flex-1 overflow-auto px-6 py-5">
           <!-- DETALLES -->
           <form v-show="modalTab === 'detalles'" class="space-y-6" @submit.prevent="saveForm">
             <!-- Datos del contacto -->
-            <section>
-              <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Datos del contacto</h3>
-              <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div>
-                  <label class="mb-1 block text-sm font-medium text-slate-700">Nombre</label>
-                  <input v-model="form.contact_name" placeholder="Nombre del contacto" class="w-full rounded-sm border border-slate-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
-                </div>
-                <div>
-                  <label class="mb-1 block text-sm font-medium text-slate-700">Email</label>
-                  <input v-model="form.contact_email" type="email" placeholder="correo@ejemplo.com" class="w-full rounded-sm border border-slate-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
-                </div>
-                <div>
-                  <label class="mb-1 block text-sm font-medium text-slate-700">Teléfono</label>
-                  <input v-model="form.contact_phone" placeholder="+58 …" class="w-full rounded-sm border border-slate-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+            <section class="rounded-lg border border-slate-200 bg-slate-50/60 p-4 shadow-sm">
+              <div class="mb-3 flex items-center justify-between">
+                <h3 class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <UserRound class="h-4 w-4" /> Datos del contacto
+                </h3>
+                <span v-if="isExistingContact" class="flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-600"><Link2 class="h-3 w-3" /> Contacto vinculado</span>
+                <span v-else-if="hasContactData" class="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-600"><UserPlus class="h-3 w-3" /> Se creará un contacto</span>
+              </div>
+              <div class="flex gap-4">
+                <div class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-lg font-semibold text-white shadow-sm">{{ contactInitials }}</div>
+                <div class="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-600">Nombre</label>
+                    <input v-model="form.contact_name" placeholder="Nombre del contacto" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-600">Email</label>
+                    <input v-model="form.contact_email" type="email" placeholder="correo@ejemplo.com" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-600">Teléfono</label>
+                    <input v-model="form.contact_phone" placeholder="+58 …" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                  </div>
                 </div>
               </div>
             </section>
 
             <!-- Datos de la oportunidad -->
             <section>
-              <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Datos de la oportunidad</h3>
+              <h3 class="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <Briefcase class="h-4 w-4" /> Datos de la oportunidad
+              </h3>
               <div class="space-y-3">
                 <div>
                   <label class="mb-1 block text-sm font-medium text-slate-700">Nombre de la oportunidad *</label>
-                  <input v-model="form.title" required class="w-full rounded-sm border border-slate-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                  <input v-model="form.title" required class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="mb-1 block text-sm font-medium text-slate-700">Pipeline</label>
-                    <select v-model="form.pipeline_id" @change="onFormPipelineChange" class="w-full cursor-pointer rounded-sm border border-slate-300 px-3 py-2 text-sm focus:outline-none">
+                    <select v-model="form.pipeline_id" @change="onFormPipelineChange" class="w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none">
                       <option v-for="p in pipelines" :key="p.id" :value="p.id">{{ p.name }}</option>
                     </select>
                   </div>
                   <div>
                     <label class="mb-1 block text-sm font-medium text-slate-700">Etapa</label>
-                    <select v-model="form.stage_id" class="w-full cursor-pointer rounded-sm border border-slate-300 px-3 py-2 text-sm focus:outline-none">
+                    <select v-model="form.stage_id" class="w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none">
                       <option v-for="s in formPipeline?.stages ?? []" :key="s.id" :value="s.id">{{ s.name }}</option>
                     </select>
                   </div>
@@ -412,35 +440,35 @@ async function deleteNote(id: string) {
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="mb-1 block text-sm font-medium text-slate-700">Estado</label>
-                    <select v-model="form.status" class="w-full cursor-pointer rounded-sm border border-slate-300 px-3 py-2 text-sm focus:outline-none">
+                    <select v-model="form.status" class="w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none">
                       <option v-for="s in STATUS_OPTS" :key="s.v" :value="s.v">{{ s.l }}</option>
                     </select>
                   </div>
                   <div>
                     <label class="mb-1 block text-sm font-medium text-slate-700">Valor (USD)</label>
-                    <input v-model.number="form.value" type="number" min="0" step="0.01" class="w-full rounded-sm border border-slate-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                    <input v-model.number="form.value" type="number" min="0" step="0.01" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
                   </div>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="mb-1 block text-sm font-medium text-slate-700">Responsable</label>
-                    <select v-model="form.owner_id" class="w-full cursor-pointer rounded-sm border border-slate-300 px-3 py-2 text-sm focus:outline-none">
+                    <select v-model="form.owner_id" class="w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none">
                       <option value="">Sin asignar</option>
                       <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
                     </select>
                   </div>
                   <div>
                     <label class="mb-1 block text-sm font-medium text-slate-700">Empresa</label>
-                    <input v-model="form.business_name" placeholder="Nombre de la empresa" class="w-full rounded-sm border border-slate-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                    <input v-model="form.business_name" placeholder="Nombre de la empresa" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
                   </div>
                 </div>
                 <div>
                   <label class="mb-1 block text-sm font-medium text-slate-700">Fuente</label>
-                  <input v-model="form.source" placeholder="Ej: Facebook Ads, Referido…" class="w-full rounded-sm border border-slate-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                  <input v-model="form.source" placeholder="Ej: Facebook Ads, Referido…" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
                 </div>
                 <div>
                   <label class="mb-1 block text-sm font-medium text-slate-700">Etiquetas</label>
-                  <div class="flex flex-wrap items-center gap-1.5 rounded-sm border border-slate-300 p-2 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+                  <div class="flex flex-wrap items-center gap-1.5 rounded-md border border-slate-300 bg-white p-2 shadow-sm focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
                     <span v-for="(t, i) in form.tags" :key="i" class="flex items-center gap-1 rounded-sm bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-600">
                       {{ t }}
                       <button type="button" class="cursor-pointer hover:text-indigo-900" @click="removeTag(i)"><X class="h-3 w-3" /></button>
@@ -455,11 +483,11 @@ async function deleteNote(id: string) {
           <!-- NOTAS -->
           <div v-show="modalTab === 'notas'" class="space-y-4">
             <div>
-              <textarea v-model="newNote" rows="3" placeholder="Escribe una nota…" class="w-full rounded-sm border border-slate-300 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"></textarea>
+              <textarea v-model="newNote" rows="3" placeholder="Escribe una nota…" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"></textarea>
               <button class="mt-2 cursor-pointer rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-dark disabled:opacity-50" :disabled="!newNote.trim()" @click="addNote">Agregar nota</button>
             </div>
             <div class="space-y-2">
-              <div v-for="n in notes" :key="n.id" class="group rounded-sm border border-slate-200 bg-slate-50 p-3">
+              <div v-for="n in notes" :key="n.id" class="group rounded-md border border-slate-200 bg-slate-50 p-3 shadow-sm transition-shadow hover:shadow-md">
                 <p class="whitespace-pre-wrap text-sm text-slate-800">{{ n.body }}</p>
                 <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
                   <span>{{ n.author_name }} · {{ dateTime(n.created_at) }}</span>

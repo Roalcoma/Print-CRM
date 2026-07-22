@@ -14,8 +14,8 @@ async function ownedPipeline(id: string, orgId: string) {
 // ── Listado con etapas anidadas ──────────────────────────────────────────────
 pipelinesRouter.get('/', async (req, res) => {
   const orgId = req.auth!.organizationId;
-  const pipelines = await query<{ id: string; name: string; created_at: string }>(
-    'SELECT id, name, created_at FROM pipelines WHERE organization_id = $1 ORDER BY created_at',
+  const pipelines = await query<{ id: string; name: string; created_at: string; updated_at: string }>(
+    'SELECT id, name, created_at, updated_at FROM pipelines WHERE organization_id = $1 ORDER BY created_at',
     [orgId],
   );
   const stages = await query<{ id: string; pipeline_id: string; name: string; position: number; color: string }>(
@@ -43,7 +43,7 @@ pipelinesRouter.put('/:id', async (req, res) => {
   const parsed = z.object({ name: z.string().min(1) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   const [row] = await query(
-    'UPDATE pipelines SET name=$1 WHERE id=$2 AND organization_id=$3 RETURNING id, name',
+    'UPDATE pipelines SET name=$1, updated_at=now() WHERE id=$2 AND organization_id=$3 RETURNING id, name',
     [parsed.data.name, req.params.id, req.auth!.organizationId],
   );
   if (!row) return res.status(404).json({ error: 'Pipeline no encontrado' });
@@ -122,7 +122,7 @@ pipelinesRouter.put('/:id/edit', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('UPDATE pipelines SET name=$1 WHERE id=$2', [name, req.params.id]);
+    await client.query('UPDATE pipelines SET name=$1, updated_at=now() WHERE id=$2', [name, req.params.id]);
     if (toDelete.length)
       await client.query('DELETE FROM pipeline_stages WHERE id = ANY($1::uuid[])', [toDelete]);
     for (let i = 0; i < stages.length; i++) {
