@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { Plus, Search, Filter, Download, Upload, X, Trash2 } from 'lucide-vue-next';
+import { Plus, Search, Filter, Download, Upload, X, Trash2, MoreVertical, ChevronDown, Check } from 'lucide-vue-next';
 import { api, getToken } from '../api';
 import type { Pipeline, Opportunity, FilterCondition, FilterOp, Note, User } from '../types';
 import OppTabs from '../components/OppTabs.vue';
+import Dropdown from '../components/Dropdown.vue';
+import Spinner from '../components/Spinner.vue';
+import LoadingState from '../components/LoadingState.vue';
 
 const pipelines = ref<Pipeline[]>([]);
 const users = ref<User[]>([]);
 const currentId = ref<string>('');
 const opps = ref<Opportunity[]>([]);
 const dragId = ref<string | null>(null);
+const loading = ref(true);
+const reloading = ref(false);
 
 const search = ref('');
 const showFilters = ref(false);
@@ -52,19 +57,34 @@ async function loadPipelines() {
 }
 async function loadOpps() {
   if (!currentId.value) return;
+  reloading.value = true;
   const filters = conditions.value
     .filter(c => c.field && c.op && (NO_VALUE.includes(c.op) || (c.value !== '' && c.value != null)))
     .map(c => ({ field: c.field, op: c.op, value: fieldType(c.field) === 'number' ? Number(c.value) : c.value }));
-  opps.value = await api.post<Opportunity[]>('/opportunities/query', {
-    pipelineId: currentId.value, search: search.value || undefined, match: match.value, filters,
-  });
+  try {
+    opps.value = await api.post<Opportunity[]>('/opportunities/query', {
+      pipelineId: currentId.value, search: search.value || undefined, match: match.value, filters,
+    });
+  } finally {
+    reloading.value = false;
+  }
 }
 onMounted(async () => {
-  users.value = await api.get<User[]>('/users');
-  await loadPipelines();
-  await loadOpps();
+  try {
+    users.value = await api.get<User[]>('/users');
+    await loadPipelines();
+    await loadOpps();
+  } finally {
+    loading.value = false;
+  }
 });
 watch(currentId, loadOpps);
+
+// Nº de condiciones realmente aplicadas (con valor válido).
+const activeFilterCount = computed(() => conditions.value.filter(
+  c => c.field && c.op && (NO_VALUE.includes(c.op) || (c.value !== '' && c.value != null)),
+).length);
+function clearFilters() { conditions.value = []; loadOpps(); }
 
 let searchTimer: ReturnType<typeof setTimeout>;
 function onSearch() { clearTimeout(searchTimer); searchTimer = setTimeout(loadOpps, 250); }
@@ -193,66 +213,107 @@ async function deleteNote(id: string) {
     <OppTabs />
 
     <!-- Toolbar -->
-    <div class="flex flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-6 py-3">
-      <select v-model="currentId" class="cursor-pointer rounded-sm border border-slate-300 bg-white px-3 py-2 text-sm font-medium focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none">
-        <option v-for="p in pipelines" :key="p.id" :value="p.id">{{ p.name }}</option>
-      </select>
-      <span class="rounded-sm bg-slate-100 px-3 py-1 text-sm font-medium text-slate-600">{{ totalLeads }} oportunidades</span>
+    <div class="z-[4] flex flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-6 py-3 shadow-toolbar">
+      <!-- Selector de pipeline premium -->
+      <Dropdown width="240px">
+        <template #trigger="{ open }">
+          <button class="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-all hover:border-slate-400 hover:shadow-md" :class="open && 'border-primary ring-2 ring-primary/20'">
+            <span class="h-2 w-2 rounded-full bg-primary"></span>
+            {{ current?.name ?? 'Pipeline' }}
+            <ChevronDown class="h-4 w-4 text-slate-400 transition-transform" :class="open && 'rotate-180'" />
+          </button>
+        </template>
+        <template #default="{ close }">
+          <button v-for="p in pipelines" :key="p.id"
+            class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-slate-100"
+            :class="p.id === currentId ? 'text-primary' : 'text-slate-700'"
+            @click="currentId = p.id; close()">
+            {{ p.name }}
+            <Check v-if="p.id === currentId" class="h-4 w-4" />
+          </button>
+        </template>
+      </Dropdown>
+      <span class="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-600">{{ totalLeads }} oportunidades</span>
+
       <div class="ml-auto flex flex-wrap items-center gap-2">
         <div class="relative">
           <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input v-model="search" @input="onSearch" placeholder="Buscar oportunidades…" class="w-56 rounded-sm border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+          <input v-model="search" @input="onSearch" placeholder="Buscar oportunidades…" class="w-56 rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm shadow-sm transition-all focus:border-primary focus:shadow-md focus:ring-2 focus:ring-primary/20 focus:outline-none" />
         </div>
-        <button class="flex cursor-pointer items-center gap-1.5 rounded-sm border px-3 py-2 text-sm font-medium transition-colors" :class="showFilters || conditions.length ? 'border-primary bg-primary/5 text-primary' : 'border-slate-300 text-slate-600 hover:bg-slate-50'" @click="showFilters = !showFilters">
-          <Filter class="h-4 w-4" /> Filtros <span v-if="conditions.length" class="rounded-full bg-primary px-1.5 text-xs text-white">{{ conditions.length }}</span>
+        <button class="flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm transition-all hover:shadow-md" :class="showFilters || activeFilterCount ? 'border-primary bg-primary/5 text-primary' : 'border-slate-300 text-slate-600 hover:border-slate-400 hover:bg-slate-50'" @click="showFilters = !showFilters">
+          <Filter class="h-4 w-4" /> Filtros <span v-if="activeFilterCount" class="rounded-full bg-primary px-1.5 text-xs text-white">{{ activeFilterCount }}</span>
         </button>
-        <button class="cursor-pointer rounded-sm border border-slate-300 p-2 text-slate-600 transition-colors hover:bg-slate-50" title="Exportar CSV" @click="exportCsv"><Download class="h-4 w-4" /></button>
-        <button class="cursor-pointer rounded-sm border border-slate-300 p-2 text-slate-600 transition-colors hover:bg-slate-50" title="Importar CSV" @click="fileInput?.click()"><Upload class="h-4 w-4" /></button>
+
+        <!-- Menú de acciones (⋮) -->
+        <Dropdown align="right" width="180px">
+          <template #trigger="{ open }">
+            <button class="cursor-pointer rounded-lg border border-slate-300 p-2 text-slate-500 shadow-sm transition-all hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700 hover:shadow-md" :class="open && 'border-primary text-primary'" aria-label="Más acciones">
+              <MoreVertical class="h-4 w-4" />
+            </button>
+          </template>
+          <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="exportCsv">
+            <Download class="h-4 w-4 text-slate-400" /> Exportar CSV
+          </button>
+          <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="fileInput?.click()">
+            <Upload class="h-4 w-4 text-slate-400" /> Importar CSV
+          </button>
+        </Dropdown>
         <input ref="fileInput" type="file" accept=".csv" class="hidden" @change="onImportFile" />
-        <button class="flex cursor-pointer items-center gap-1.5 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-dark" @click="openCreate"><Plus class="h-4 w-4" /> Nueva</button>
+
+        <button class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md hover:shadow-primary/40" @click="openCreate"><Plus class="h-4 w-4" /> Nueva</button>
       </div>
     </div>
 
     <!-- Panel de filtros -->
     <Transition name="expand">
-    <div v-if="showFilters" class="border-b border-slate-200 bg-slate-50 px-6 py-4">
-      <div class="mb-3 flex items-center gap-2 text-sm">
-        <span class="font-medium text-slate-600">Coincidir con</span>
-        <select v-model="match" @change="loadOpps" class="cursor-pointer rounded-sm border border-slate-300 px-2 py-1 text-sm focus:outline-none">
-          <option value="AND">TODAS (AND)</option>
-          <option value="OR">CUALQUIERA (OR)</option>
-        </select>
-        <span class="text-slate-500">las condiciones</span>
+    <div v-if="showFilters" class="border-b border-slate-200 bg-slate-50/80 px-6 py-4">
+      <div class="mb-3 flex flex-wrap items-center gap-3">
+        <span class="text-sm font-semibold text-slate-700">Filtrar oportunidades</span>
+        <div class="flex items-center gap-2 text-sm text-slate-500">
+          <span>que cumplan</span>
+          <select v-model="match" @change="loadOpps" class="cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1 text-sm font-medium text-slate-700 shadow-sm focus:border-primary focus:outline-none">
+            <option value="AND">TODAS</option>
+            <option value="OR">CUALQUIERA</option>
+          </select>
+          <span>las condiciones</span>
+        </div>
+        <div class="ml-auto flex items-center gap-3">
+          <Spinner v-if="reloading" :size="16" />
+          <button v-if="conditions.length" class="cursor-pointer text-sm font-medium text-slate-500 transition-colors hover:text-red-600" @click="clearFilters">Limpiar todo</button>
+        </div>
       </div>
+
       <div class="space-y-2">
-        <div v-for="(c, i) in conditions" :key="i" class="flex flex-wrap items-center gap-2">
-          <select v-model="c.field" @change="onFieldChange(c)" class="cursor-pointer rounded-sm border border-slate-300 bg-white px-2 py-1.5 text-sm focus:outline-none">
+        <div v-for="(c, i) in conditions" :key="i" class="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
+          <span class="pl-1 text-xs font-medium text-slate-400">{{ i === 0 ? 'Donde' : match === 'AND' ? 'Y' : 'O' }}</span>
+          <select v-model="c.field" @change="onFieldChange(c)" class="cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm transition-colors hover:border-slate-400 focus:border-primary focus:outline-none">
             <option v-for="f in FIELDS" :key="f.key" :value="f.key">{{ f.label }}</option>
           </select>
-          <select v-model="c.op" @change="loadOpps" class="cursor-pointer rounded-sm border border-slate-300 bg-white px-2 py-1.5 text-sm focus:outline-none">
+          <select v-model="c.op" @change="loadOpps" class="cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm transition-colors hover:border-slate-400 focus:border-primary focus:outline-none">
             <option v-for="op in OPS_BY_TYPE[fieldType(c.field)]" :key="op" :value="op">{{ OP_LABEL[op] }}</option>
           </select>
           <template v-if="!NO_VALUE.includes(c.op)">
-            <select v-if="fieldType(c.field) === 'enum'" v-model="c.value" @change="loadOpps" class="cursor-pointer rounded-sm border border-slate-300 bg-white px-2 py-1.5 text-sm focus:outline-none">
+            <select v-if="fieldType(c.field) === 'enum'" v-model="c.value" @change="loadOpps" class="cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm hover:border-slate-400 focus:border-primary focus:outline-none">
               <option v-for="s in STATUS_OPTS" :key="s.v" :value="s.v">{{ s.l }}</option>
             </select>
-            <select v-else-if="fieldType(c.field) === 'stage'" v-model="c.value" @change="loadOpps" class="cursor-pointer rounded-sm border border-slate-300 bg-white px-2 py-1.5 text-sm focus:outline-none">
+            <select v-else-if="fieldType(c.field) === 'stage'" v-model="c.value" @change="loadOpps" class="cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm hover:border-slate-400 focus:border-primary focus:outline-none">
               <option v-for="s in current?.stages ?? []" :key="s.id" :value="s.id">{{ s.name }}</option>
             </select>
-            <input v-else-if="fieldType(c.field) === 'number'" v-model="c.value" @input="onSearch" type="number" class="w-32 rounded-sm border border-slate-300 px-2 py-1.5 text-sm focus:outline-none" placeholder="Valor" />
-            <input v-else-if="fieldType(c.field) === 'date'" v-model="c.value" @change="loadOpps" type="date" class="rounded-sm border border-slate-300 px-2 py-1.5 text-sm focus:outline-none" />
-            <input v-else v-model="c.value" @input="onSearch" type="text" class="w-48 rounded-sm border border-slate-300 px-2 py-1.5 text-sm focus:outline-none" placeholder="Valor" />
+            <input v-else-if="fieldType(c.field) === 'number'" v-model="c.value" @input="onSearch" type="number" class="w-32 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:border-slate-400 focus:border-primary focus:outline-none" placeholder="Valor" />
+            <input v-else-if="fieldType(c.field) === 'date'" v-model="c.value" @change="loadOpps" type="date" class="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:border-slate-400 focus:border-primary focus:outline-none" />
+            <input v-else v-model="c.value" @input="onSearch" type="text" class="w-48 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:border-slate-400 focus:border-primary focus:outline-none" placeholder="Valor" />
           </template>
-          <button class="cursor-pointer rounded-sm p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600" @click="removeCondition(i)"><X class="h-4 w-4" /></button>
+          <button class="ml-auto cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600" @click="removeCondition(i)"><X class="h-4 w-4" /></button>
         </div>
       </div>
-      <button class="mt-3 cursor-pointer rounded-sm border border-dashed border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:border-primary hover:text-primary" @click="addCondition"><Plus class="mr-1 inline h-4 w-4" />Añadir condición</button>
+      <button class="mt-3 flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 transition-all hover:border-primary hover:bg-primary/5 hover:text-primary" @click="addCondition"><Plus class="h-4 w-4" />Añadir condición</button>
     </div>
     </Transition>
 
     <!-- Tablero kanban -->
-    <div class="flex flex-1 gap-4 overflow-x-auto bg-slate-100/50 p-6">
-      <div v-for="stage in current?.stages ?? []" :key="stage.id" class="flex w-80 flex-shrink-0 flex-col overflow-hidden rounded-sm border border-slate-200 bg-white" @dragover.prevent @drop="onDrop(stage.id)">
+    <LoadingState v-if="loading" label="Cargando oportunidades…" />
+    <div v-else class="flex flex-1 gap-4 overflow-x-auto bg-slate-100/60 p-6">
+      <div v-for="stage in current?.stages ?? []" :key="stage.id" class="flex w-80 flex-shrink-0 flex-col overflow-hidden rounded-md border border-slate-200 bg-white shadow-card" @dragover.prevent @drop="onDrop(stage.id)">
         <div class="flex items-center justify-between px-4 py-3" :style="{ backgroundColor: stage.color }">
           <div class="flex items-center gap-2">
             <span class="text-sm font-semibold text-slate-800">{{ stage.name }}</span>
@@ -263,7 +324,7 @@ async function deleteNote(id: string) {
         <div class="flex-1 overflow-y-auto bg-slate-50/50 p-2.5">
           <TransitionGroup name="list" tag="div" class="space-y-2.5">
           <div v-for="opp in stageOpps(stage.id)" :key="opp.id" draggable="true"
-            class="cursor-grab rounded-sm border border-slate-200 bg-white p-3 transition-shadow duration-150 hover:shadow-md active:cursor-grabbing"
+            class="cursor-grab rounded-md border border-slate-200 bg-white p-3 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-elevated active:cursor-grabbing"
             @dragstart="onDragStart(opp.id)" @click="openEdit(opp)">
             <div class="flex items-start justify-between gap-2">
               <p class="text-sm font-semibold text-slate-900">{{ opp.title }}</p>
@@ -292,7 +353,7 @@ async function deleteNote(id: string) {
     <!-- Modal formulario completo -->
     <Transition name="modal">
     <div v-if="showForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="showForm = false">
-      <div class="modal-panel flex max-h-[92vh] w-full max-w-2xl flex-col rounded-sm bg-white shadow-xl">
+      <div class="modal-panel flex max-h-[92vh] w-full max-w-2xl flex-col rounded-md bg-white shadow-modal">
         <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h2 class="text-base font-semibold text-slate-900">{{ editing ? form.title || 'Editar oportunidad' : 'Nueva oportunidad' }}</h2>
           <button class="cursor-pointer rounded-sm p-1 text-slate-400 hover:bg-slate-100" @click="showForm = false"><X class="h-5 w-5" /></button>
@@ -416,7 +477,9 @@ async function deleteNote(id: string) {
           <div class="ml-auto flex items-center gap-2">
             <button v-if="editing" type="button" class="cursor-pointer rounded-sm px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50" @click="deleteOpp">Eliminar</button>
             <button type="button" class="cursor-pointer rounded-sm px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100" @click="showForm = false">Cancelar</button>
-            <button type="button" :disabled="saving" class="cursor-pointer rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-dark disabled:opacity-60" @click="saveForm">{{ saving ? 'Guardando…' : editing ? 'Actualizar' : 'Crear' }}</button>
+            <button type="button" :disabled="saving" class="flex cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md disabled:opacity-60" @click="saveForm">
+              <Spinner v-if="saving" :size="16" light /> {{ saving ? 'Guardando…' : editing ? 'Actualizar' : 'Crear' }}
+            </button>
           </div>
         </div>
       </div>

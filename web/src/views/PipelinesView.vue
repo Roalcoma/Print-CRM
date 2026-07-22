@@ -4,12 +4,15 @@ import { Plus, Pencil, ChevronUp, ChevronDown, Trash2, X, GripVertical } from 'l
 import { api } from '../api';
 import type { Pipeline } from '../types';
 import OppTabs from '../components/OppTabs.vue';
+import Spinner from '../components/Spinner.vue';
+import LoadingState from '../components/LoadingState.vue';
 
 const pipelines = ref<Pipeline[]>([]);
+const loading = ref(true);
 const PRESET = ['#dbeafe', '#dcfce7', '#fef9c3', '#ffedd5', '#fee2e2', '#fce7f3', '#f3e8ff', '#e0e7ff', '#e2e8f0'];
 
 async function load() { pipelines.value = await api.get<Pipeline[]>('/pipelines'); }
-onMounted(load);
+onMounted(async () => { try { await load(); } finally { loading.value = false; } });
 
 // ── Editor modal ───────────────────────────────────────────────────────────
 type StageDraft = { id?: string; name: string; color: string };
@@ -77,13 +80,15 @@ async function deletePipeline() {
             <h2 class="text-lg font-semibold text-slate-900">Pipelines</h2>
             <p class="text-sm text-slate-500">Gestiona tus embudos y sus etapas</p>
           </div>
-          <button class="flex cursor-pointer items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-dark" @click="newPipeline">
+          <button class="flex cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md" @click="newPipeline">
             <Plus class="h-4 w-4" /> Nuevo pipeline
           </button>
         </div>
 
+        <LoadingState v-if="loading" label="Cargando pipelines…" />
+
         <!-- Listado -->
-        <div class="divide-y divide-slate-200 rounded-sm border border-slate-200 bg-white">
+        <div v-else class="divide-y divide-slate-100 overflow-hidden rounded-md border border-slate-200 bg-white shadow-card">
           <div v-for="p in pipelines" :key="p.id" class="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-slate-50">
             <div class="min-w-0 flex-1">
               <div class="flex items-baseline gap-2">
@@ -95,7 +100,7 @@ async function deletePipeline() {
                 <span v-for="s in p.stages" :key="s.id" class="rounded-sm px-2 py-0.5 text-xs font-medium text-slate-700" :style="{ backgroundColor: s.color }">{{ s.name }}</span>
               </div>
             </div>
-            <button class="flex flex-shrink-0 cursor-pointer items-center gap-1.5 rounded-sm border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100" @click="openEditor(p)">
+            <button class="flex flex-shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 shadow-sm transition-all hover:border-slate-400 hover:bg-slate-50 hover:shadow-md" @click="openEditor(p)">
               <Pencil class="h-4 w-4" /> Editar
             </button>
           </div>
@@ -106,7 +111,7 @@ async function deletePipeline() {
     <!-- Modal de edición -->
     <Transition name="modal">
     <div v-if="editing" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="closeEditor">
-      <div class="modal-panel flex max-h-[90vh] w-full max-w-lg flex-col rounded-sm bg-white shadow-xl">
+      <div class="modal-panel flex max-h-[90vh] w-full max-w-lg flex-col rounded-md bg-white shadow-modal">
         <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h2 class="text-base font-semibold text-slate-900">Editar pipeline</h2>
           <button class="cursor-pointer rounded-sm p-1 text-slate-400 hover:bg-slate-100" @click="closeEditor"><X class="h-5 w-5" /></button>
@@ -148,7 +153,7 @@ async function deletePipeline() {
           <button class="cursor-pointer rounded-sm px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50" @click="deletePipeline">Eliminar pipeline</button>
           <div class="flex gap-2">
             <button class="cursor-pointer rounded-sm px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100" @click="closeEditor">Cancelar</button>
-            <button :disabled="saving" class="cursor-pointer rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-dark disabled:opacity-60" @click="save">{{ saving ? 'Guardando…' : 'Guardar' }}</button>
+            <button :disabled="saving" class="flex cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md disabled:opacity-60" @click="save"><Spinner v-if="saving" :size="16" light /> {{ saving ? 'Guardando…' : 'Guardar' }}</button>
           </div>
         </div>
       </div>

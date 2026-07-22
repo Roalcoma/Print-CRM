@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 
 /* Tema del CRM (Data-Dense Dashboard): indigo primario + emerald CTA.
@@ -7,9 +8,15 @@
   --color-primary-dark: #4f46e5;
   --color-cta: #10b981;
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-}
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  /* Sistema de elevación: sombras suaves multicapa (profundidad premium).
+     Tailwind v4 genera utilidades shadow-<nombre> desde estos tokens. */
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-elevated: 0 2px 4px rgba(15, 23, 42, 0.04), 0 8px 20px rgba(15, 23, 42, 0.10);
+  --shadow-dropdown: 0 4px 8px rgba(15, 23, 42, 0.06), 0 12px 32px rgba(15, 23, 42, 0.14);
+  --shadow-modal: 0 8px 16px rgba(15, 23, 42, 0.10), 0 24px 56px rgba(15, 23, 42, 0.22);
+  --shadow-toolbar: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.05);
+}
 
 html {
   font-family: var(--font-sans);
@@ -41,6 +48,12 @@ html {
 .expand-leave-to { opacity: 0; max-height: 0; transform: translateY(-6px); }
 .expand-enter-to,
 .expand-leave-from { max-height: 600px; }
+
+/* Dropdown / menús flotantes */
+.dropdown-enter-active,
+.dropdown-leave-active { transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1); }
+.dropdown-enter-from,
+.dropdown-leave-to { opacity: 0; transform: translateY(-6px) scale(0.98); }
 
 /* Listas (TransitionGroup): entrada/salida + reordenamiento FLIP */
 .list-move,
