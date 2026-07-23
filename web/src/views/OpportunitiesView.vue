@@ -2,8 +2,9 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { Plus, Search, Filter, Download, Upload, X, Trash2, MoreVertical, ChevronDown, Check, UserRound, Briefcase, Kanban, StickyNote, UserPlus, Link2, SlidersHorizontal } from 'lucide-vue-next';
 import { api, getToken } from '../api';
-import type { Pipeline, Opportunity, FilterCondition, FilterOp, Note, User, Task } from '../types';
+import type { Pipeline, Opportunity, FilterCondition, FilterOp, Note, User, Task, TaskStatus } from '../types';
 import { ListTodo, CalendarClock } from 'lucide-vue-next';
+import { TASK_STATUSES } from '../taskStatus';
 import OppTabs from '../components/OppTabs.vue';
 import Dropdown from '../components/Dropdown.vue';
 import Spinner from '../components/Spinner.vue';
@@ -152,7 +153,12 @@ const newNote = ref('');
 
 // Tareas de la oportunidad (tab Tareas, solo si el usuario tiene el módulo).
 const oppTasks = ref<Task[]>([]);
-const newTask = ref({ title: '', assignee_id: '', due_at: '' });
+const newTask = ref({ title: '', description: '', assignee_ids: [] as string[], due_at: '' });
+const newTaskAssignees = computed(() => users.value.filter(u => newTask.value.assignee_ids.includes(u.id)));
+const newTaskAvailable = computed(() => users.value.filter(u => !newTask.value.assignee_ids.includes(u.id)));
+function addTaskAssignee(id: string) { if (!newTask.value.assignee_ids.includes(id)) newTask.value.assignee_ids.push(id); }
+function removeTaskAssignee(id: string) { newTask.value.assignee_ids = newTask.value.assignee_ids.filter(x => x !== id); }
+
 async function loadOppTasks(oppId: string) {
   if (!auth.can('tasks')) return;
   oppTasks.value = await api.get<Task[]>(`/tasks?opportunityId=${oppId}`);
@@ -161,15 +167,16 @@ async function addOppTask() {
   if (!editing.value || !newTask.value.title.trim()) return;
   await api.post('/tasks', {
     title: newTask.value.title,
+    description: newTask.value.description || null,
     opportunity_id: editing.value.id,
-    assignee_id: newTask.value.assignee_id || null,
+    assignee_ids: newTask.value.assignee_ids,
     due_at: newTask.value.due_at ? new Date(newTask.value.due_at).toISOString() : null,
   });
-  newTask.value = { title: '', assignee_id: '', due_at: '' };
+  newTask.value = { title: '', description: '', assignee_ids: [], due_at: '' };
   await loadOppTasks(editing.value.id);
 }
-async function toggleOppTask(t: Task) {
-  await api.patch(`/tasks/${t.id}`, { status: t.status === 'done' ? 'pending' : 'done' });
+async function changeOppTaskStatus(t: Task, status: TaskStatus) {
+  await api.patch(`/tasks/${t.id}`, { status });
   await loadOppTasks(editing.value!.id);
 }
 async function removeOppTask(t: Task) {
@@ -565,27 +572,48 @@ async function deleteNote(id: string) {
           <!-- TAREAS -->
           <div v-show="modalTab === 'tareas'" class="space-y-4">
             <div class="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
-              <input v-model="newTask.title" placeholder="Nueva tarea…" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" @keydown.enter.prevent="addOppTask" />
-              <div class="flex flex-wrap gap-2">
-                <select v-model="newTask.assignee_id" class="cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm shadow-sm focus:outline-none">
-                  <option value="">Sin asignar</option>
-                  <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
-                </select>
+              <input v-model="newTask.title" placeholder="Título de la tarea…" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+              <textarea v-model="newTask.description" rows="2" placeholder="Descripción (opcional)…" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"></textarea>
+              <!-- Responsables múltiples -->
+              <div class="flex flex-wrap items-center gap-1.5 rounded-md border border-slate-300 bg-white p-1.5">
+                <span v-for="u in newTaskAssignees" :key="u.id" class="flex items-center gap-1 rounded-full bg-slate-100 py-0.5 pl-0.5 pr-1.5 text-xs font-medium text-slate-700">
+                  <span class="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[8px] font-semibold text-white" style="height:18px;width:18px">{{ taskInitials(u.name) }}</span>
+                  {{ u.name }}
+                  <button type="button" class="cursor-pointer text-slate-400 hover:text-red-500" @click="removeTaskAssignee(u.id)"><X class="h-3 w-3" /></button>
+                </span>
+                <Dropdown v-if="newTaskAvailable.length" width="200px">
+                  <template #trigger>
+                    <button type="button" class="flex cursor-pointer items-center gap-1 rounded-full border border-dashed border-slate-300 px-2 py-0.5 text-xs font-medium text-slate-500 hover:border-primary hover:text-primary"><UserPlus class="h-3 w-3" /> Responsable</button>
+                  </template>
+                  <button v-for="u in newTaskAvailable" :key="u.id" type="button" class="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100" @click="addTaskAssignee(u.id)">
+                    <span class="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[10px] font-semibold text-white">{{ taskInitials(u.name) }}</span>
+                    {{ u.name }}
+                  </button>
+                </Dropdown>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
                 <input v-model="newTask.due_at" type="datetime-local" class="rounded-md border border-slate-300 px-2 py-1.5 text-sm shadow-sm focus:outline-none" />
-                <button class="ml-auto cursor-pointer rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark disabled:opacity-50" :disabled="!newTask.title.trim()" @click="addOppTask">Añadir</button>
+                <button class="ml-auto cursor-pointer rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark disabled:opacity-50" :disabled="!newTask.title.trim()" @click="addOppTask">Añadir tarea</button>
               </div>
             </div>
             <div class="space-y-2">
-              <div v-for="t in oppTasks" :key="t.id" class="flex items-center gap-3 rounded-md border border-slate-200 bg-white p-2.5 shadow-sm">
-                <button class="flex h-5 w-5 flex-shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-colors" :class="t.status === 'done' ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 hover:border-primary'" @click="toggleOppTask(t)">
-                  <Check v-if="t.status === 'done'" class="h-3 w-3" />
-                </button>
-                <div class="min-w-0 flex-1">
-                  <p class="truncate text-sm font-medium" :class="t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-800'">{{ t.title }}</p>
-                  <span v-if="t.due_at" class="flex items-center gap-1 text-xs" :class="t.status === 'pending' && new Date(t.due_at) < new Date() ? 'font-medium text-red-600' : 'text-slate-400'"><CalendarClock class="h-3 w-3" /> {{ fmtTaskDue(t.due_at) }}</span>
+              <div v-for="t in oppTasks" :key="t.id" class="rounded-md border border-slate-200 bg-white p-2.5 shadow-sm">
+                <div class="flex items-start gap-2">
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium" :class="t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-800'">{{ t.title }}</p>
+                    <p v-if="t.description" class="mt-0.5 text-xs text-slate-500">{{ t.description }}</p>
+                    <div class="mt-1 flex flex-wrap items-center gap-3">
+                      <span v-if="t.due_at" class="flex items-center gap-1 text-xs" :class="t.status !== 'done' && t.status !== 'cancelled' && new Date(t.due_at) < new Date() ? 'font-medium text-red-600' : 'text-slate-400'"><CalendarClock class="h-3 w-3" /> {{ fmtTaskDue(t.due_at) }}</span>
+                      <div v-if="t.assignees.length" class="flex items-center -space-x-1.5">
+                        <span v-for="a in t.assignees" :key="a.id" class="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[8px] font-semibold text-white ring-2 ring-white" :title="a.name">{{ taskInitials(a.name) }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <select :value="t.status" class="cursor-pointer rounded-md border border-slate-300 px-1.5 py-1 text-xs shadow-sm focus:outline-none" @change="changeOppTaskStatus(t, ($event.target as HTMLSelectElement).value as TaskStatus)">
+                    <option v-for="s in TASK_STATUSES" :key="s.key" :value="s.key">{{ s.label }}</option>
+                  </select>
+                  <button class="cursor-pointer rounded-md p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600" @click="removeOppTask(t)"><Trash2 class="h-4 w-4" /></button>
                 </div>
-                <div v-if="t.assignee_name" class="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[9px] font-semibold text-white" :title="t.assignee_name">{{ taskInitials(t.assignee_name) }}</div>
-                <button class="cursor-pointer rounded-md p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600" @click="removeOppTask(t)"><Trash2 class="h-4 w-4" /></button>
               </div>
               <p v-if="oppTasks.length === 0" class="py-6 text-center text-sm text-slate-400">Sin tareas para esta oportunidad.</p>
             </div>

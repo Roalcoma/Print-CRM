@@ -67,16 +67,17 @@ export interface Note {
   created_at: string;
 }
 
+export type TaskStatus = 'pending' | 'in_progress' | 'done' | 'cancelled';
+
 export interface Task {
   id: string;
   title: string;
   description: string | null;
-  assignee_id: string | null;
-  assignee_name: string | null;
+  assignees: { id: string; name: string }[];
   opportunity_id: string | null;
   opportunity_title: string | null;
   due_at: string | null;
-  status: 'pending' | 'done';
+  status: TaskStatus;
   completed_at: string | null;
   created_at: string;
 }
