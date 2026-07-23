@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router';
-import { LayoutDashboard, Users, Kanban, LogOut, Search, Bell, Settings } from 'lucide-vue-next';
+import { LayoutDashboard, Users, Kanban, LogOut, Search, Bell, Settings, ListTodo } from 'lucide-vue-next';
 import { useAuthStore } from '../stores/auth';
 
 const auth = useAuthStore();
@@ -12,6 +12,7 @@ const nav = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, match: ['/dashboard'], module: null as string | null },
   { to: '/contacts', label: 'Contactos', icon: Users, match: ['/contacts'], module: 'contacts' },
   { to: '/opportunities', label: 'Oportunidades', icon: Kanban, match: ['/opportunities', '/pipelines'], module: 'opportunities' },
+  { to: '/tasks', label: 'Tareas', icon: ListTodo, match: ['/tasks'], module: 'tasks' },
 ];
 const visibleNav = computed(() => nav.filter(i => !i.module || auth.can(i.module)));
 const isActive = (m: string[]) => m.some(p => route.path.startsWith(p));

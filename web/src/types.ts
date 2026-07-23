@@ -67,6 +67,20 @@ export interface Note {
   created_at: string;
 }
 
+export interface Task {
+  id: string;
+  title: string;
+  description: string | null;
+  assignee_id: string | null;
+  assignee_name: string | null;
+  opportunity_id: string | null;
+  opportunity_title: string | null;
+  due_at: string | null;
+  status: 'pending' | 'done';
+  completed_at: string | null;
+  created_at: string;
+}
+
 export type FilterOp =
   | 'contains' | 'not_contains' | 'is' | 'is_not' | 'is_empty' | 'is_not_empty'
   | 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'before' | 'after';

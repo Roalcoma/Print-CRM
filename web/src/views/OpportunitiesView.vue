@@ -2,7 +2,8 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { Plus, Search, Filter, Download, Upload, X, Trash2, MoreVertical, ChevronDown, Check, UserRound, Briefcase, Kanban, StickyNote, UserPlus, Link2, SlidersHorizontal } from 'lucide-vue-next';
 import { api, getToken } from '../api';
-import type { Pipeline, Opportunity, FilterCondition, FilterOp, Note, User } from '../types';
+import type { Pipeline, Opportunity, FilterCondition, FilterOp, Note, User, Task } from '../types';
+import { ListTodo, CalendarClock } from 'lucide-vue-next';
 import OppTabs from '../components/OppTabs.vue';
 import Dropdown from '../components/Dropdown.vue';
 import Spinner from '../components/Spinner.vue';
@@ -142,12 +143,41 @@ async function onImportFile(e: Event) {
 
 // ── Formulario completo (estilo GHL) ─────────────────────────────────────────
 const showForm = ref(false);
-const modalTab = ref<'detalles' | 'notas'>('detalles');
+const modalTab = ref<'detalles' | 'notas' | 'tareas'>('detalles');
 const editing = ref<Opportunity | null>(null);
 const saving = ref(false);
 const tagInput = ref('');
 const notes = ref<Note[]>([]);
 const newNote = ref('');
+
+// Tareas de la oportunidad (tab Tareas, solo si el usuario tiene el módulo).
+const oppTasks = ref<Task[]>([]);
+const newTask = ref({ title: '', assignee_id: '', due_at: '' });
+async function loadOppTasks(oppId: string) {
+  if (!auth.can('tasks')) return;
+  oppTasks.value = await api.get<Task[]>(`/tasks?opportunityId=${oppId}`);
+}
+async function addOppTask() {
+  if (!editing.value || !newTask.value.title.trim()) return;
+  await api.post('/tasks', {
+    title: newTask.value.title,
+    opportunity_id: editing.value.id,
+    assignee_id: newTask.value.assignee_id || null,
+    due_at: newTask.value.due_at ? new Date(newTask.value.due_at).toISOString() : null,
+  });
+  newTask.value = { title: '', assignee_id: '', due_at: '' };
+  await loadOppTasks(editing.value.id);
+}
+async function toggleOppTask(t: Task) {
+  await api.patch(`/tasks/${t.id}`, { status: t.status === 'done' ? 'pending' : 'done' });
+  await loadOppTasks(editing.value!.id);
+}
+async function removeOppTask(t: Task) {
+  await api.del(`/tasks/${t.id}`);
+  await loadOppTasks(editing.value!.id);
+}
+const taskInitials = (n: string) => n.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+const fmtTaskDue = (iso: string) => new Date(iso).toLocaleString('es-VE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 const blankForm = () => ({
   title: '', value: 0, status: 'open', pipeline_id: currentId.value, stage_id: current.value?.stages[0]?.id ?? '',
@@ -181,6 +211,7 @@ async function openEdit(o: Opportunity, tab: 'detalles' | 'notas' = 'detalles') 
   };
   showForm.value = true;
   notes.value = await api.get<Note[]>(`/opportunities/${o.id}/notes`);
+  await loadOppTasks(o.id);
 }
 const formPipeline = computed(() => pipelines.value.find(p => p.id === form.value.pipeline_id) ?? null);
 function onFormPipelineChange() { form.value.stage_id = formPipeline.value?.stages[0]?.id ?? ''; }
@@ -392,6 +423,7 @@ async function deleteNote(id: string) {
         <div class="flex gap-1 border-b border-slate-200 px-6">
           <button class="flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors" :class="modalTab === 'detalles' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-800'" @click="modalTab = 'detalles'"><Briefcase class="h-4 w-4" /> Detalles</button>
           <button v-if="editing" class="flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors" :class="modalTab === 'notas' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-800'" @click="modalTab = 'notas'"><StickyNote class="h-4 w-4" /> Notas <span class="ml-0.5 rounded-full bg-slate-100 px-1.5 text-xs text-slate-500">{{ notes.length }}</span></button>
+          <button v-if="editing && auth.can('tasks')" class="flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors" :class="modalTab === 'tareas' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-800'" @click="modalTab = 'tareas'"><ListTodo class="h-4 w-4" /> Tareas <span class="ml-0.5 rounded-full bg-slate-100 px-1.5 text-xs text-slate-500">{{ oppTasks.length }}</span></button>
         </div>
 
         <div class="flex-1 overflow-auto px-6 py-5">
@@ -527,6 +559,35 @@ async function deleteNote(id: string) {
                 </div>
               </div>
               <p v-if="notes.length === 0" class="py-6 text-center text-sm text-slate-400">Sin notas todavía.</p>
+            </div>
+          </div>
+
+          <!-- TAREAS -->
+          <div v-show="modalTab === 'tareas'" class="space-y-4">
+            <div class="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+              <input v-model="newTask.title" placeholder="Nueva tarea…" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" @keydown.enter.prevent="addOppTask" />
+              <div class="flex flex-wrap gap-2">
+                <select v-model="newTask.assignee_id" class="cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm shadow-sm focus:outline-none">
+                  <option value="">Sin asignar</option>
+                  <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
+                </select>
+                <input v-model="newTask.due_at" type="datetime-local" class="rounded-md border border-slate-300 px-2 py-1.5 text-sm shadow-sm focus:outline-none" />
+                <button class="ml-auto cursor-pointer rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark disabled:opacity-50" :disabled="!newTask.title.trim()" @click="addOppTask">Añadir</button>
+              </div>
+            </div>
+            <div class="space-y-2">
+              <div v-for="t in oppTasks" :key="t.id" class="flex items-center gap-3 rounded-md border border-slate-200 bg-white p-2.5 shadow-sm">
+                <button class="flex h-5 w-5 flex-shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-colors" :class="t.status === 'done' ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 hover:border-primary'" @click="toggleOppTask(t)">
+                  <Check v-if="t.status === 'done'" class="h-3 w-3" />
+                </button>
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-medium" :class="t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-800'">{{ t.title }}</p>
+                  <span v-if="t.due_at" class="flex items-center gap-1 text-xs" :class="t.status === 'pending' && new Date(t.due_at) < new Date() ? 'font-medium text-red-600' : 'text-slate-400'"><CalendarClock class="h-3 w-3" /> {{ fmtTaskDue(t.due_at) }}</span>
+                </div>
+                <div v-if="t.assignee_name" class="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[9px] font-semibold text-white" :title="t.assignee_name">{{ taskInitials(t.assignee_name) }}</div>
+                <button class="cursor-pointer rounded-md p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600" @click="removeOppTask(t)"><Trash2 class="h-4 w-4" /></button>
+              </div>
+              <p v-if="oppTasks.length === 0" class="py-6 text-center text-sm text-slate-400">Sin tareas para esta oportunidad.</p>
             </div>
           </div>
         </div>

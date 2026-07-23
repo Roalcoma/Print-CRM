@@ -8,6 +8,7 @@ import { contactsRouter } from './routes/contacts.ts';
 import { pipelinesRouter } from './routes/pipelines.ts';
 import { stagesRouter } from './routes/stages.ts';
 import { opportunitiesRouter } from './routes/opportunities.ts';
+import { tasksRouter } from './routes/tasks.ts';
 import { usersRouter } from './routes/users.ts';
 import { meRouter } from './routes/me.ts';
 import { organizationRouter } from './routes/organization.ts';
@@ -24,6 +25,7 @@ app.use('/api/contacts', requireAuth, requireModule('contacts'), contactsRouter)
 app.use('/api/pipelines', requireAuth, requireModule('opportunities'), pipelinesRouter);
 app.use('/api/stages', requireAuth, requireModule('opportunities'), stagesRouter);
 app.use('/api/opportunities', requireAuth, requireModule('opportunities'), opportunitiesRouter);
+app.use('/api/tasks', requireAuth, requireModule('tasks'), tasksRouter);
 app.use('/api/users', requireAuth, usersRouter);
 app.use('/api/me', requireAuth, meRouter);
 app.use('/api/organization', requireAuth, organizationRouter);

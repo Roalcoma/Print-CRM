@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { queryOne } from '../db.ts';
 
 // Módulos que se pueden restringir por permiso. Se amplía al añadir features (tareas, etc.).
-export const MODULES = ['contacts', 'opportunities'] as const;
+export const MODULES = ['contacts', 'opportunities', 'tasks'] as const;
 export type ModuleKey = (typeof MODULES)[number];
 
 interface CurrentUser { role: string; permissions: unknown }

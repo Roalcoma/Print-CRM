@@ -13,6 +13,7 @@ const routes = [
       { path: 'contacts', component: () => import('./views/ContactsView.vue'), meta: { title: 'Contactos', module: 'contacts' } },
       { path: 'opportunities', component: () => import('./views/OpportunitiesView.vue'), meta: { title: 'Oportunidades', module: 'opportunities' } },
       { path: 'pipelines', component: () => import('./views/PipelinesView.vue'), meta: { title: 'Oportunidades', module: 'opportunities' } },
+      { path: 'tasks', component: () => import('./views/TasksView.vue'), meta: { title: 'Tareas', module: 'tasks' } },
       {
         path: 'settings',
         component: () => import('./views/settings/SettingsLayout.vue'),
