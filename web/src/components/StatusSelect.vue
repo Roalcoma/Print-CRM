@@ -15,7 +15,7 @@ const current = computed(() => TASK_STATUSES.find(s => s.key === props.modelValu
 </script>
 
 <template>
-  <Dropdown :align="align" width="184px">
+  <Dropdown :align="align" width="184px" :trigger-class="block ? 'block w-full' : 'inline-flex'">
     <template #trigger="{ open }">
       <button v-if="!block" type="button" class="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold shadow-sm transition-all hover:brightness-95" :class="[current.badge, open && 'ring-2 ring-primary/30']">
         <span class="h-2 w-2 rounded-full" :style="{ backgroundColor: current.color }"></span>

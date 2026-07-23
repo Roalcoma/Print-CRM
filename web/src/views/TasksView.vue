@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { Plus, Search, Pencil, Trash2, X, CalendarClock, Kanban, UserPlus } from 'lucide-vue-next';
+import { Plus, Search, Pencil, Trash2, X, CalendarClock, Kanban, UserPlus, ChevronDown, Check } from 'lucide-vue-next';
 import { api } from '../api';
 import type { Task, TaskStatus, User } from '../types';
 import { TASK_STATUSES } from '../taskStatus';
@@ -34,6 +34,7 @@ onMounted(async () => {
 });
 
 const initials = (n: string) => n.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+const userName = (id: string) => users.value.find(u => u.id === id)?.name ?? '';
 const fmtDue = (iso: string) => new Date(iso).toLocaleString('es-VE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 const isOverdue = (t: Task) => t.status !== 'done' && t.status !== 'cancelled' && t.due_at && new Date(t.due_at) < new Date();
 
@@ -111,10 +112,29 @@ async function remove(t: Task) {
       <div>
         <h2 class="text-base font-semibold text-slate-900">Tareas</h2>
       </div>
-      <select v-model="assigneeFilter" class="ml-2 cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none">
-        <option value="">Todos los responsables</option>
-        <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
-      </select>
+      <Dropdown class="ml-2" width="220px">
+        <template #trigger="{ open }">
+          <button class="flex cursor-pointer items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-slate-400" :class="open && 'border-primary ring-2 ring-primary/20'">
+            <template v-if="assigneeFilter">
+              <span class="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[9px] font-semibold text-white">{{ initials(userName(assigneeFilter)) }}</span>
+              {{ userName(assigneeFilter) }}
+            </template>
+            <span v-else class="text-slate-600">Todos los responsables</span>
+            <ChevronDown class="h-4 w-4 text-slate-400 transition-transform" :class="open && 'rotate-180'" />
+          </button>
+        </template>
+        <button type="button" class="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-slate-100" :class="!assigneeFilter ? 'text-primary' : 'text-slate-700'" @click="assigneeFilter = ''">
+          Todos los responsables
+          <Check v-if="!assigneeFilter" class="h-4 w-4" />
+        </button>
+        <button v-for="u in users" :key="u.id" type="button" class="flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-slate-100" :class="assigneeFilter === u.id ? 'text-primary' : 'text-slate-700'" @click="assigneeFilter = u.id">
+          <span class="flex items-center gap-2">
+            <span class="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[10px] font-semibold text-white">{{ initials(u.name) }}</span>
+            {{ u.name }}
+          </span>
+          <Check v-if="assigneeFilter === u.id" class="h-4 w-4" />
+        </button>
+      </Dropdown>
       <div class="relative">
         <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input v-model="search" placeholder="Buscar tarea…" class="w-56 rounded-md border border-slate-300 py-2 pl-9 pr-3 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
