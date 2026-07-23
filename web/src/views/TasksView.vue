@@ -3,12 +3,13 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { Plus, Search, Pencil, Trash2, X, CalendarClock, Kanban, UserPlus } from 'lucide-vue-next';
 import { api } from '../api';
 import type { Task, TaskStatus, User } from '../types';
-import { TASK_STATUSES, statusBadge } from '../taskStatus';
+import { TASK_STATUSES } from '../taskStatus';
 import { useAuthStore } from '../stores/auth';
 import Spinner from '../components/Spinner.vue';
 import LoadingState from '../components/LoadingState.vue';
 import Dropdown from '../components/Dropdown.vue';
 import ViewToggle from '../components/ViewToggle.vue';
+import StatusSelect from '../components/StatusSelect.vue';
 
 const auth = useAuthStore();
 const tasks = ref<Task[]>([]);
@@ -180,9 +181,7 @@ async function remove(t: Task) {
               <span v-for="a in t.assignees.slice(0, 3)" :key="a.id" class="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[10px] font-semibold text-white ring-2 ring-white" :title="a.name">{{ initials(a.name) }}</span>
               <span v-if="t.assignees.length > 3" class="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-600 ring-2 ring-white">+{{ t.assignees.length - 3 }}</span>
             </div>
-            <select :value="t.status" class="cursor-pointer rounded-md border border-slate-300 px-2 py-1 text-xs font-medium shadow-sm focus:outline-none" :class="statusBadge(t.status)" @change="changeStatus(t, ($event.target as HTMLSelectElement).value as TaskStatus)">
-              <option v-for="s in TASK_STATUSES" :key="s.key" :value="s.key">{{ s.label }}</option>
-            </select>
+            <StatusSelect :model-value="t.status" @update:model-value="s => changeStatus(t, s)" />
             <div class="flex items-center gap-1">
               <button class="cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-primary" title="Editar" @click="openEdit(t)"><Pencil class="h-4 w-4" /></button>
               <button class="cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600" title="Eliminar" @click="remove(t)"><Trash2 class="h-4 w-4" /></button>
@@ -214,9 +213,7 @@ async function remove(t: Task) {
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="mb-1 block text-sm font-medium text-slate-700">Estado</label>
-              <select v-model="form.status" class="w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none">
-                <option v-for="s in TASK_STATUSES" :key="s.key" :value="s.key">{{ s.label }}</option>
-              </select>
+              <StatusSelect v-model="form.status" block align="left" />
             </div>
             <div>
               <label class="mb-1 block text-sm font-medium text-slate-700">Vencimiento</label>

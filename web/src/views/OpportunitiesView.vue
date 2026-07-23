@@ -4,7 +4,6 @@ import { Plus, Search, Filter, Download, Upload, X, Trash2, MoreVertical, Chevro
 import { api, getToken } from '../api';
 import type { Pipeline, Opportunity, FilterCondition, FilterOp, Note, User, Task, TaskStatus } from '../types';
 import { ListTodo, CalendarClock } from 'lucide-vue-next';
-import { TASK_STATUSES } from '../taskStatus';
 import OppTabs from '../components/OppTabs.vue';
 import Dropdown from '../components/Dropdown.vue';
 import Spinner from '../components/Spinner.vue';
@@ -12,6 +11,7 @@ import LoadingState from '../components/LoadingState.vue';
 import OpportunityCard from '../components/OpportunityCard.vue';
 import CustomizeCardPanel from '../components/CustomizeCardPanel.vue';
 import ViewToggle from '../components/ViewToggle.vue';
+import StatusSelect from '../components/StatusSelect.vue';
 import { normalizeCardConfig, type CardConfig } from '../cardConfig';
 import { useAuthStore } from '../stores/auth';
 
@@ -655,9 +655,7 @@ async function deleteNote(id: string) {
                       </div>
                     </div>
                   </div>
-                  <select :value="t.status" class="cursor-pointer rounded-md border border-slate-300 px-1.5 py-1 text-xs shadow-sm focus:outline-none" @change="changeOppTaskStatus(t, ($event.target as HTMLSelectElement).value as TaskStatus)">
-                    <option v-for="s in TASK_STATUSES" :key="s.key" :value="s.key">{{ s.label }}</option>
-                  </select>
+                  <StatusSelect :model-value="t.status" @update:model-value="s => changeOppTaskStatus(t, s)" />
                   <button class="cursor-pointer rounded-md p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600" @click="removeOppTask(t)"><Trash2 class="h-4 w-4" /></button>
                 </div>
               </div>
