@@ -11,6 +11,7 @@ import Spinner from '../components/Spinner.vue';
 import LoadingState from '../components/LoadingState.vue';
 import OpportunityCard from '../components/OpportunityCard.vue';
 import CustomizeCardPanel from '../components/CustomizeCardPanel.vue';
+import ViewToggle from '../components/ViewToggle.vue';
 import { normalizeCardConfig, type CardConfig } from '../cardConfig';
 import { useAuthStore } from '../stores/auth';
 
@@ -30,6 +31,17 @@ async function applyCardConfig(c: CardConfig) {
   showCustomize.value = false;
   await auth.savePreferences({ cardConfig: c });
 }
+
+// Vista tablero/lista (recordada en la cuenta).
+const viewMode = ref<'board' | 'list'>(auth.preferences.oppView === 'list' ? 'list' : 'board');
+watch(viewMode, v => auth.savePreferences({ oppView: v }));
+const stageById = computed(() => {
+  const m: Record<string, { name: string; color: string }> = {};
+  (current.value?.stages ?? []).forEach(s => { m[s.id] = { name: s.name, color: s.color }; });
+  return m;
+});
+const statusBadgeCls: Record<string, string> = { open: 'bg-blue-50 text-blue-600', won: 'bg-emerald-50 text-emerald-600', lost: 'bg-red-50 text-red-600' };
+const statusLbl: Record<string, string> = { open: 'Abierta', won: 'Ganada', lost: 'Perdida' };
 
 const search = ref('');
 const showFilters = ref(false);
@@ -301,6 +313,7 @@ async function deleteNote(id: string) {
       <span class="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-600">{{ totalLeads }} oportunidades</span>
 
       <div class="ml-auto flex flex-wrap items-center gap-2">
+        <ViewToggle v-model="viewMode" />
         <div class="relative">
           <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input v-model="search" @input="onSearch" placeholder="Buscar oportunidades…" class="w-56 rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm shadow-sm transition-all focus:border-primary focus:shadow-md focus:ring-2 focus:ring-primary/20 focus:outline-none" />
@@ -381,7 +394,7 @@ async function deleteNote(id: string) {
 
     <!-- Tablero kanban -->
     <LoadingState v-if="loading" label="Cargando oportunidades…" />
-    <div v-else class="flex flex-1 gap-4 overflow-x-auto bg-slate-100/60 p-6">
+    <div v-else-if="viewMode === 'board'" class="flex flex-1 gap-4 overflow-x-auto bg-slate-100/60 p-6">
       <div v-for="stage in current?.stages ?? []" :key="stage.id" class="flex w-80 flex-shrink-0 flex-col overflow-hidden rounded-md border border-slate-200 bg-white shadow-card" @dragover.prevent @drop="onDrop(stage.id)">
         <div class="flex items-center justify-between px-4 py-3" :style="{ backgroundColor: stage.color }">
           <div class="flex items-center gap-2">
@@ -406,6 +419,39 @@ async function deleteNote(id: string) {
           </TransitionGroup>
           <p v-if="stageOpps(stage.id).length === 0" class="py-8 text-center text-xs text-slate-400">Sin oportunidades</p>
         </div>
+      </div>
+    </div>
+
+    <!-- Vista de lista -->
+    <div v-else class="flex-1 overflow-auto bg-slate-100/40 p-6">
+      <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-card">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-200 bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <th class="px-4 py-3">Oportunidad</th>
+              <th class="px-2 py-3">Etapa</th>
+              <th class="px-2 py-3">Valor</th>
+              <th class="px-2 py-3">Estado</th>
+              <th class="px-2 py-3">Contacto</th>
+              <th class="px-2 py-3">Responsable</th>
+              <th class="px-2 py-3">Creado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="opp in opps" :key="opp.id" class="cursor-pointer border-b border-slate-100 transition-colors last:border-0 hover:bg-indigo-50/40" @click="openEdit(opp)">
+              <td class="px-4 py-3 font-medium text-slate-900">{{ opp.title }}</td>
+              <td class="px-2 py-3">
+                <span class="rounded-sm px-2 py-0.5 text-xs font-medium text-slate-700" :style="{ backgroundColor: stageById[opp.stage_id]?.color }">{{ stageById[opp.stage_id]?.name }}</span>
+              </td>
+              <td class="px-2 py-3 font-semibold text-emerald-600">{{ money(Number(opp.value)) }}</td>
+              <td class="px-2 py-3"><span class="rounded-sm px-1.5 py-0.5 text-[11px] font-semibold" :class="statusBadgeCls[opp.status]">{{ statusLbl[opp.status] }}</span></td>
+              <td class="px-2 py-3 text-slate-600">{{ [opp.contact_first_name, opp.contact_last_name].filter(Boolean).join(' ') || '—' }}</td>
+              <td class="px-2 py-3 text-slate-600">{{ opp.owner_name || '—' }}</td>
+              <td class="px-2 py-3 text-slate-500">{{ new Date(opp.created_at).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' }) }}</td>
+            </tr>
+            <tr v-if="opps.length === 0"><td colspan="7" class="px-4 py-12 text-center text-slate-400">Sin oportunidades</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
 

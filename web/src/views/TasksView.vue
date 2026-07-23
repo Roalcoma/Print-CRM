@@ -1,19 +1,30 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { Plus, Search, Pencil, Trash2, X, CalendarClock, Kanban, UserPlus } from 'lucide-vue-next';
 import { api } from '../api';
 import type { Task, TaskStatus, User } from '../types';
-import { TASK_STATUSES } from '../taskStatus';
+import { TASK_STATUSES, statusBadge } from '../taskStatus';
+import { useAuthStore } from '../stores/auth';
 import Spinner from '../components/Spinner.vue';
 import LoadingState from '../components/LoadingState.vue';
 import Dropdown from '../components/Dropdown.vue';
+import ViewToggle from '../components/ViewToggle.vue';
 
+const auth = useAuthStore();
 const tasks = ref<Task[]>([]);
 const users = ref<User[]>([]);
 const loading = ref(true);
 const assigneeFilter = ref('');
 const search = ref('');
 const dragId = ref<string | null>(null);
+
+// Vista tablero/lista (recordada en la cuenta).
+const viewMode = ref<'board' | 'list'>(auth.preferences.taskView === 'list' ? 'list' : 'board');
+watch(viewMode, v => auth.savePreferences({ taskView: v }));
+async function changeStatus(t: Task, status: TaskStatus) {
+  t.status = status;
+  await api.patch(`/tasks/${t.id}`, { status });
+}
 
 async function load() { tasks.value = await api.get<Task[]>('/tasks'); }
 onMounted(async () => {
@@ -107,7 +118,8 @@ async function remove(t: Task) {
         <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input v-model="search" placeholder="Buscar tarea…" class="w-56 rounded-md border border-slate-300 py-2 pl-9 pr-3 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
       </div>
-      <button class="ml-auto flex cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md" @click="openCreate()">
+      <ViewToggle v-model="viewMode" class="ml-auto" />
+      <button class="flex cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md" @click="openCreate()">
         <Plus class="h-4 w-4" /> Nueva tarea
       </button>
     </div>
@@ -115,7 +127,7 @@ async function remove(t: Task) {
     <LoadingState v-if="loading" label="Cargando tareas…" />
 
     <!-- Tablero -->
-    <div v-else class="flex flex-1 gap-4 overflow-x-auto bg-slate-100/60 p-6">
+    <div v-else-if="viewMode === 'board'" class="flex flex-1 gap-4 overflow-x-auto bg-slate-100/60 p-6">
       <div v-for="col in TASK_STATUSES" :key="col.key" class="flex w-80 flex-shrink-0 flex-col overflow-hidden rounded-md border border-slate-200 bg-white shadow-card" @dragover.prevent @drop="onDrop(col.key)">
         <div class="flex items-center justify-between px-4 py-3" :style="{ backgroundColor: col.color }">
           <div class="flex items-center gap-2">
@@ -148,6 +160,35 @@ async function remove(t: Task) {
             <p v-if="t.opportunity_title" class="mt-2 flex items-center gap-1 border-t border-slate-100 pt-2 text-[11px] text-slate-400"><Kanban class="h-3 w-3" /> {{ t.opportunity_title }}</p>
           </div>
           <p v-if="tasksOf(col.key).length === 0" class="py-6 text-center text-xs text-slate-400">Sin tareas</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vista de lista -->
+    <div v-else class="flex-1 overflow-auto bg-slate-100/40 p-6">
+      <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-card">
+        <div class="divide-y divide-slate-100">
+          <div v-for="t in filtered" :key="t.id" class="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-indigo-50/40">
+            <div class="min-w-0 flex-1 cursor-pointer" @click="openEdit(t)">
+              <p class="truncate text-sm font-medium" :class="t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-900'">{{ t.title }}</p>
+              <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-500">
+                <span v-if="t.due_at" class="flex items-center gap-1" :class="isOverdue(t) && 'font-medium text-red-600'"><CalendarClock class="h-3.5 w-3.5" /> {{ fmtDue(t.due_at) }}</span>
+                <span v-if="t.opportunity_title" class="flex items-center gap-1"><Kanban class="h-3.5 w-3.5" /> {{ t.opportunity_title }}</span>
+              </div>
+            </div>
+            <div v-if="t.assignees.length" class="flex items-center -space-x-1.5">
+              <span v-for="a in t.assignees.slice(0, 3)" :key="a.id" class="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[10px] font-semibold text-white ring-2 ring-white" :title="a.name">{{ initials(a.name) }}</span>
+              <span v-if="t.assignees.length > 3" class="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-600 ring-2 ring-white">+{{ t.assignees.length - 3 }}</span>
+            </div>
+            <select :value="t.status" class="cursor-pointer rounded-md border border-slate-300 px-2 py-1 text-xs font-medium shadow-sm focus:outline-none" :class="statusBadge(t.status)" @change="changeStatus(t, ($event.target as HTMLSelectElement).value as TaskStatus)">
+              <option v-for="s in TASK_STATUSES" :key="s.key" :value="s.key">{{ s.label }}</option>
+            </select>
+            <div class="flex items-center gap-1">
+              <button class="cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-primary" title="Editar" @click="openEdit(t)"><Pencil class="h-4 w-4" /></button>
+              <button class="cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600" title="Eliminar" @click="remove(t)"><Trash2 class="h-4 w-4" /></button>
+            </div>
+          </div>
+          <div v-if="filtered.length === 0" class="px-4 py-12 text-center text-slate-400">Sin tareas</div>
         </div>
       </div>
     </div>
