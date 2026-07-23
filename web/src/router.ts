@@ -13,7 +13,16 @@ const routes = [
       { path: 'contacts', component: () => import('./views/ContactsView.vue'), meta: { title: 'Contactos', module: 'contacts' } },
       { path: 'opportunities', component: () => import('./views/OpportunitiesView.vue'), meta: { title: 'Oportunidades', module: 'opportunities' } },
       { path: 'pipelines', component: () => import('./views/PipelinesView.vue'), meta: { title: 'Oportunidades', module: 'opportunities' } },
-      { path: 'settings', component: () => import('./views/SettingsView.vue'), meta: { title: 'Configuración', admin: true } },
+      {
+        path: 'settings',
+        component: () => import('./views/settings/SettingsLayout.vue'),
+        meta: { title: 'Configuración', admin: true },
+        children: [
+          { path: '', redirect: '/settings/team' },
+          { path: 'team', component: () => import('./views/settings/SettingsTeam.vue'), meta: { title: 'Configuración', admin: true } },
+          { path: 'business', component: () => import('./views/settings/SettingsBusiness.vue'), meta: { title: 'Configuración', admin: true } },
+        ],
+      },
     ],
   },
 ];

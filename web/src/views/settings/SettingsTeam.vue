@@ -1,25 +1,52 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { Plus, Pencil, Trash2, X, Shield, MoreVertical, UserRound } from 'lucide-vue-next';
-import { api } from '../api';
-import type { User } from '../types';
-import { MODULES } from '../modules';
-import { useAuthStore } from '../stores/auth';
-import Spinner from '../components/Spinner.vue';
-import LoadingState from '../components/LoadingState.vue';
-import Dropdown from '../components/Dropdown.vue';
+import { Plus, Pencil, Trash2, X, Search, Copy, Check, UserRound } from 'lucide-vue-next';
+import { api } from '../../api';
+import type { User } from '../../types';
+import { MODULES } from '../../modules';
+import { useAuthStore } from '../../stores/auth';
+import Spinner from '../../components/Spinner.vue';
+import LoadingState from '../../components/LoadingState.vue';
 
 const auth = useAuthStore();
 const users = ref<User[]>([]);
 const loading = ref(true);
+const search = ref('');
+const roleFilter = ref('');
 
 async function load() { users.value = await api.get<User[]>('/users'); }
 onMounted(async () => { try { await load(); } finally { loading.value = false; } });
 
 const roleLabel: Record<string, string> = { owner: 'Owner', admin: 'Administrador', member: 'Miembro' };
 const roleBadge: Record<string, string> = { owner: 'bg-violet-50 text-violet-700', admin: 'bg-indigo-50 text-indigo-700', member: 'bg-slate-100 text-slate-600' };
-const dateShort = (d?: string) => d ? new Date(d).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 const moduleLabel = (k: string) => MODULES.find(m => m.key === k)?.label ?? k;
+
+const filtered = computed(() => {
+  const t = search.value.trim().toLowerCase();
+  return users.value.filter(u =>
+    (!roleFilter.value || u.role === roleFilter.value) &&
+    (!t || u.name.toLowerCase().includes(t) || u.email.toLowerCase().includes(t)),
+  );
+});
+
+// Avatar con color determinístico por nombre (estilo GHL).
+const AVATAR_COLORS = [
+  'from-indigo-500 to-violet-600', 'from-blue-500 to-cyan-600', 'from-emerald-500 to-teal-600',
+  'from-amber-500 to-orange-600', 'from-rose-500 to-pink-600', 'from-purple-500 to-fuchsia-600',
+];
+function avatarColor(s: string) {
+  let h = 0;
+  for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+const initials = (n: string) => n.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+
+const copied = ref<string | null>(null);
+function copyEmail(email: string) {
+  navigator.clipboard?.writeText(email);
+  copied.value = email;
+  setTimeout(() => { if (copied.value === email) copied.value = null; }, 1500);
+}
 
 // ── Modal crear/editar ────────────────────────────────────────────────────────
 const showForm = ref(false);
@@ -29,14 +56,12 @@ const error = ref('');
 const form = ref({ name: '', email: '', password: '', role: 'member' as 'admin' | 'member', permissions: [] as string[] });
 
 function openCreate() {
-  editing.value = null;
-  error.value = '';
+  editing.value = null; error.value = '';
   form.value = { name: '', email: '', password: '', role: 'member', permissions: [] };
   showForm.value = true;
 }
 function openEdit(u: User) {
-  editing.value = u;
-  error.value = '';
+  editing.value = u; error.value = '';
   form.value = { name: u.name, email: u.email, password: '', role: (u.role === 'admin' ? 'admin' : 'member'), permissions: [...(u.permissions ?? [])] };
   showForm.value = true;
 }
@@ -44,10 +69,8 @@ function toggleModule(key: string) {
   const i = form.value.permissions.indexOf(key);
   if (i >= 0) form.value.permissions.splice(i, 1); else form.value.permissions.push(key);
 }
-
 async function save() {
-  error.value = '';
-  saving.value = true;
+  error.value = ''; saving.value = true;
   try {
     const perms = form.value.role === 'admin' ? [] : form.value.permissions;
     if (editing.value) {
@@ -65,32 +88,36 @@ async function save() {
     saving.value = false;
   }
 }
-
 async function remove(u: User) {
   if (!confirm(`¿Eliminar a "${u.name}"?`)) return;
-  try {
-    await api.del(`/users/${u.id}`);
-    await load();
-  } catch (e) {
-    alert(e instanceof Error ? e.message : 'No se pudo eliminar');
-  }
+  try { await api.del(`/users/${u.id}`); await load(); }
+  catch (e) { alert(e instanceof Error ? e.message : 'No se pudo eliminar'); }
 }
-
 const isSelf = (u: User) => u.id === auth.user?.id;
+const canManage = (u: User) => u.role !== 'owner';
 </script>
 
 <template>
-  <div class="flex-1 overflow-auto p-8">
+  <div class="p-8">
     <div class="mx-auto max-w-5xl">
       <div class="mb-6">
-        <h2 class="text-xl font-semibold text-slate-900">Configuración de la cuenta</h2>
+        <h3 class="text-xl font-semibold text-slate-900">Mi equipo</h3>
         <p class="mt-1 text-sm text-slate-500">Gestiona los usuarios de tu equipo y sus permisos por módulo.</p>
       </div>
 
-      <!-- Sección Usuarios -->
-      <div class="mb-4 flex items-center justify-between">
-        <h3 class="flex items-center gap-2 text-base font-semibold text-slate-800"><Shield class="h-5 w-5 text-primary" /> Usuarios y permisos</h3>
-        <button class="flex cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md" @click="openCreate">
+      <!-- Toolbar -->
+      <div class="mb-4 flex flex-wrap items-center gap-3">
+        <select v-model="roleFilter" class="cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none">
+          <option value="">Todos los roles</option>
+          <option value="owner">Owner</option>
+          <option value="admin">Administrador</option>
+          <option value="member">Miembro</option>
+        </select>
+        <div class="relative flex-1 sm:max-w-xs">
+          <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input v-model="search" placeholder="Nombre o email…" class="w-full rounded-md border border-slate-300 py-2 pl-9 pr-3 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+        </div>
+        <button class="ml-auto flex cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md" @click="openCreate">
           <Plus class="h-4 w-4" /> Añadir usuario
         </button>
       </div>
@@ -101,24 +128,28 @@ const isSelf = (u: User) => u.id === auth.user?.id;
         <table class="w-full text-sm">
           <thead>
             <tr class="border-b border-slate-200 bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-              <th class="px-4 py-3">Usuario</th>
+              <th class="px-4 py-3">Nombre</th>
+              <th class="px-2 py-3">Email</th>
               <th class="px-2 py-3">Rol</th>
               <th class="px-2 py-3">Módulos</th>
-              <th class="px-2 py-3">Creado</th>
-              <th class="w-16 px-4 py-3 text-right">Acciones</th>
+              <th class="w-24 px-4 py-3 text-right">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="u in users" :key="u.id" class="border-b border-slate-100 transition-colors last:border-0 hover:bg-indigo-50/40">
+            <tr v-for="u in filtered" :key="u.id" class="border-b border-slate-100 transition-colors last:border-0 hover:bg-indigo-50/40">
               <td class="px-4 py-3">
                 <div class="flex items-center gap-3">
-                  <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-xs font-semibold text-white shadow-sm">
-                    {{ u.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() }}
-                  </div>
-                  <div>
-                    <p class="font-medium text-slate-900">{{ u.name }} <span v-if="isSelf(u)" class="text-xs font-normal text-slate-400">(tú)</span></p>
-                    <p class="text-xs text-slate-500">{{ u.email }}</p>
-                  </div>
+                  <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-xs font-semibold text-white shadow-sm" :class="avatarColor(u.name)">{{ initials(u.name) }}</div>
+                  <p class="font-medium text-slate-900">{{ u.name }} <span v-if="isSelf(u)" class="text-xs font-normal text-slate-400">(tú)</span></p>
+                </div>
+              </td>
+              <td class="px-2 py-3">
+                <div class="flex items-center gap-1.5 text-slate-600">
+                  {{ u.email }}
+                  <button class="cursor-pointer rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-primary" :title="copied === u.email ? 'Copiado' : 'Copiar email'" @click="copyEmail(u.email)">
+                    <Check v-if="copied === u.email" class="h-3.5 w-3.5 text-emerald-500" />
+                    <Copy v-else class="h-3.5 w-3.5" />
+                  </button>
                 </div>
               </td>
               <td class="px-2 py-3">
@@ -131,20 +162,23 @@ const isSelf = (u: User) => u.id === auth.user?.id;
                 </div>
                 <span v-else class="text-xs text-slate-400">Sin módulos</span>
               </td>
-              <td class="px-2 py-3 text-slate-500">{{ dateShort(u.created_at) }}</td>
-              <td class="px-4 py-3 text-right">
-                <Dropdown v-if="u.role !== 'owner'" align="right" width="150px">
-                  <template #trigger="{ open }">
-                    <button class="cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-white hover:text-slate-700 hover:shadow-sm" :class="open && 'bg-white text-primary shadow-sm'" aria-label="Acciones"><MoreVertical class="h-4 w-4" /></button>
-                  </template>
-                  <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="openEdit(u)"><Pencil class="h-4 w-4 text-slate-400" /> Editar</button>
-                  <button v-if="!isSelf(u)" class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50" @click="remove(u)"><Trash2 class="h-4 w-4" /> Eliminar</button>
-                </Dropdown>
-                <span v-else class="text-xs text-slate-300">—</span>
+              <td class="px-4 py-3">
+                <div class="flex items-center justify-end gap-1">
+                  <button v-if="canManage(u)" class="cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-primary" title="Editar" @click="openEdit(u)"><Pencil class="h-4 w-4" /></button>
+                  <button v-if="canManage(u) && !isSelf(u)" class="cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600" title="Eliminar" @click="remove(u)"><Trash2 class="h-4 w-4" /></button>
+                  <span v-if="!canManage(u)" class="text-xs text-slate-300">—</span>
+                </div>
               </td>
+            </tr>
+            <tr v-if="filtered.length === 0">
+              <td colspan="5" class="px-4 py-12 text-center text-slate-400">{{ search || roleFilter ? 'Ningún usuario coincide.' : 'No hay usuarios.' }}</td>
             </tr>
           </tbody>
         </table>
+        <div class="flex items-center justify-between border-t border-slate-200 bg-slate-50/50 px-4 py-2.5 text-xs text-slate-500">
+          <span>{{ filtered.length }} usuario{{ filtered.length === 1 ? '' : 's' }}</span>
+          <span>Página 1 de 1</span>
+        </div>
       </div>
     </div>
 
@@ -183,7 +217,6 @@ const isSelf = (u: User) => u.id === auth.user?.id;
               <option value="admin">Administrador (acceso total)</option>
             </select>
           </div>
-
           <div v-if="form.role === 'member'">
             <label class="mb-2 block text-sm font-medium text-slate-700">Módulos permitidos</label>
             <div class="space-y-1.5">
@@ -194,7 +227,6 @@ const isSelf = (u: User) => u.id === auth.user?.id;
             </div>
           </div>
           <p v-else class="rounded-md bg-indigo-50 px-3 py-2 text-xs text-indigo-600">Los administradores tienen acceso a todos los módulos.</p>
-
           <p v-if="error" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{{ error }}</p>
         </div>
 
