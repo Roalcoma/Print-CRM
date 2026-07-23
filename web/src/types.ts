@@ -52,6 +52,7 @@ export interface Opportunity {
   owner_id: string | null;
   owner_name: string | null;
   notes_count: number;
+  followers: { id: string; name: string }[];
   contact_first_name: string | null;
   contact_last_name: string | null;
   contact_email: string | null;

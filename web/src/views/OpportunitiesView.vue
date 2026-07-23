@@ -151,10 +151,17 @@ const newNote = ref('');
 
 const blankForm = () => ({
   title: '', value: 0, status: 'open', pipeline_id: currentId.value, stage_id: current.value?.stages[0]?.id ?? '',
-  source: '', business_name: '', tags: [] as string[], owner_id: '',
+  source: '', business_name: '', tags: [] as string[], owner_id: '', follower_ids: [] as string[],
   contact_name: '', contact_email: '', contact_phone: '',
 });
 const form = ref(blankForm());
+
+// Seguidores del formulario
+const followerUsers = computed(() => users.value.filter(u => form.value.follower_ids.includes(u.id)));
+const availableFollowers = computed(() => users.value.filter(u => !form.value.follower_ids.includes(u.id)));
+function addFollower(id: string) { if (!form.value.follower_ids.includes(id)) form.value.follower_ids.push(id); }
+function removeFollower(id: string) { form.value.follower_ids = form.value.follower_ids.filter(x => x !== id); }
+const userInitials = (name: string) => name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 
 function openCreate() {
   editing.value = null;
@@ -168,6 +175,7 @@ async function openEdit(o: Opportunity, tab: 'detalles' | 'notas' = 'detalles') 
   form.value = {
     title: o.title, value: Number(o.value), status: o.status, pipeline_id: o.pipeline_id, stage_id: o.stage_id,
     source: o.source ?? '', business_name: o.business_name ?? '', tags: [...(o.tags ?? [])], owner_id: o.owner_id ?? '',
+    follower_ids: (o.followers ?? []).map(f => f.id),
     contact_name: [o.contact_first_name, o.contact_last_name].filter(Boolean).join(' '),
     contact_email: o.contact_email ?? '', contact_phone: o.contact_phone ?? '',
   };
@@ -200,7 +208,7 @@ async function saveForm() {
       pipeline_id: form.value.pipeline_id, stage_id: form.value.stage_id, title: form.value.title,
       value: Number(form.value.value), status: form.value.status,
       source: form.value.source || null, business_name: form.value.business_name || null,
-      tags: form.value.tags, owner_id: form.value.owner_id || null,
+      tags: form.value.tags, owner_id: form.value.owner_id || null, follower_ids: form.value.follower_ids,
       contact_name: form.value.contact_name || null, contact_email: form.value.contact_email || null, contact_phone: form.value.contact_phone || null,
     };
     if (editing.value) await api.patch(`/opportunities/${editing.value.id}`, payload);
@@ -469,6 +477,26 @@ async function deleteNote(id: string) {
                 <div>
                   <label class="mb-1 block text-sm font-medium text-slate-700">Fuente</label>
                   <input v-model="form.source" placeholder="Ej: Facebook Ads, Referido…" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                </div>
+                <div>
+                  <label class="mb-1 block text-sm font-medium text-slate-700">Seguidores</label>
+                  <div class="flex flex-wrap items-center gap-2 rounded-md border border-slate-300 bg-white p-2 shadow-sm">
+                    <span v-for="f in followerUsers" :key="f.id" class="flex items-center gap-1.5 rounded-full bg-slate-100 py-0.5 pl-0.5 pr-2 text-xs font-medium text-slate-700">
+                      <span class="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[9px] font-semibold text-white">{{ userInitials(f.name) }}</span>
+                      {{ f.name }}
+                      <button type="button" class="cursor-pointer text-slate-400 hover:text-red-500" @click="removeFollower(f.id)"><X class="h-3 w-3" /></button>
+                    </span>
+                    <Dropdown v-if="availableFollowers.length" width="220px">
+                      <template #trigger>
+                        <button type="button" class="flex cursor-pointer items-center gap-1 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-500 transition-colors hover:border-primary hover:text-primary"><UserPlus class="h-3.5 w-3.5" /> Añadir</button>
+                      </template>
+                      <button v-for="u in availableFollowers" :key="u.id" type="button" class="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100" @click="addFollower(u.id)">
+                        <span class="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[10px] font-semibold text-white">{{ userInitials(u.name) }}</span>
+                        {{ u.name }}
+                      </button>
+                    </Dropdown>
+                    <span v-if="!followerUsers.length && !availableFollowers.length" class="px-1 text-xs text-slate-400">No hay usuarios</span>
+                  </div>
                 </div>
                 <div>
                   <label class="mb-1 block text-sm font-medium text-slate-700">Etiquetas</label>

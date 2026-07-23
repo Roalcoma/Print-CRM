@@ -18,6 +18,7 @@ export const CARD_FIELD_META: { key: string; label: string }[] = [
   { key: 'business_name', label: 'Empresa' },
   { key: 'source', label: 'Fuente' },
   { key: 'created_at', label: 'Fecha de creación' },
+  { key: 'followers', label: 'Seguidores' },
 ];
 
 export const DEFAULT_CARD_CONFIG: CardConfig = {

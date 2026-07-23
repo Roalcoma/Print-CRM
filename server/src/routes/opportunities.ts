@@ -10,10 +10,28 @@ export const opportunitiesRouter = Router();
 const BASE_SELECT = `
   SELECT o.*, c.first_name AS contact_first_name, c.last_name AS contact_last_name,
          c.email AS contact_email, c.phone AS contact_phone, u.name AS owner_name,
-         (SELECT count(*)::int FROM opportunity_notes n WHERE n.opportunity_id = o.id) AS notes_count
+         (SELECT count(*)::int FROM opportunity_notes n WHERE n.opportunity_id = o.id) AS notes_count,
+         (SELECT coalesce(json_agg(json_build_object('id', fu.id, 'name', fu.name) ORDER BY fu.name), '[]')
+          FROM opportunity_followers f JOIN users fu ON fu.id = f.user_id
+          WHERE f.opportunity_id = o.id) AS followers
   FROM opportunities o
   LEFT JOIN contacts c ON c.id = o.contact_id
   LEFT JOIN users u ON u.id = o.owner_id`;
+
+// Reemplaza el set de seguidores (valida que pertenezcan a la organización).
+async function syncFollowers(opportunityId: string, userIds: string[], orgId: string) {
+  await query('DELETE FROM opportunity_followers WHERE opportunity_id = $1', [opportunityId]);
+  if (userIds.length === 0) return;
+  const valid = await query<{ id: string }>(
+    'SELECT id FROM users WHERE organization_id = $1 AND id = ANY($2::uuid[])', [orgId, userIds],
+  );
+  if (valid.length === 0) return;
+  const placeholders = valid.map((_, i) => `($1, $${i + 2})`).join(', ');
+  await query(
+    `INSERT INTO opportunity_followers (opportunity_id, user_id) VALUES ${placeholders}`,
+    [opportunityId, ...valid.map(v => v.id)],
+  );
+}
 
 // Crea/actualiza/reutiliza el contacto a partir de los campos del formulario.
 // Devuelve el contact_id resultante (o el existente si no hay cambios).
@@ -95,6 +113,7 @@ const oppSchema = z.object({
   business_name: z.string().optional().nullable(),
   tags: z.array(z.string()).optional(),
   owner_id: z.string().uuid().optional().nullable(),
+  follower_ids: z.array(z.string().uuid()).optional(),
   contact_id: z.string().uuid().optional().nullable(),
   contact_name: z.string().optional().nullable(),
   contact_email: z.string().optional().nullable(),
@@ -115,6 +134,7 @@ opportunitiesRouter.post('/', async (req, res) => {
     [orgId, o.pipeline_id, o.stage_id, contactId, o.title, o.value ?? 0, o.status ?? 'open',
      o.source ?? null, o.business_name ?? null, o.tags ?? [], o.owner_id ?? null],
   );
+  if (o.follower_ids) await syncFollowers(row.id, o.follower_ids, orgId);
   const full = await queryOne(`${BASE_SELECT} WHERE o.id = $1`, [row.id]);
   res.status(201).json(full);
 });
@@ -139,6 +159,9 @@ opportunitiesRouter.patch('/:id', async (req, res) => {
     contactId = await upsertContact(orgId, existing.contact_id,
       data.contact_name as string, data.contact_email as string, data.contact_phone as string);
   }
+
+  // Seguidores: reemplaza el set si vinieron.
+  if ('follower_ids' in data) await syncFollowers(req.params.id, data.follower_ids as string[], orgId);
 
   // Columnas propias de la oportunidad presentes en el body.
   const cols = OPP_COLS.filter(c => c in data);

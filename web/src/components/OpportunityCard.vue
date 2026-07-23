@@ -24,6 +24,7 @@ const ownerInitials = computed(() => {
   return n ? n.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() : '';
 });
 const contactName = computed(() => [props.opp.contact_first_name, props.opp.contact_last_name].filter(Boolean).join(' '));
+const nameInitials = (n: string) => n.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 </script>
 
 <template>
@@ -61,6 +62,15 @@ const contactName = computed(() => [props.opp.contact_first_name, props.opp.cont
         <p v-else-if="key === 'created_at'" class="text-[11px] text-slate-400">
           <span v-if="labeled" class="text-slate-400">Creado:</span> {{ shortDate(opp.created_at) }}
         </p>
+
+        <!-- Seguidores: avatares apilados -->
+        <div v-else-if="key === 'followers' && opp.followers?.length" class="flex items-center">
+          <span v-if="labeled" class="mr-2 text-xs text-slate-400">Seguidores:</span>
+          <div class="flex items-center -space-x-1.5">
+            <span v-for="f in opp.followers.slice(0, 4)" :key="f.id" class="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[9px] font-semibold text-white ring-2 ring-white" :title="f.name">{{ nameInitials(f.name) }}</span>
+            <span v-if="opp.followers.length > 4" class="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[9px] font-semibold text-slate-600 ring-2 ring-white">+{{ opp.followers.length - 4 }}</span>
+          </div>
+        </div>
       </template>
     </div>
 
