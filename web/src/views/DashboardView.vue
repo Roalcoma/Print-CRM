@@ -52,7 +52,7 @@ const money = (n: number) => n.toLocaleString('es-VE', { style: 'currency', curr
         <div class="group rounded-lg border border-slate-200 bg-white p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-elevated">
           <div class="flex items-center justify-between">
             <p class="text-sm font-medium text-slate-500">Oportunidades abiertas</p>
-            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 transition-colors group-hover:bg-indigo-100">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[#F69008]/10 text-[#D97706] transition-colors group-hover:bg-[#F69008]/20">
               <Kanban class="h-5 w-5" />
             </div>
           </div>

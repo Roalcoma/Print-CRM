@@ -23,6 +23,38 @@ const initials = computed(() => {
   return n.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 });
 
+// Tema de la sidebar (oscuro / claro), guardado en preferencias de la cuenta.
+const isDark = computed(() => ((auth.preferences.sidebarTheme as string) ?? 'dark') === 'dark');
+
+const sidebar = computed(() => isDark.value
+  ? {
+      wrap:        'bg-gradient-to-b from-slate-900 to-slate-950 text-slate-400 shadow-xl',
+      label:       'text-slate-600',
+      activeItem:  'bg-[#F69008] text-white shadow-md shadow-[#7C4A00]/40',
+      inactiveItem:'text-slate-400 hover:translate-x-0.5 hover:bg-slate-800 hover:text-white',
+      accent:      'bg-[#F69008]',
+      footerBorder:'border-slate-800/70',
+      settingsActive: 'bg-[#F69008] text-white shadow-md shadow-[#7C4A00]/40',
+      settingsInactive: 'text-slate-400 hover:translate-x-0.5 hover:bg-slate-800 hover:text-white',
+      logout:      'text-slate-500 hover:bg-slate-800 hover:text-red-400',
+      userName:    'text-white',
+      userEmail:   'text-slate-500',
+    }
+  : {
+      wrap:        'bg-white border-r border-slate-200 text-slate-500',
+      label:       'text-slate-400',
+      activeItem:  'bg-[#F69008]/12 text-[#F69008] font-semibold',
+      inactiveItem:'text-slate-600 hover:translate-x-0.5 hover:bg-[#F69008]/8 hover:text-[#F69008]',
+      accent:      'bg-[#F69008]',
+      footerBorder:'border-slate-200',
+      settingsActive: 'bg-[#F69008]/12 text-[#F69008] font-semibold',
+      settingsInactive: 'text-slate-600 hover:translate-x-0.5 hover:bg-[#F69008]/8 hover:text-[#F69008]',
+      logout:      'text-slate-400 hover:bg-slate-100 hover:text-red-500',
+      userName:    'text-slate-800',
+      userEmail:   'text-slate-400',
+    }
+);
+
 function logout() {
   auth.logout();
   router.push('/login');
@@ -31,51 +63,47 @@ function logout() {
 
 <template>
   <div class="flex h-screen bg-slate-50 text-slate-900">
-    <!-- Sidebar oscuro estilo GHL -->
-    <aside class="z-10 flex w-56 flex-col bg-gradient-to-b from-slate-900 to-slate-950 text-slate-400 shadow-xl">
+    <!-- Sidebar (tema claro/oscuro según preferencia) -->
+    <aside class="z-10 flex w-56 flex-col transition-colors duration-300" :class="sidebar.wrap">
       <div class="flex h-16 items-center gap-2.5 px-4">
-        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-bold text-white shadow-lg shadow-indigo-900/50">C</div>
-        <span class="text-base font-semibold tracking-tight text-white">CRM</span>
+        <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#F69008] to-[#D97706] text-sm font-bold text-white shadow-lg shadow-[#7C4A00]/50">C</div>
+        <span class="text-base font-semibold tracking-tight" :class="isDark ? 'text-white' : 'text-slate-900'">CRM</span>
       </div>
 
       <nav class="flex-1 px-3 py-3">
-        <p class="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-600">Menú</p>
+        <p class="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider" :class="sidebar.label">Menú</p>
         <div class="space-y-0.5">
           <RouterLink
             v-for="item in visibleNav"
             :key="item.to"
             :to="item.to"
             class="group relative flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-medium transition-all duration-200"
-            :class="isActive(item.match)
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40'
-              : 'text-slate-400 hover:translate-x-0.5 hover:bg-slate-800 hover:text-white'"
+            :class="isActive(item.match) ? sidebar.activeItem : sidebar.inactiveItem"
           >
-            <span v-if="isActive(item.match)" class="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-indigo-400"></span>
+            <span v-if="isActive(item.match)" class="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full" :class="sidebar.accent"></span>
             <component :is="item.icon" class="h-[18px] w-[18px]" />
             {{ item.label }}
           </RouterLink>
         </div>
       </nav>
 
-      <div class="border-t border-slate-800/70 p-3">
+      <div class="p-3" :class="`border-t ${sidebar.footerBorder}`">
         <RouterLink
           v-if="auth.isAdmin"
           to="/settings"
           class="mb-1 flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-medium transition-all duration-200"
-          :class="route.path.startsWith('/settings')
-            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40'
-            : 'text-slate-400 hover:translate-x-0.5 hover:bg-slate-800 hover:text-white'"
+          :class="route.path.startsWith('/settings') ? sidebar.settingsActive : sidebar.settingsInactive"
         >
           <Settings class="h-[18px] w-[18px]" />
           Configuración
         </RouterLink>
         <div class="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
-          <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-xs font-semibold text-white shadow-sm">{{ initials }}</div>
+          <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#F69008] to-[#D97706] text-xs font-semibold text-white shadow-sm">{{ initials }}</div>
           <div class="min-w-0 flex-1">
-            <p class="truncate text-[13px] font-medium text-white">{{ auth.user?.name ?? 'Usuario' }}</p>
-            <p class="truncate text-[11px] text-slate-500">{{ auth.user?.email }}</p>
+            <p class="truncate text-[13px] font-medium" :class="sidebar.userName">{{ auth.user?.name ?? 'Usuario' }}</p>
+            <p class="truncate text-[11px]" :class="sidebar.userEmail">{{ auth.user?.email }}</p>
           </div>
-          <button class="cursor-pointer rounded-md p-1.5 text-slate-500 transition-colors duration-200 hover:bg-slate-800 hover:text-red-400" @click="logout" aria-label="Cerrar sesión">
+          <button class="cursor-pointer rounded-md p-1.5 transition-colors duration-200" :class="sidebar.logout" @click="logout" aria-label="Cerrar sesión">
             <LogOut class="h-4 w-4" />
           </button>
         </div>
@@ -95,7 +123,7 @@ function logout() {
             <Bell class="h-5 w-5" />
             <span class="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-cta ring-2 ring-white"></span>
           </button>
-          <div class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-semibold text-white shadow-sm ring-2 ring-transparent transition-all hover:ring-indigo-200">{{ initials }}</div>
+          <div class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-gradient-to-br from-[#F69008] to-[#D97706] text-sm font-semibold text-white shadow-sm ring-2 ring-transparent transition-all hover:ring-[#F69008]/40">{{ initials }}</div>
         </div>
       </header>
 

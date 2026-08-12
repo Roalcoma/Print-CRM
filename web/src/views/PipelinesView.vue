@@ -126,7 +126,7 @@ async function deletePipeline(p: Pipeline) {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(p, i) in filtered" :key="p.id" class="group border-b border-slate-100 transition-colors last:border-0 hover:bg-indigo-50/40">
+              <tr v-for="(p, i) in filtered" :key="p.id" class="group border-b border-slate-100 transition-colors last:border-0 hover:bg-[#F69008]/5">
                 <td class="px-4 py-3 text-slate-300"><GripVertical class="h-4 w-4" /></td>
                 <td class="px-2 py-3 font-medium text-slate-400">{{ i + 1 }}</td>
                 <td class="px-2 py-3">
@@ -180,7 +180,7 @@ async function deletePipeline(p: Pipeline) {
         <!-- Header con ícono -->
         <div class="flex items-start justify-between border-b border-slate-200 px-6 py-4">
           <div class="flex items-center gap-3">
-            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm shadow-indigo-500/30">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-[#F69008] to-[#D97706] text-white shadow-sm shadow-[#F69008]/30">
               <Workflow class="h-5 w-5" />
             </div>
             <div>
@@ -212,7 +212,7 @@ async function deletePipeline(p: Pipeline) {
                 <button type="button" class="cursor-pointer rounded-md p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30" :disabled="form.stages.length <= 1" @click="removeStage(i)"><Trash2 class="h-4 w-4" /></button>
 
                 <div v-if="colorOpen === i" class="absolute left-16 top-11 z-10 flex flex-wrap gap-1.5 rounded-md border border-slate-200 bg-white p-2 shadow-dropdown" style="width: 172px">
-                  <button v-for="c in PRESET" :key="c" type="button" class="h-7 w-7 cursor-pointer rounded-md border-2 transition-transform hover:scale-110" :style="{ backgroundColor: c, borderColor: s.color === c ? '#6366f1' : 'transparent' }" @click="setColor(i, c)"></button>
+                  <button v-for="c in PRESET" :key="c" type="button" class="h-7 w-7 cursor-pointer rounded-md border-2 transition-transform hover:scale-110" :style="{ backgroundColor: c, borderColor: s.color === c ? '#F69008' : 'transparent' }" @click="setColor(i, c)"></button>
                 </div>
               </div>
             </div>

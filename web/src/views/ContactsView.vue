@@ -84,7 +84,7 @@ async function remove(id: string) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="c in contacts" :key="c.id" class="border-b border-slate-100 transition-colors duration-200 last:border-0 hover:bg-indigo-50/40">
+          <tr v-for="c in contacts" :key="c.id" class="border-b border-slate-100 transition-colors duration-200 last:border-0 hover:bg-[#F69008]/5">
             <td class="px-4 py-3 font-medium text-slate-900">{{ c.first_name }} {{ c.last_name }}</td>
             <td class="px-4 py-3 text-slate-600">{{ c.email || '—' }}</td>
             <td class="px-4 py-3 text-slate-600">{{ c.phone || '—' }}</td>

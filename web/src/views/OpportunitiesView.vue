@@ -438,7 +438,7 @@ async function deleteNote(id: string) {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="opp in opps" :key="opp.id" class="cursor-pointer border-b border-slate-100 transition-colors last:border-0 hover:bg-indigo-50/40" @click="openEdit(opp)">
+            <tr v-for="opp in opps" :key="opp.id" class="cursor-pointer border-b border-slate-100 transition-colors last:border-0 hover:bg-[#F69008]/5" @click="openEdit(opp)">
               <td class="px-4 py-3 font-medium text-slate-900">{{ opp.title }}</td>
               <td class="px-2 py-3">
                 <span class="rounded-sm px-2 py-0.5 text-xs font-medium text-slate-700" :style="{ backgroundColor: stageById[opp.stage_id]?.color }">{{ stageById[opp.stage_id]?.name }}</span>
@@ -461,7 +461,7 @@ async function deleteNote(id: string) {
       <div class="modal-panel flex max-h-[92vh] w-full max-w-2xl flex-col rounded-md bg-white shadow-modal">
         <div class="flex items-start justify-between border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white px-6 py-4">
           <div class="flex items-center gap-3">
-            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm shadow-indigo-500/30">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-[#F69008] to-[#D97706] text-white shadow-sm shadow-[#F69008]/30">
               <Kanban class="h-5 w-5" />
             </div>
             <div>
@@ -492,7 +492,7 @@ async function deleteNote(id: string) {
                 <span v-else-if="hasContactData" class="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-600"><UserPlus class="h-3 w-3" /> Se creará un contacto</span>
               </div>
               <div class="flex gap-4">
-                <div class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-lg font-semibold text-white shadow-sm">{{ contactInitials }}</div>
+                <div class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#F69008] to-[#D97706] text-lg font-semibold text-white shadow-sm">{{ contactInitials }}</div>
                 <div class="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-3">
                   <div>
                     <label class="mb-1 block text-xs font-medium text-slate-600">Nombre</label>
@@ -567,7 +567,7 @@ async function deleteNote(id: string) {
                   <label class="mb-1 block text-sm font-medium text-slate-700">Seguidores</label>
                   <div class="flex flex-wrap items-center gap-2 rounded-md border border-slate-300 bg-white p-2 shadow-sm">
                     <span v-for="f in followerUsers" :key="f.id" class="flex items-center gap-1.5 rounded-full bg-slate-100 py-0.5 pl-0.5 pr-2 text-xs font-medium text-slate-700">
-                      <span class="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[9px] font-semibold text-white">{{ userInitials(f.name) }}</span>
+                      <span class="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-[#F69008] to-[#D97706] text-[9px] font-semibold text-white">{{ userInitials(f.name) }}</span>
                       {{ f.name }}
                       <button type="button" class="cursor-pointer text-slate-400 hover:text-red-500" @click="removeFollower(f.id)"><X class="h-3 w-3" /></button>
                     </span>
@@ -576,7 +576,7 @@ async function deleteNote(id: string) {
                         <button type="button" class="flex cursor-pointer items-center gap-1 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-500 transition-colors hover:border-primary hover:text-primary"><UserPlus class="h-3.5 w-3.5" /> Añadir</button>
                       </template>
                       <button v-for="u in availableFollowers" :key="u.id" type="button" class="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100" @click="addFollower(u.id)">
-                        <span class="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[10px] font-semibold text-white">{{ userInitials(u.name) }}</span>
+                        <span class="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-[#F69008] to-[#D97706] text-[10px] font-semibold text-white">{{ userInitials(u.name) }}</span>
                         {{ u.name }}
                       </button>
                     </Dropdown>
@@ -586,9 +586,9 @@ async function deleteNote(id: string) {
                 <div>
                   <label class="mb-1 block text-sm font-medium text-slate-700">Etiquetas</label>
                   <div class="flex flex-wrap items-center gap-1.5 rounded-md border border-slate-300 bg-white p-2 shadow-sm focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
-                    <span v-for="(t, i) in form.tags" :key="i" class="flex items-center gap-1 rounded-sm bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-600">
+                    <span v-for="(t, i) in form.tags" :key="i" class="flex items-center gap-1 rounded-sm bg-[#F69008]/10 px-2 py-0.5 text-xs font-medium text-[#D97706]">
                       {{ t }}
-                      <button type="button" class="cursor-pointer hover:text-indigo-900" @click="removeTag(i)"><X class="h-3 w-3" /></button>
+                      <button type="button" class="cursor-pointer hover:text-[#7C4A00]" @click="removeTag(i)"><X class="h-3 w-3" /></button>
                     </span>
                     <input v-model="tagInput" @keydown.enter.prevent="addTag" @keydown.,.prevent="addTag" placeholder="Añadir etiqueta y Enter…" class="min-w-[120px] flex-1 border-0 bg-transparent text-sm focus:outline-none" />
                   </div>
@@ -623,7 +623,7 @@ async function deleteNote(id: string) {
               <!-- Responsables múltiples -->
               <div class="flex flex-wrap items-center gap-1.5 rounded-md border border-slate-300 bg-white p-1.5">
                 <span v-for="u in newTaskAssignees" :key="u.id" class="flex items-center gap-1 rounded-full bg-slate-100 py-0.5 pl-0.5 pr-1.5 text-xs font-medium text-slate-700">
-                  <span class="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[8px] font-semibold text-white" style="height:18px;width:18px">{{ taskInitials(u.name) }}</span>
+                  <span class="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-gradient-to-br from-[#F69008] to-[#D97706] text-[8px] font-semibold text-white" style="height:18px;width:18px">{{ taskInitials(u.name) }}</span>
                   {{ u.name }}
                   <button type="button" class="cursor-pointer text-slate-400 hover:text-red-500" @click="removeTaskAssignee(u.id)"><X class="h-3 w-3" /></button>
                 </span>
@@ -632,7 +632,7 @@ async function deleteNote(id: string) {
                     <button type="button" class="flex cursor-pointer items-center gap-1 rounded-full border border-dashed border-slate-300 px-2 py-0.5 text-xs font-medium text-slate-500 hover:border-primary hover:text-primary"><UserPlus class="h-3 w-3" /> Responsable</button>
                   </template>
                   <button v-for="u in newTaskAvailable" :key="u.id" type="button" class="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100" @click="addTaskAssignee(u.id)">
-                    <span class="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[10px] font-semibold text-white">{{ taskInitials(u.name) }}</span>
+                    <span class="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-[#F69008] to-[#D97706] text-[10px] font-semibold text-white">{{ taskInitials(u.name) }}</span>
                     {{ u.name }}
                   </button>
                 </Dropdown>
@@ -651,7 +651,7 @@ async function deleteNote(id: string) {
                     <div class="mt-1 flex flex-wrap items-center gap-3">
                       <span v-if="t.due_at" class="flex items-center gap-1 text-xs" :class="t.status !== 'done' && t.status !== 'cancelled' && new Date(t.due_at) < new Date() ? 'font-medium text-red-600' : 'text-slate-400'"><CalendarClock class="h-3 w-3" /> {{ fmtTaskDue(t.due_at) }}</span>
                       <div v-if="t.assignees.length" class="flex items-center -space-x-1.5">
-                        <span v-for="a in t.assignees" :key="a.id" class="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[8px] font-semibold text-white ring-2 ring-white" :title="a.name">{{ taskInitials(a.name) }}</span>
+                        <span v-for="a in t.assignees" :key="a.id" class="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-[#F69008] to-[#D97706] text-[8px] font-semibold text-white ring-2 ring-white" :title="a.name">{{ taskInitials(a.name) }}</span>
                       </div>
                     </div>
                   </div>

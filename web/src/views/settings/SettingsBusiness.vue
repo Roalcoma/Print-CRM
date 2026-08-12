@@ -46,7 +46,7 @@ const createdAt = () => org.value ? new Date(org.value.created_at).toLocaleDateS
 
       <div v-else class="rounded-lg border border-slate-200 bg-white p-6 shadow-card">
         <div class="mb-6 flex items-center gap-4 border-b border-slate-100 pb-6">
-          <div class="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm shadow-indigo-500/30">
+          <div class="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-[#F69008] to-[#D97706] text-white shadow-sm shadow-[#F69008]/30">
             <Building2 class="h-7 w-7" />
           </div>
           <div>

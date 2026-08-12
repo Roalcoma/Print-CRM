@@ -28,13 +28,13 @@ const nameInitials = (n: string) => n.split(' ').map(w => w[0]).slice(0, 2).join
 </script>
 
 <template>
-  <div class="rounded-md border border-slate-200 bg-white p-3 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-elevated">
+  <div class="rounded-md border border-slate-200 bg-white p-3 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-[#F69008]/30 hover:shadow-elevated">
     <!-- Título + avatar del responsable (arriba a la derecha) -->
     <div class="flex items-start justify-between gap-2">
       <p class="text-sm font-semibold text-slate-900">{{ opp.title }}</p>
       <div
         v-if="showOwner && opp.owner_name"
-        class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[11px] font-semibold text-white shadow-sm ring-2 ring-white"
+        class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#F69008] to-[#D97706] text-[11px] font-semibold text-white shadow-sm ring-2 ring-white"
         :title="opp.owner_name"
       >{{ ownerInitials }}</div>
     </div>
@@ -67,7 +67,7 @@ const nameInitials = (n: string) => n.split(' ').map(w => w[0]).slice(0, 2).join
         <div v-else-if="key === 'followers' && opp.followers?.length" class="flex items-center">
           <span v-if="labeled" class="mr-2 text-xs text-slate-400">Seguidores:</span>
           <div class="flex items-center -space-x-1.5">
-            <span v-for="f in opp.followers.slice(0, 4)" :key="f.id" class="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[9px] font-semibold text-white ring-2 ring-white" :title="f.name">{{ nameInitials(f.name) }}</span>
+            <span v-for="f in opp.followers.slice(0, 4)" :key="f.id" class="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-[#F69008] to-[#D97706] text-[9px] font-semibold text-white ring-2 ring-white" :title="f.name">{{ nameInitials(f.name) }}</span>
             <span v-if="opp.followers.length > 4" class="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[9px] font-semibold text-slate-600 ring-2 ring-white">+{{ opp.followers.length - 4 }}</span>
           </div>
         </div>
@@ -86,11 +86,11 @@ const nameInitials = (n: string) => n.split(' ').map(w => w[0]).slice(0, 2).join
       <div v-if="showTags" class="group/tags relative">
         <button class="relative cursor-pointer rounded-md p-1.5 transition-colors hover:bg-slate-100 hover:text-primary" title="Etiquetas" @click.stop="emit('action', 'detalles')">
           <Tag class="h-4 w-4" />
-          <span class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-indigo-500 px-1 text-[9px] font-bold text-white ring-2 ring-white">{{ opp.tags.length }}</span>
+          <span class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#F69008] px-1 text-[9px] font-bold text-white ring-2 ring-white">{{ opp.tags.length }}</span>
         </button>
         <div class="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 hidden -translate-x-1/2 group-hover/tags:block">
           <div class="flex max-w-[220px] flex-wrap justify-center gap-1 rounded-md border border-slate-200 bg-white p-2 shadow-dropdown">
-            <span v-for="t in opp.tags" :key="t" class="whitespace-nowrap rounded-sm bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-600">{{ t }}</span>
+            <span v-for="t in opp.tags" :key="t" class="whitespace-nowrap rounded-sm bg-[#F69008]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#D97706]">{{ t }}</span>
           </div>
           <div class="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1 rotate-45 border-b border-r border-slate-200 bg-white"></div>
         </div>

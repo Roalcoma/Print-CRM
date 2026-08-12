@@ -18,7 +18,7 @@ async function load() { users.value = await api.get<User[]>('/users'); }
 onMounted(async () => { try { await load(); } finally { loading.value = false; } });
 
 const roleLabel: Record<string, string> = { owner: 'Owner', admin: 'Administrador', member: 'Miembro' };
-const roleBadge: Record<string, string> = { owner: 'bg-violet-50 text-violet-700', admin: 'bg-indigo-50 text-indigo-700', member: 'bg-slate-100 text-slate-600' };
+const roleBadge: Record<string, string> = { owner: 'bg-[#60D0FA]/15 text-[#0284C7]', admin: 'bg-[#F69008]/10 text-[#D97706]', member: 'bg-slate-100 text-slate-600' };
 const moduleLabel = (k: string) => MODULES.find(m => m.key === k)?.label ?? k;
 
 const filtered = computed(() => {
@@ -31,7 +31,7 @@ const filtered = computed(() => {
 
 // Avatar con color determinístico por nombre (estilo GHL).
 const AVATAR_COLORS = [
-  'from-indigo-500 to-violet-600', 'from-blue-500 to-cyan-600', 'from-emerald-500 to-teal-600',
+  'from-[#F69008] to-[#D97706]', 'from-blue-500 to-cyan-600', 'from-emerald-500 to-teal-600',
   'from-amber-500 to-orange-600', 'from-rose-500 to-pink-600', 'from-purple-500 to-fuchsia-600',
 ];
 function avatarColor(s: string) {
@@ -136,7 +136,7 @@ const canManage = (u: User) => u.role !== 'owner';
             </tr>
           </thead>
           <tbody>
-            <tr v-for="u in filtered" :key="u.id" class="border-b border-slate-100 transition-colors last:border-0 hover:bg-indigo-50/40">
+            <tr v-for="u in filtered" :key="u.id" class="border-b border-slate-100 transition-colors last:border-0 hover:bg-[#F69008]/5">
               <td class="px-4 py-3">
                 <div class="flex items-center gap-3">
                   <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-xs font-semibold text-white shadow-sm" :class="avatarColor(u.name)">{{ initials(u.name) }}</div>
@@ -188,7 +188,7 @@ const canManage = (u: User) => u.role !== 'owner';
       <div class="modal-panel flex max-h-[90vh] w-full max-w-md flex-col rounded-md bg-white shadow-modal">
         <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div class="flex items-center gap-3">
-            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm"><UserRound class="h-5 w-5" /></div>
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-[#F69008] to-[#D97706] text-white shadow-sm"><UserRound class="h-5 w-5" /></div>
             <div>
               <h2 class="text-base font-semibold text-slate-900">{{ editing ? 'Editar usuario' : 'Añadir usuario' }}</h2>
               <p class="text-xs text-slate-500">Define su rol y a qué módulos accede</p>
@@ -226,7 +226,7 @@ const canManage = (u: User) => u.role !== 'owner';
               </label>
             </div>
           </div>
-          <p v-else class="rounded-md bg-indigo-50 px-3 py-2 text-xs text-indigo-600">Los administradores tienen acceso a todos los módulos.</p>
+          <p v-else class="rounded-md bg-[#F69008]/10 px-3 py-2 text-xs text-[#D97706]">Los administradores tienen acceso a todos los módulos.</p>
           <p v-if="error" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{{ error }}</p>
         </div>
 
