@@ -78,6 +78,9 @@ export interface Task {
   opportunity_title: string | null;
   due_at: string | null;
   status: TaskStatus;
+  task_type: string | null;
+  priority: 'high' | 'medium' | 'low';
+  reminder: string | null;
   completed_at: string | null;
   created_at: string;
 }

@@ -66,6 +66,15 @@ async function upsertContact(
   return null;
 }
 
+// ── Lista simple (id + título) para selects ───────────────────────────────────
+opportunitiesRouter.get('/', async (req, res) => {
+  const rows = await query<{ id: string; title: string }>(
+    `SELECT id, title FROM opportunities WHERE organization_id = $1 ORDER BY title`,
+    [req.auth!.organizationId],
+  );
+  res.json(rows);
+});
+
 // ── Listado con búsqueda + filtros ────────────────────────────────────────────
 const querySchema = z.object({
   pipelineId: z.string().uuid(),

@@ -4,7 +4,9 @@ import { query, queryOne } from '../db.ts';
 
 export const tasksRouter = Router();
 
-const STATUSES = ['pending', 'in_progress', 'done', 'cancelled'] as const;
+const STATUSES   = ['pending', 'in_progress', 'done', 'cancelled'] as const;
+const PRIORITIES = ['high', 'medium', 'low'] as const;
+const REMINDERS  = ['15min', '30min', '1h', '2h', '1d', '2d', '1w'] as const;
 
 // Responsables (M2M) y oportunidad vinculada, embebidos.
 const BASE_SELECT = `
@@ -27,6 +29,31 @@ async function syncAssignees(taskId: string, userIds: string[], orgId: string) {
   await query(`INSERT INTO task_assignees (task_id, user_id) VALUES ${placeholders}`, [taskId, ...valid.map(v => v.id)]);
 }
 
+// ── Stats (Hoy / Atrasadas / Pendientes / Completadas) ────────────────────────
+tasksRouter.get('/stats', async (req, res) => {
+  const orgId = req.auth!.organizationId;
+  const [row] = await query<{
+    today: string; overdue: string; pending: string; done: string; total: string;
+  }>(`
+    SELECT
+      count(*) FILTER (WHERE due_at::date = CURRENT_DATE AND status NOT IN ('done','cancelled'))  AS today,
+      count(*) FILTER (WHERE due_at < now()            AND status NOT IN ('done','cancelled'))  AS overdue,
+      count(*) FILTER (WHERE status NOT IN ('done','cancelled'))                                AS pending,
+      count(*) FILTER (WHERE status = 'done')                                                  AS done,
+      count(*)                                                                                  AS total
+    FROM tasks WHERE organization_id = $1`, [orgId]);
+  const done  = Number(row.done);
+  const total = Number(row.total);
+  res.json({
+    today:   Number(row.today),
+    overdue: Number(row.overdue),
+    pending: Number(row.pending),
+    done,
+    total,
+    done_pct: total > 0 ? Math.round((done / total) * 100) : 0,
+  });
+});
+
 // ── Listado con filtros ────────────────────────────────────────────────────────
 tasksRouter.get('/', async (req, res) => {
   const where = ['t.organization_id = $1'];
@@ -45,12 +72,15 @@ tasksRouter.get('/', async (req, res) => {
 });
 
 const taskSchema = z.object({
-  title: z.string().min(1),
-  description: z.string().optional().nullable(),
-  assignee_ids: z.array(z.string().uuid()).optional(),
+  title:          z.string().min(1),
+  description:    z.string().optional().nullable(),
+  assignee_ids:   z.array(z.string().uuid()).optional(),
   opportunity_id: z.string().uuid().optional().nullable(),
-  due_at: z.string().datetime({ offset: true }).optional().nullable(),
-  status: z.enum(STATUSES).optional(),
+  due_at:         z.string().datetime({ offset: true }).optional().nullable(),
+  status:         z.enum(STATUSES).optional(),
+  task_type:      z.string().optional().nullable(),
+  priority:       z.enum(PRIORITIES).optional(),
+  reminder:       z.enum(REMINDERS).optional().nullable(),
 });
 
 tasksRouter.post('/', async (req, res) => {
@@ -58,17 +88,18 @@ tasksRouter.post('/', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   const t = parsed.data;
   const [row] = await query<{ id: string }>(
-    `INSERT INTO tasks (organization_id, title, description, opportunity_id, due_at, status, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+    `INSERT INTO tasks (organization_id, title, description, opportunity_id, due_at, status, task_type, priority, reminder, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
     [req.auth!.organizationId, t.title, t.description ?? null, t.opportunity_id ?? null,
-     t.due_at ?? null, t.status ?? 'pending', req.auth!.userId],
+     t.due_at ?? null, t.status ?? 'pending', t.task_type ?? null,
+     t.priority ?? 'medium', t.reminder ?? null, req.auth!.userId],
   );
   if (t.assignee_ids) await syncAssignees(row.id, t.assignee_ids, req.auth!.organizationId);
   res.status(201).json(await queryOne(`${BASE_SELECT} WHERE t.id = $1`, [row.id]));
 });
 
 const updateSchema = taskSchema.partial();
-const COLS = ['title', 'description', 'opportunity_id', 'due_at', 'status'] as const;
+const COLS = ['title', 'description', 'opportunity_id', 'due_at', 'status', 'task_type', 'priority', 'reminder'] as const;
 
 tasksRouter.patch('/:id', async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
