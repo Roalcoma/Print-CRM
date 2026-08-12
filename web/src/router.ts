@@ -22,6 +22,7 @@ const routes = [
           { path: '', redirect: '/settings/team' },
           { path: 'team', component: () => import('./views/settings/SettingsTeam.vue'), meta: { title: 'Configuración', admin: true } },
           { path: 'business', component: () => import('./views/settings/SettingsBusiness.vue'), meta: { title: 'Configuración', admin: true } },
+          { path: 'theme', component: () => import('./views/settings/SettingsTheme.vue'), meta: { title: 'Configuración', admin: true } },
         ],
       },
     ],

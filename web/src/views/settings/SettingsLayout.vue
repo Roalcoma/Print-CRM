@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router';
-import { Building2, Users, GitBranch } from 'lucide-vue-next';
+import { Building2, Users, GitBranch, Palette } from 'lucide-vue-next';
 
 // Grupos de configuración. Escalable: se añaden secciones aquí a medida que crece.
 const groups = [
@@ -10,6 +10,12 @@ const groups = [
       { to: '/settings/business', label: 'Perfil del negocio', icon: Building2 },
       { to: '/settings/team', label: 'Mi equipo', icon: Users },
       { to: '/pipelines', label: 'Pipelines y etapas', icon: GitBranch, external: true },
+    ],
+  },
+  {
+    title: 'Personalización',
+    items: [
+      { to: '/settings/theme', label: 'Apariencia', icon: Palette },
     ],
   },
 ];
