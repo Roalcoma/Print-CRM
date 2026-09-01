@@ -8,79 +8,230 @@
   --color-cta: #60D0FA;
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
 
-  /* Sistema de elevación: sombras suaves multicapa (profundidad premium).
-     Tailwind v4 genera utilidades shadow-<nombre> desde estos tokens. */
-  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+  /* Sistema de elevación: sombras suaves multicapa (profundidad premium). */
+  --shadow-card:     0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
   --shadow-elevated: 0 2px 4px rgba(15, 23, 42, 0.04), 0 8px 20px rgba(15, 23, 42, 0.10);
   --shadow-dropdown: 0 4px 8px rgba(15, 23, 42, 0.06), 0 12px 32px rgba(15, 23, 42, 0.14);
-  --shadow-modal: 0 8px 16px rgba(15, 23, 42, 0.10), 0 24px 56px rgba(15, 23, 42, 0.22);
-  --shadow-toolbar: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.05);
+  --shadow-modal:    0 8px 16px rgba(15, 23, 42, 0.10), 0 24px 56px rgba(15, 23, 42, 0.22);
+  --shadow-toolbar:  0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.05);
 }
 
 html {
   font-family: var(--font-sans);
 }
 
-/* ── Transiciones reutilizables (Vue <Transition>) ──────────────────────────
-   Sutiles y rápidas (150-220ms), solo transform/opacity para rendimiento. */
+/* Campo de formulario reutilizable en vistas con @apply (evita @reference en scoped) */
+.input {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: #1e293b;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.input::placeholder { color: #94a3b8; }
+.input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
 
-/* Fade genérico: overlays y cambio de ruta */
-.fade-enter-active,
-.fade-leave-active { transition: opacity 0.18s ease; }
-.fade-enter-from,
-.fade-leave-to { opacity: 0; }
+/* ── Stat card (Dashboard KPI) ──────────────────────────────────────────────── */
+.stat-card {
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  padding: 1.25rem;
+  box-shadow: var(--shadow-card);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-elevated);
+}
+.stat-card__number {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #0f172a;
+}
+.stat-card__label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-top: 0.25rem;
+}
 
-/* Modal: fade del overlay + scale/slide del panel (.modal-panel) */
-.modal-enter-active,
-.modal-leave-active { transition: opacity 0.2s ease; }
-.modal-enter-from,
-.modal-leave-to { opacity: 0; }
+/* ── Badge de tendencia (verde / rojo) ──────────────────────────────────────── */
+.badge-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.badge-trend--up {
+  background: #ecfdf5;
+  color: #059669;
+}
+.badge-trend--down {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+/* ── Toolbar chip (filter chip removible) ───────────────────────────────────── */
+.toolbar-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #475569;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  user-select: none;
+}
+.toolbar-chip:hover {
+  border-color: #F69008;
+  background: rgba(246, 144, 8, 0.06);
+  color: #D97706;
+}
+.toolbar-chip--active {
+  border-color: #F69008;
+  background: rgba(246, 144, 8, 0.10);
+  color: #D97706;
+}
+.toolbar-chip__remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  color: #94a3b8;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.toolbar-chip__remove:hover {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+}
+
+/* ── Tabs mejorados (Flowlu style) ──────────────────────────────────────────── */
+.view-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.875rem;
+  border-bottom: 2px solid transparent;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+.view-tab:hover {
+  color: #0f172a;
+}
+.view-tab--active {
+  border-bottom-color: #F69008;
+  color: #F69008;
+  font-weight: 600;
+}
+
+/* ── Kanban: Quick Add button ────────────────────────────────────────────────── */
+.kanban-quick-add {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  border: 1px dashed #cbd5e1;
+  background: transparent;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  margin-top: 0.5rem;
+}
+.kanban-quick-add:hover {
+  border-color: #F69008;
+  color: #D97706;
+  background: rgba(246, 144, 8, 0.05);
+}
+
+/* ── Inputs mejorados ───────────────────────────────────────────────────────── */
+input[type="text"],
+input[type="email"],
+input[type="number"],
+input[type="tel"],
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+textarea,
+select {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────────────── */
+.data-table tbody tr:hover {
+  background: rgba(246, 144, 8, 0.04);
+}
+.data-table th {
+  position: relative;
+  cursor: default;
+  user-select: none;
+}
+.data-table th.sortable:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+/* ── Transiciones Vue ───────────────────────────────────────────────────────── */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.18s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+.modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
+.modal-enter-from, .modal-leave-to { opacity: 0; }
 .modal-enter-active .modal-panel,
 .modal-leave-active .modal-panel { transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease; }
 .modal-enter-from .modal-panel,
 .modal-leave-to .modal-panel { transform: scale(0.96) translateY(8px); opacity: 0; }
 
-/* Expand: paneles que se despliegan (filtros) */
-.expand-enter-active,
-.expand-leave-active { transition: opacity 0.2s ease, max-height 0.25s ease, transform 0.2s ease; overflow: hidden; }
-.expand-enter-from,
-.expand-leave-to { opacity: 0; max-height: 0; transform: translateY(-6px); }
-.expand-enter-to,
-.expand-leave-from { max-height: 600px; }
+.expand-enter-active, .expand-leave-active { transition: opacity 0.2s ease, max-height 0.25s ease, transform 0.2s ease; overflow: hidden; }
+.expand-enter-from, .expand-leave-to { opacity: 0; max-height: 0; transform: translateY(-6px); }
+.expand-enter-to, .expand-leave-from { max-height: 600px; }
 
-/* Slide-over (panel lateral derecho) */
-.slideover-enter-active,
-.slideover-leave-active { transition: opacity 0.2s ease; }
-.slideover-enter-from,
-.slideover-leave-to { opacity: 0; }
+.slideover-enter-active, .slideover-leave-active { transition: opacity 0.2s ease; }
+.slideover-enter-from, .slideover-leave-to { opacity: 0; }
 .slideover-enter-active .slideover-panel,
 .slideover-leave-active .slideover-panel { transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
 .slideover-enter-from .slideover-panel,
 .slideover-leave-to .slideover-panel { transform: translateX(100%); }
 
-/* Dropdown / menús flotantes */
-.dropdown-enter-active,
-.dropdown-leave-active { transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1); }
-.dropdown-enter-from,
-.dropdown-leave-to { opacity: 0; transform: translateY(-6px) scale(0.98); }
+.dropdown-enter-active, .dropdown-leave-active { transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1); }
+.dropdown-enter-from, .dropdown-leave-to { opacity: 0; transform: translateY(-6px) scale(0.98); }
 
-/* Listas (TransitionGroup): entrada/salida + reordenamiento FLIP */
-.list-move,
-.list-enter-active,
-.list-leave-active { transition: transform 0.25s ease, opacity 0.25s ease; }
-.list-enter-from,
-.list-leave-to { opacity: 0; transform: translateY(8px); }
+.list-move, .list-enter-active, .list-leave-active { transition: transform 0.25s ease, opacity 0.25s ease; }
+.list-enter-from, .list-leave-to { opacity: 0; transform: translateY(8px); }
 .list-leave-active { position: absolute; width: calc(100% - 1.25rem); }
 
-/* Feedback táctil al presionar botones */
+/* ── Feedback táctil ─────────────────────────────────────────────────────────── */
 button:active:not(:disabled) { transform: scale(0.97); }
 button { transition: transform 0.08s ease; }
 
-/* Accesibilidad: respeta a quien prefiere menos movimiento */
+/* ── Accesibilidad ─────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }

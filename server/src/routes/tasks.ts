@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
+import { logActivity } from '../activity.ts';
 
 export const tasksRouter = Router();
 
@@ -58,10 +59,16 @@ tasksRouter.get('/stats', async (req, res) => {
 tasksRouter.get('/', async (req, res) => {
   const where = ['t.organization_id = $1'];
   const params: unknown[] = [req.auth!.organizationId];
-  const { status, assigneeId, opportunityId } = req.query;
+  const { status, assigneeId, opportunityId, month, year } = req.query;
   if (typeof status === 'string' && (STATUSES as readonly string[]).includes(status)) { params.push(status); where.push(`t.status = $${params.length}`); }
   if (typeof assigneeId === 'string') { params.push(assigneeId); where.push(`EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $${params.length})`); }
   if (typeof opportunityId === 'string') { params.push(opportunityId); where.push(`t.opportunity_id = $${params.length}`); }
+  if (month && year) {
+    const m = Number(month); const y = Number(year);
+    const start = new Date(y, m - 1, 1); const end = new Date(y, m, 1);
+    params.push(start, end);
+    where.push(`t.due_at >= $${params.length - 1} AND t.due_at < $${params.length}`);
+  }
 
   const rows = await query(
     `${BASE_SELECT} WHERE ${where.join(' AND ')}
@@ -87,14 +94,21 @@ tasksRouter.post('/', async (req, res) => {
   const parsed = taskSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   const t = parsed.data;
+  const orgId = req.auth!.organizationId;
+  const actorId = req.auth!.userId;
   const [row] = await query<{ id: string }>(
     `INSERT INTO tasks (organization_id, title, description, opportunity_id, due_at, status, task_type, priority, reminder, created_by)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-    [req.auth!.organizationId, t.title, t.description ?? null, t.opportunity_id ?? null,
+    [orgId, t.title, t.description ?? null, t.opportunity_id ?? null,
      t.due_at ?? null, t.status ?? 'pending', t.task_type ?? null,
-     t.priority ?? 'medium', t.reminder ?? null, req.auth!.userId],
+     t.priority ?? 'medium', t.reminder ?? null, actorId],
   );
-  if (t.assignee_ids) await syncAssignees(row.id, t.assignee_ids, req.auth!.organizationId);
+  if (t.assignee_ids) await syncAssignees(row.id, t.assignee_ids, orgId);
+  const actor = await queryOne<{ name: string }>('SELECT name FROM users WHERE id=$1', [actorId]);
+  logActivity({
+    orgId, entityType: 'task', entityId: row.id, actorId, actorName: actor?.name ?? null,
+    eventType: 'task_created', meta: { title: t.title, priority: t.priority ?? 'medium' },
+  }).catch(console.error);
   res.status(201).json(await queryOne(`${BASE_SELECT} WHERE t.id = $1`, [row.id]));
 });
 
@@ -106,8 +120,9 @@ tasksRouter.patch('/:id', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   const data = parsed.data as Record<string, unknown>;
   const orgId = req.auth!.organizationId;
+  const actorId = req.auth!.userId;
 
-  const existing = await queryOne('SELECT id FROM tasks WHERE id=$1 AND organization_id=$2', [req.params.id, orgId]);
+  const existing = await queryOne<{ id: string; title: string; status: string }>('SELECT id, title, status FROM tasks WHERE id=$1 AND organization_id=$2', [req.params.id, orgId]);
   if (!existing) return res.status(404).json({ error: 'Tarea no encontrada' });
 
   if ('assignee_ids' in data) await syncAssignees(req.params.id, data.assignee_ids as string[], orgId);
@@ -123,6 +138,24 @@ tasksRouter.patch('/:id', async (req, res) => {
       [...values, req.params.id, orgId],
     );
   }
+
+  // Registrar actividad si cambió el status
+  if ('status' in data && data.status !== existing.status) {
+    const actor = await queryOne<{ name: string }>('SELECT name FROM users WHERE id=$1', [actorId]);
+    const title = (data.title as string | undefined) ?? existing.title;
+    if (data.status === 'done') {
+      logActivity({
+        orgId, entityType: 'task', entityId: req.params.id, actorId, actorName: actor?.name ?? null,
+        eventType: 'task_completed', meta: { title },
+      }).catch(console.error);
+    } else {
+      logActivity({
+        orgId, entityType: 'task', entityId: req.params.id, actorId, actorName: actor?.name ?? null,
+        eventType: 'task_status_changed', meta: { from: existing.status, to: data.status as string, title },
+      }).catch(console.error);
+    }
+  }
+
   res.json(await queryOne(`${BASE_SELECT} WHERE t.id = $1`, [req.params.id]));
 });
 

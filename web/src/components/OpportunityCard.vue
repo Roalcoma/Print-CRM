@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { Phone, Mail, StickyNote, PanelRightOpen, Tag } from 'lucide-vue-next';
 import type { Opportunity } from '../types';
 import type { CardConfig } from '../cardConfig';
+import AppointmentBadge from './AppointmentBadge.vue';
 
 const props = defineProps<{ opp: Opportunity; config: CardConfig }>();
 const emit = defineEmits<{ action: [tab: 'detalles' | 'notas'] }>();
@@ -72,6 +73,11 @@ const nameInitials = (n: string) => n.split(' ').map(w => w[0]).slice(0, 2).join
           </div>
         </div>
       </template>
+    </div>
+
+    <!-- Badge de próxima cita -->
+    <div class="mt-2">
+      <AppointmentBadge :opportunity-id="opp.id" />
     </div>
 
     <!-- Fila de acciones rápidas (estilo GHL) -->

@@ -1,0 +1,485 @@
+import { Router } from 'express';
+import type { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
+import jwt from 'jsonwebtoken';
+import { query, queryOne, pool } from '../db.ts';
+import { hashPassword, verifyPassword } from '../auth/password.ts';
+import { env } from '../env.ts';
+
+export const agencyRouter = Router();
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface AgencyClaims {
+  type: 'agency';
+  adminId: string;
+  role: string;
+}
+
+interface AgencyAdminRow {
+  id: string;
+  email: string;
+  password_hash: string;
+  name: string;
+  role: string;
+  is_active: boolean;
+  last_login_at: string | null;
+  created_at: string;
+}
+
+interface AgencyClientRow {
+  id: string;
+  organization_id: string | null;
+  name: string;
+  company: string | null;
+  email: string;
+  phone: string | null;
+  country: string | null;
+  plan: string;
+  status: string;
+  trial_ends_at: string | null;
+  monthly_value: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Augment Express request to carry agency claims
+declare global {
+  // eslint-disable-next-line no-var
+  namespace Express {
+    interface Request {
+      agencyAuth?: AgencyClaims;
+    }
+  }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function signAgencyToken(claims: Omit<AgencyClaims, 'type'>): string {
+  return jwt.sign({ type: 'agency', ...claims }, env.jwtSecret, { expiresIn: '30d' });
+}
+
+function verifyAgencyToken(token: string): AgencyClaims {
+  const decoded = jwt.verify(token, env.jwtSecret) as AgencyClaims;
+  if (decoded.type !== 'agency') throw new Error('Invalid token type');
+  return decoded;
+}
+
+async function logActivity(
+  adminId: string | null,
+  clientId: string | null,
+  action: string,
+  details?: Record<string, unknown>,
+) {
+  await query(
+    `INSERT INTO agency_activity_log (admin_id, client_id, action, details)
+     VALUES ($1, $2, $3, $4)`,
+    [adminId, clientId, action, details ? JSON.stringify(details) : null],
+  );
+}
+
+function publicAdmin(a: AgencyAdminRow) {
+  return { id: a.id, email: a.email, name: a.name, role: a.role, isActive: a.is_active, lastLoginAt: a.last_login_at, createdAt: a.created_at };
+}
+
+// ─── Middleware ───────────────────────────────────────────────────────────────
+
+function requireAgencyAuth(req: Request, res: Response, next: NextFunction) {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No autenticado' });
+  }
+  try {
+    req.agencyAuth = verifyAgencyToken(header.slice(7));
+    next();
+  } catch {
+    res.status(401).json({ error: 'Token inválido o expirado' });
+  }
+}
+
+// ─── Auth Routes ─────────────────────────────────────────────────────────────
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+agencyRouter.post('/auth/login', async (req, res) => {
+  const parsed = loginSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+  const { email, password } = parsed.data;
+
+  const admin = await queryOne<AgencyAdminRow>(
+    'SELECT * FROM agency_admins WHERE email = $1 AND is_active = true',
+    [email],
+  );
+  if (!admin || !(await verifyPassword(password, admin.password_hash))) {
+    return res.status(401).json({ error: 'Credenciales inválidas' });
+  }
+
+  await query('UPDATE agency_admins SET last_login_at = now() WHERE id = $1', [admin.id]);
+  const token = signAgencyToken({ adminId: admin.id, role: admin.role });
+  res.json({ token, admin: publicAdmin(admin) });
+});
+
+agencyRouter.get('/auth/me', requireAgencyAuth, async (req, res) => {
+  const admin = await queryOne<AgencyAdminRow>(
+    'SELECT * FROM agency_admins WHERE id = $1',
+    [req.agencyAuth!.adminId],
+  );
+  if (!admin) return res.status(404).json({ error: 'Admin no encontrado' });
+  res.json(publicAdmin(admin));
+});
+
+// ─── Dashboard ───────────────────────────────────────────────────────────────
+
+agencyRouter.get('/dashboard', requireAgencyAuth, async (req, res) => {
+  const [[stats], recentActivity] = await Promise.all([
+    query<{
+      total_clients: string;
+      active_clients: string;
+      trial_clients: string;
+      monthly_revenue: string;
+      new_this_month: string;
+    }>(
+      `SELECT
+         COUNT(*)                                           AS total_clients,
+         COUNT(*) FILTER (WHERE status = 'active')         AS active_clients,
+         COUNT(*) FILTER (WHERE status = 'trial')          AS trial_clients,
+         COALESCE(SUM(monthly_value) FILTER (WHERE status IN ('active','trial')), 0) AS monthly_revenue,
+         COUNT(*) FILTER (WHERE created_at >= date_trunc('month', now()))  AS new_this_month
+       FROM agency_clients`,
+    ),
+    query<{
+      id: string;
+      action: string;
+      details: Record<string, unknown> | null;
+      created_at: string;
+      admin_name: string | null;
+      client_name: string | null;
+    }>(
+      `SELECT al.id, al.action, al.details, al.created_at,
+              aa.name AS admin_name,
+              ac.name AS client_name
+       FROM agency_activity_log al
+       LEFT JOIN agency_admins aa ON aa.id = al.admin_id
+       LEFT JOIN agency_clients ac ON ac.id = al.client_id
+       ORDER BY al.created_at DESC
+       LIMIT 10`,
+    ),
+  ]);
+
+  res.json({
+    totalClients: Number(stats?.total_clients ?? 0),
+    activeClients: Number(stats?.active_clients ?? 0),
+    trialClients: Number(stats?.trial_clients ?? 0),
+    monthlyRevenue: Number(stats?.monthly_revenue ?? 0),
+    newThisMonth: Number(stats?.new_this_month ?? 0),
+    recentActivity,
+  });
+});
+
+// ─── Clients ─────────────────────────────────────────────────────────────────
+
+agencyRouter.get('/clients', requireAgencyAuth, async (req, res) => {
+  const { q, status, plan, page = '1', limit = '20' } = req.query as Record<string, string>;
+  const offset = (Number(page) - 1) * Number(limit);
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (q) {
+    params.push(`%${q}%`);
+    conditions.push(`(ac.name ILIKE $${params.length} OR ac.email ILIKE $${params.length} OR ac.company ILIKE $${params.length})`);
+  }
+  if (status) {
+    params.push(status);
+    conditions.push(`ac.status = $${params.length}`);
+  }
+  if (plan) {
+    params.push(plan);
+    conditions.push(`ac.plan = $${params.length}`);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const [clients, [countRow]] = await Promise.all([
+    query<AgencyClientRow & { org_name: string | null; user_count: string }>(
+      `SELECT ac.*,
+              o.name AS org_name,
+              (SELECT COUNT(*) FROM users u WHERE u.organization_id = ac.organization_id) AS user_count
+       FROM agency_clients ac
+       LEFT JOIN organizations o ON o.id = ac.organization_id
+       ${where}
+       ORDER BY ac.created_at DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, Number(limit), offset],
+    ),
+    query<{ total: string }>(
+      `SELECT COUNT(*) AS total FROM agency_clients ac ${where}`,
+      params,
+    ),
+  ]);
+
+  const total = Number(countRow?.total ?? 0);
+  res.set('X-Total-Count', String(total));
+  res.json({ clients, total, page: Number(page), limit: Number(limit) });
+});
+
+const createClientSchema = z.object({
+  name: z.string().min(1),
+  company: z.string().optional(),
+  email: z.string().email(),
+  phone: z.string().optional(),
+  country: z.string().optional(),
+  plan: z.enum(['starter', 'pro', 'enterprise']).default('starter'),
+  status: z.enum(['active', 'trial', 'suspended', 'cancelled']).default('active'),
+  monthlyValue: z.number().optional().default(0),
+  trialEndsAt: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+agencyRouter.post('/clients', requireAgencyAuth, async (req, res) => {
+  const parsed = createClientSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+
+  const d = parsed.data;
+  const adminId = req.agencyAuth!.adminId;
+
+  // Provisionar organización + usuario owner
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Crear organización
+    const orgResult = await client.query<{ id: string }>(
+      'INSERT INTO organizations (name) VALUES ($1) RETURNING id',
+      [d.company || d.name],
+    );
+    const orgId = orgResult.rows[0].id;
+
+    // Generar contraseña temporal
+    const tempPassword = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6).toUpperCase();
+    const hash = await hashPassword(tempPassword);
+
+    // Crear usuario owner
+    const userResult = await client.query<{ id: string }>(
+      `INSERT INTO users (organization_id, email, password_hash, name, role)
+       VALUES ($1, $2, $3, $4, 'owner') RETURNING id`,
+      [orgId, d.email, hash, d.name],
+    );
+
+    // Crear registro de cliente de agencia
+    const clientResult = await client.query<AgencyClientRow>(
+      `INSERT INTO agency_clients
+         (organization_id, name, company, email, phone, country, plan, status, trial_ends_at, monthly_value, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       RETURNING *`,
+      [orgId, d.name, d.company ?? null, d.email, d.phone ?? null, d.country ?? null,
+       d.plan, d.status, d.trialEndsAt ?? null, d.monthlyValue, d.notes ?? null],
+    );
+
+    await client.query('COMMIT');
+
+    const newClient = clientResult.rows[0];
+
+    await logActivity(adminId, newClient.id, 'client_created', {
+      name: d.name,
+      plan: d.plan,
+      orgId,
+    });
+
+    res.status(201).json({
+      client: newClient,
+      credentials: {
+        email: d.email,
+        password: tempPassword,
+        organizationId: orgId,
+        userId: userResult.rows[0].id,
+      },
+    });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+
+agencyRouter.get('/clients/:id', requireAgencyAuth, async (req, res) => {
+  const id = req.params.id as string;
+
+  const [client, activities] = await Promise.all([
+    queryOne<AgencyClientRow & {
+      org_name: string | null;
+    }>(
+      `SELECT ac.*,
+              o.name AS org_name
+       FROM agency_clients ac
+       LEFT JOIN organizations o ON o.id = ac.organization_id
+       WHERE ac.id = $1`,
+      [id],
+    ),
+    query<{ id: string; action: string; details: unknown; created_at: string; admin_name: string | null }>(
+      `SELECT al.id, al.action, al.details, al.created_at, aa.name AS admin_name
+       FROM agency_activity_log al
+       LEFT JOIN agency_admins aa ON aa.id = al.admin_id
+       WHERE al.client_id = $1
+       ORDER BY al.created_at DESC
+       LIMIT 10`,
+      [id],
+    ),
+  ]);
+
+  if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
+
+  let orgUsers: unknown[] = [];
+  if (client.organization_id) {
+    orgUsers = await query(
+      `SELECT id, name, email, role, created_at FROM users WHERE organization_id = $1 ORDER BY created_at`,
+      [client.organization_id],
+    );
+  }
+
+  res.json({ client, orgUsers, activities });
+});
+
+const updateClientSchema = z.object({
+  name: z.string().min(1).optional(),
+  company: z.string().optional(),
+  email: z.string().email().optional(),
+  phone: z.string().optional(),
+  country: z.string().optional(),
+  plan: z.enum(['starter', 'pro', 'enterprise']).optional(),
+  status: z.enum(['active', 'trial', 'suspended', 'cancelled']).optional(),
+  monthlyValue: z.number().optional(),
+  trialEndsAt: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+});
+
+agencyRouter.patch('/clients/:id', requireAgencyAuth, async (req, res) => {
+  const id = req.params.id as string;
+  const parsed = updateClientSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+
+  const d = parsed.data;
+  const fields: string[] = [];
+  const params: unknown[] = [];
+
+  const map: Record<string, unknown> = {
+    name: d.name,
+    company: d.company,
+    email: d.email,
+    phone: d.phone,
+    country: d.country,
+    plan: d.plan,
+    status: d.status,
+    monthly_value: d.monthlyValue,
+    trial_ends_at: d.trialEndsAt,
+    notes: d.notes,
+  };
+
+  for (const [col, val] of Object.entries(map)) {
+    if (val !== undefined) {
+      params.push(val);
+      fields.push(`${col} = $${params.length}`);
+    }
+  }
+
+  if (fields.length === 0) return res.status(400).json({ error: 'Sin campos para actualizar' });
+
+  fields.push('updated_at = now()');
+  params.push(id);
+
+  const updated = await queryOne<AgencyClientRow>(
+    `UPDATE agency_clients SET ${fields.join(', ')} WHERE id = $${params.length} RETURNING *`,
+    params,
+  );
+  if (!updated) return res.status(404).json({ error: 'Cliente no encontrado' });
+
+  await logActivity(req.agencyAuth!.adminId, id, 'client_updated', d as Record<string, unknown>);
+  res.json(updated);
+});
+
+agencyRouter.delete('/clients/:id', requireAgencyAuth, async (req, res) => {
+  const id = req.params.id as string;
+  const updated = await queryOne<AgencyClientRow>(
+    `UPDATE agency_clients SET status = 'cancelled', updated_at = now() WHERE id = $1 RETURNING *`,
+    [id],
+  );
+  if (!updated) return res.status(404).json({ error: 'Cliente no encontrado' });
+  await logActivity(req.agencyAuth!.adminId, id, 'client_cancelled', {});
+  res.json(updated);
+});
+
+agencyRouter.post('/clients/:id/provision', requireAgencyAuth, async (req, res) => {
+  const id = req.params.id as string;
+  const client = await queryOne<AgencyClientRow>('SELECT * FROM agency_clients WHERE id = $1', [id]);
+  if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
+
+  const dbClient = await pool.connect();
+  try {
+    await dbClient.query('BEGIN');
+
+    let orgId = client.organization_id;
+
+    // Crear organización si no existe
+    if (!orgId) {
+      const orgResult = await dbClient.query<{ id: string }>(
+        'INSERT INTO organizations (name) VALUES ($1) RETURNING id',
+        [client.company || client.name],
+      );
+      orgId = orgResult.rows[0].id;
+      await dbClient.query(
+        'UPDATE agency_clients SET organization_id = $1, updated_at = now() WHERE id = $2',
+        [orgId, id],
+      );
+    }
+
+    // Generar nueva contraseña temporal
+    const tempPassword = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6).toUpperCase();
+    const hash = await hashPassword(tempPassword);
+
+    // Verificar si ya existe usuario owner
+    const existingUser = await dbClient.query<{ id: string; email: string }>(
+      `SELECT id, email FROM users WHERE organization_id = $1 AND role = 'owner' LIMIT 1`,
+      [orgId],
+    );
+
+    let userId: string;
+    let userEmail: string;
+
+    if (existingUser.rows.length > 0) {
+      // Actualizar contraseña del owner existente
+      await dbClient.query(
+        'UPDATE users SET password_hash = $1 WHERE id = $2',
+        [hash, existingUser.rows[0].id],
+      );
+      userId = existingUser.rows[0].id;
+      userEmail = existingUser.rows[0].email;
+    } else {
+      // Crear nuevo usuario owner
+      const userResult = await dbClient.query<{ id: string }>(
+        `INSERT INTO users (organization_id, email, password_hash, name, role)
+         VALUES ($1, $2, $3, $4, 'owner') RETURNING id`,
+        [orgId, client.email, hash, client.name],
+      );
+      userId = userResult.rows[0].id;
+      userEmail = client.email;
+    }
+
+    await dbClient.query('COMMIT');
+
+    await logActivity(req.agencyAuth!.adminId, id, 'crm_provisioned', { orgId });
+
+    res.json({
+      organizationId: orgId,
+      credentials: { email: userEmail, password: tempPassword, userId },
+    });
+  } catch (e) {
+    await dbClient.query('ROLLBACK');
+    throw e;
+  } finally {
+    dbClient.release();
+  }
+});

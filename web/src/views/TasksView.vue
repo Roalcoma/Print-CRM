@@ -206,18 +206,27 @@ async function remove(t: Task) {
   <div class="flex h-full flex-col">
 
     <!-- Toolbar -->
-    <div class="flex flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-6 py-3 shadow-toolbar">
-      <h2 class="text-base font-semibold text-slate-900">Tareas</h2>
+    <div class="flex flex-wrap items-center gap-2.5 border-b border-slate-200 bg-white px-5 py-2.5 shadow-toolbar">
+      <!-- View tabs -->
+      <button class="view-tab" :class="viewMode === 'board' ? 'view-tab--active' : ''" @click="viewMode = 'board'">
+        <Kanban class="h-3.5 w-3.5" /> Tablero
+      </button>
+      <button class="view-tab" :class="viewMode === 'list' ? 'view-tab--active' : ''" @click="viewMode = 'list'">
+        <Calendar class="h-3.5 w-3.5" /> Lista
+      </button>
 
-      <Dropdown class="ml-2" width="220px">
+      <div class="mx-1 h-5 w-px bg-slate-200"></div>
+
+      <!-- Assignee filter -->
+      <Dropdown width="220px">
         <template #trigger="{ open }">
-          <button class="flex cursor-pointer items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-slate-400" :class="open && 'border-primary ring-2 ring-primary/20'">
+          <button class="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all hover:border-slate-300" :class="open && 'border-primary ring-2 ring-primary/20'">
             <template v-if="assigneeFilter">
               <span class="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-[#F69008] to-[#D97706] text-[9px] font-semibold text-white">{{ initials(userName(assigneeFilter)) }}</span>
               {{ userName(assigneeFilter) }}
             </template>
-            <span v-else class="text-slate-600">Todos los responsables</span>
-            <ChevronDown class="h-4 w-4 text-slate-400 transition-transform" :class="open && 'rotate-180'" />
+            <span v-else class="text-slate-500">Todos los responsables</span>
+            <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open && 'rotate-180'" />
           </button>
         </template>
         <button type="button" class="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-slate-100" :class="!assigneeFilter ? 'text-primary' : 'text-slate-700'" @click="assigneeFilter = ''">
@@ -233,31 +242,40 @@ async function remove(t: Task) {
         </button>
       </Dropdown>
 
+      <!-- Search -->
       <div class="relative">
         <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input v-model="search" placeholder="Buscar tarea…" class="w-56 rounded-md border border-slate-300 py-2 pl-9 pr-3 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+        <input v-model="search" placeholder="Buscar tarea…" class="w-52 rounded-lg border border-slate-200 py-1.5 pl-9 pr-3 text-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
       </div>
 
-      <ViewToggle v-model="viewMode" class="ml-auto" />
-      <button class="flex cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md" @click="openCreate()">
-        <Plus class="h-4 w-4" /> Nueva tarea
-      </button>
+      <div class="ml-auto flex items-center gap-2">
+        <button
+          class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md hover:shadow-primary/40"
+          @click="openCreate()"
+        >
+          <Plus class="h-4 w-4" /> Nueva tarea
+        </button>
+      </div>
     </div>
 
     <LoadingState v-if="loading" label="Cargando tareas…" />
 
     <!-- ── Tablero kanban ───────────────────────────────────────────────────── -->
     <div v-else-if="viewMode === 'board'" class="flex flex-1 gap-4 overflow-x-auto bg-slate-100/60 p-6">
-      <div v-for="col in TASK_STATUSES" :key="col.key" class="flex w-80 flex-shrink-0 flex-col overflow-hidden rounded-md border border-slate-200 bg-white shadow-card" @dragover.prevent @drop="onDrop(col.key)">
-        <div class="flex items-center justify-between px-4 py-3" :style="{ backgroundColor: col.color }">
+      <div v-for="col in TASK_STATUSES" :key="col.key" class="flex w-80 flex-shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card" @dragover.prevent @drop="onDrop(col.key)">
+        <!-- Column header — Flowlu style -->
+        <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3 bg-white">
           <div class="flex items-center gap-2">
+            <span class="inline-block h-2.5 w-2.5 rounded-full flex-shrink-0" :style="{ backgroundColor: col.color }"></span>
             <span class="text-sm font-semibold text-slate-800">{{ col.label }}</span>
-            <span class="rounded-sm bg-white/70 px-1.5 py-0.5 text-xs font-semibold text-slate-600">{{ tasksOf(col.key).length }}</span>
+            <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-500">{{ tasksOf(col.key).length }}</span>
           </div>
-          <button class="cursor-pointer rounded p-0.5 text-slate-600 transition-colors hover:bg-white/60" @click="openCreate(col.key)"><Plus class="h-4 w-4" /></button>
+          <button class="cursor-pointer rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-primary" @click="openCreate(col.key)">
+            <Plus class="h-4 w-4" />
+          </button>
         </div>
 
-        <div class="flex-1 space-y-2.5 overflow-y-auto bg-slate-50/50 p-2.5">
+        <div class="flex-1 space-y-2.5 overflow-y-auto bg-slate-50/40 p-2.5">
           <div v-for="t in tasksOf(col.key)" :key="t.id" draggable="true"
             class="group cursor-grab rounded-md border border-l-4 border-slate-200 bg-white p-3 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-[#F69008]/30 hover:shadow-elevated active:cursor-grabbing"
             :class="PRIORITY_META[t.priority ?? 'medium'].border"
@@ -288,6 +306,10 @@ async function remove(t: Task) {
             <p v-if="t.opportunity_title" class="mt-2 flex items-center gap-1 border-t border-slate-100 pt-2 text-[11px] text-slate-400"><Kanban class="h-3 w-3" /> {{ t.opportunity_title }}</p>
           </div>
           <p v-if="tasksOf(col.key).length === 0" class="py-6 text-center text-xs text-slate-400">Sin tareas</p>
+          <!-- Quick Add -->
+          <button class="kanban-quick-add" @click="openCreate(col.key)">
+            <Plus class="h-3.5 w-3.5" /> Añadir tarea
+          </button>
         </div>
       </div>
     </div>
@@ -295,31 +317,68 @@ async function remove(t: Task) {
     <!-- ── Vista lista ─────────────────────────────────────────────────────── -->
     <div v-else class="flex flex-1 flex-col overflow-hidden bg-slate-100/40">
 
-      <!-- Stat cards -->
-      <div class="grid grid-cols-4 gap-4 px-6 pt-5 pb-1">
-        <button class="flex flex-col gap-0.5 rounded-md border bg-white px-4 py-3 text-left shadow-card transition-all hover:shadow-elevated"
-          :class="activeTab === 'today' ? 'border-amber-400 ring-2 ring-amber-200' : 'border-slate-200'"
-          @click="activeTab = 'today'">
-          <span class="flex items-center gap-1.5 text-xs font-semibold text-amber-600"><Calendar class="h-3.5 w-3.5" /> Hoy</span>
+      <!-- Stat cards (estilo Uxerflow) -->
+      <div class="grid grid-cols-4 gap-4 px-6 pt-5 pb-2">
+        <button
+          class="group flex flex-col gap-1 rounded-xl border bg-white px-4 py-4 text-left shadow-card transition-all hover:shadow-elevated hover:-translate-y-0.5"
+          :class="activeTab === 'today' ? 'border-amber-400 ring-2 ring-amber-100' : 'border-slate-200'"
+          @click="activeTab = 'today'"
+        >
+          <div class="flex items-center justify-between w-full">
+            <span class="flex items-center gap-1.5 text-xs font-semibold text-amber-600">
+              <Calendar class="h-3.5 w-3.5" /> Hoy
+            </span>
+            <div class="flex h-7 w-7 items-center justify-center rounded-lg" :class="activeTab === 'today' ? 'bg-amber-100' : 'bg-slate-50'">
+              <Clock class="h-3.5 w-3.5 text-amber-500" />
+            </div>
+          </div>
           <span class="text-2xl font-bold text-slate-900">{{ stats.today }}</span>
+          <span class="text-[11px] text-slate-400">tareas para hoy</span>
         </button>
-        <button class="flex flex-col gap-0.5 rounded-md border bg-white px-4 py-3 text-left shadow-card transition-all hover:shadow-elevated"
-          :class="activeTab === 'overdue' ? 'border-red-400 ring-2 ring-red-200' : 'border-slate-200'"
-          @click="activeTab = 'overdue'">
-          <span class="flex items-center gap-1.5 text-xs font-semibold text-red-600"><Clock class="h-3.5 w-3.5" /> Atrasadas</span>
-          <span class="text-2xl font-bold text-slate-900">{{ stats.overdue }}</span>
+
+        <button
+          class="group flex flex-col gap-1 rounded-xl border bg-white px-4 py-4 text-left shadow-card transition-all hover:shadow-elevated hover:-translate-y-0.5"
+          :class="activeTab === 'overdue' ? 'border-red-400 ring-2 ring-red-100' : 'border-slate-200'"
+          @click="activeTab = 'overdue'"
+        >
+          <div class="flex items-center justify-between w-full">
+            <span class="flex items-center gap-1.5 text-xs font-semibold text-red-600">
+              <Clock class="h-3.5 w-3.5" /> Atrasadas
+            </span>
+            <div class="flex h-7 w-7 items-center justify-center rounded-lg" :class="activeTab === 'overdue' ? 'bg-red-100' : 'bg-slate-50'">
+              <Clock class="h-3.5 w-3.5 text-red-400" />
+            </div>
+          </div>
+          <span class="text-2xl font-bold" :class="stats.overdue > 0 ? 'text-red-600' : 'text-slate-900'">{{ stats.overdue }}</span>
+          <span class="text-[11px] text-slate-400">vencidas sin completar</span>
         </button>
-        <button class="flex flex-col gap-0.5 rounded-md border bg-white px-4 py-3 text-left shadow-card transition-all hover:shadow-elevated"
-          :class="activeTab === 'upcoming' ? 'border-primary ring-2 ring-primary/20' : 'border-slate-200'"
-          @click="activeTab = 'upcoming'">
-          <span class="text-xs font-semibold text-primary">Pendientes</span>
+
+        <button
+          class="group flex flex-col gap-1 rounded-xl border bg-white px-4 py-4 text-left shadow-card transition-all hover:shadow-elevated hover:-translate-y-0.5"
+          :class="activeTab === 'upcoming' ? 'border-primary ring-2 ring-primary/15' : 'border-slate-200'"
+          @click="activeTab = 'upcoming'"
+        >
+          <div class="flex items-center justify-between w-full">
+            <span class="text-xs font-semibold text-primary">Pendientes</span>
+            <div class="flex h-7 w-7 items-center justify-center rounded-lg" :class="activeTab === 'upcoming' ? 'bg-[#F69008]/10' : 'bg-slate-50'">
+              <Calendar class="h-3.5 w-3.5 text-primary" />
+            </div>
+          </div>
           <span class="text-2xl font-bold text-slate-900">{{ stats.pending }}</span>
+          <span class="text-[11px] text-slate-400">próximas o sin fecha</span>
         </button>
-        <button class="flex flex-col gap-0.5 rounded-md border bg-white px-4 py-3 text-left shadow-card transition-all hover:shadow-elevated"
-          :class="activeTab === 'done' ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-slate-200'"
-          @click="activeTab = 'done'">
-          <span class="text-xs font-semibold text-emerald-600">Completadas ({{ stats.done_pct }}%)</span>
+
+        <button
+          class="group flex flex-col gap-1 rounded-xl border bg-white px-4 py-4 text-left shadow-card transition-all hover:shadow-elevated hover:-translate-y-0.5"
+          :class="activeTab === 'done' ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-slate-200'"
+          @click="activeTab = 'done'"
+        >
+          <div class="flex items-center justify-between w-full">
+            <span class="text-xs font-semibold text-emerald-600">Completadas</span>
+            <span class="badge-trend badge-trend--up text-[10px]">{{ stats.done_pct }}%</span>
+          </div>
           <span class="text-2xl font-bold text-slate-900">{{ stats.done }}</span>
+          <span class="text-[11px] text-slate-400">finalizadas en total</span>
         </button>
       </div>
 
@@ -344,10 +403,10 @@ async function remove(t: Task) {
 
       <!-- Listado -->
       <div class="flex-1 overflow-auto px-6 py-4">
-        <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-card">
+        <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
           <div class="divide-y divide-slate-100">
             <div v-for="t in currentTab" :key="t.id"
-              class="flex items-center gap-3 border-l-4 px-4 py-3 transition-colors hover:bg-[#F69008]/5"
+              class="group flex items-center gap-3 border-l-4 px-4 py-3 transition-colors hover:bg-[#F69008]/5"
               :class="PRIORITY_META[t.priority ?? 'medium'].border">
               <!-- Checkbox circular -->
               <button class="flex h-5 w-5 flex-shrink-0 cursor-pointer items-center justify-center rounded-full border-2 transition-all"

@@ -20,10 +20,24 @@ const publicUser = (u: UserRow) => ({
 // Lista de usuarios de la organización (disponible para cualquier autenticado:
 // el select de "Responsable" la usa). Incluye permisos para la pantalla de ajustes.
 usersRouter.get('/', async (req, res) => {
-  const rows = await query<UserRow>(
-    'SELECT id, name, email, role, permissions, created_at FROM users WHERE organization_id = $1 ORDER BY created_at',
-    [req.auth!.organizationId],
-  );
+  const orgId = req.auth!.organizationId;
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const limit = Math.min(Number(req.query.limit) || 100, 100);
+
+  let rows: UserRow[];
+  if (q) {
+    rows = await query<UserRow>(
+      `SELECT id, name, email, role, permissions, created_at FROM users
+       WHERE organization_id = $1 AND (name ILIKE $2 OR email ILIKE $2)
+       ORDER BY name LIMIT $3`,
+      [orgId, `%${q}%`, limit],
+    );
+  } else {
+    rows = await query<UserRow>(
+      'SELECT id, name, email, role, permissions, created_at FROM users WHERE organization_id = $1 ORDER BY created_at LIMIT $2',
+      [orgId, limit],
+    );
+  }
   res.json(rows.map(publicUser));
 });
 

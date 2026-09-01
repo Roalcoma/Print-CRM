@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router';
-import { Building2, Users, GitBranch, Palette } from 'lucide-vue-next';
+import { Building2, Users, GitBranch, Palette, Calendar, MessageCircle } from 'lucide-vue-next';
 
 // Grupos de configuración. Escalable: se añaden secciones aquí a medida que crece.
 const groups = [
@@ -16,6 +16,13 @@ const groups = [
     title: 'Personalización',
     items: [
       { to: '/settings/theme', label: 'Apariencia', icon: Palette },
+      { to: '/settings/calendar', label: 'Calendario', icon: Calendar, external: true },
+    ],
+  },
+  {
+    title: 'Integraciones',
+    items: [
+      { to: '/settings/whatsapp', label: 'WhatsApp', icon: MessageCircle },
     ],
   },
 ];

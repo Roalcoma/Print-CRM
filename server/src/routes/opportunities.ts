@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
 import { buildFilters, type Condition } from '../filters.ts';
 import { toCsv, parseCsv } from '../csv.ts';
+import { logActivity } from '../activity.ts';
 
 export const opportunitiesRouter = Router();
 
@@ -134,6 +135,7 @@ opportunitiesRouter.post('/', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   const o = parsed.data;
   const orgId = req.auth!.organizationId;
+  const actorId = req.auth!.userId;
   const contactId = await upsertContact(orgId, o.contact_id ?? null, o.contact_name, o.contact_email, o.contact_phone);
 
   const [row] = await query(
@@ -145,6 +147,16 @@ opportunitiesRouter.post('/', async (req, res) => {
   );
   if (o.follower_ids) await syncFollowers(row.id, o.follower_ids, orgId);
   const full = await queryOne(`${BASE_SELECT} WHERE o.id = $1`, [row.id]);
+
+  // Obtener nombre de la etapa para el meta
+  const stageRow = await queryOne<{ name: string }>('SELECT name FROM pipeline_stages WHERE id=$1', [o.stage_id]);
+  const actor = await queryOne<{ name: string }>('SELECT name FROM users WHERE id=$1', [actorId]);
+  logActivity({
+    orgId, entityType: 'opportunity', entityId: row.id, actorId, actorName: actor?.name ?? null,
+    eventType: 'opp_created',
+    meta: { title: o.title, value: o.value ?? 0, stage_name: stageRow?.name ?? '' },
+  }).catch(console.error);
+
   res.status(201).json(full);
 });
 
@@ -157,9 +169,10 @@ opportunitiesRouter.patch('/:id', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   const data = parsed.data as Record<string, unknown>;
   const orgId = req.auth!.organizationId;
+  const actorId = req.auth!.userId;
 
-  const existing = await queryOne<{ contact_id: string | null }>(
-    'SELECT contact_id FROM opportunities WHERE id=$1 AND organization_id=$2', [req.params.id, orgId]);
+  const existing = await queryOne<{ contact_id: string | null; title: string; value: number; status: string; stage_id: string }>(
+    'SELECT contact_id, title, value, status, stage_id FROM opportunities WHERE id=$1 AND organization_id=$2', [req.params.id, orgId]);
   if (!existing) return res.status(404).json({ error: 'Oportunidad no encontrada' });
 
   // Contacto: actualiza/crea si vinieron campos de contacto.
@@ -188,6 +201,50 @@ opportunitiesRouter.patch('/:id', async (req, res) => {
     [...values, req.params.id, orgId],
   );
   const full = await queryOne(`${BASE_SELECT} WHERE o.id = $1`, [req.params.id]);
+
+  // Registrar actividad — detectar qué cambió
+  const actor = await queryOne<{ name: string }>('SELECT name FROM users WHERE id=$1', [actorId]);
+  const title = (data.title as string | undefined) ?? existing.title;
+  const newValue = (data.value as number | undefined) ?? existing.value;
+
+  if ('stage_id' in data && data.stage_id !== existing.stage_id) {
+    const [fromStage, toStage] = await Promise.all([
+      queryOne<{ name: string }>('SELECT name FROM pipeline_stages WHERE id=$1', [existing.stage_id]),
+      queryOne<{ name: string }>('SELECT name FROM pipeline_stages WHERE id=$1', [data.stage_id as string]),
+    ]);
+    logActivity({
+      orgId, entityType: 'opportunity', entityId: req.params.id, actorId, actorName: actor?.name ?? null,
+      eventType: 'opp_stage_changed',
+      meta: { from: fromStage?.name ?? '', to: toStage?.name ?? '', title },
+    }).catch(console.error);
+  } else if ('status' in data && data.status !== existing.status) {
+    if (data.status === 'won') {
+      logActivity({
+        orgId, entityType: 'opportunity', entityId: req.params.id, actorId, actorName: actor?.name ?? null,
+        eventType: 'opp_won', meta: { title, value: newValue },
+      }).catch(console.error);
+    } else if (data.status === 'lost') {
+      logActivity({
+        orgId, entityType: 'opportunity', entityId: req.params.id, actorId, actorName: actor?.name ?? null,
+        eventType: 'opp_lost', meta: { title, value: newValue },
+      }).catch(console.error);
+    } else {
+      logActivity({
+        orgId, entityType: 'opportunity', entityId: req.params.id, actorId, actorName: actor?.name ?? null,
+        eventType: 'opp_status_changed', meta: { from: existing.status, to: data.status as string, title },
+      }).catch(console.error);
+    }
+  } else {
+    // Cambios genéricos (solo si no fue únicamente posición)
+    const changedCols = cols.filter(c => c !== 'position');
+    if (changedCols.length > 0) {
+      logActivity({
+        orgId, entityType: 'opportunity', entityId: req.params.id, actorId, actorName: actor?.name ?? null,
+        eventType: 'opp_updated', meta: { title, changed: changedCols },
+      }).catch(console.error);
+    }
+  }
+
   res.json(full);
 });
 
@@ -211,14 +268,20 @@ opportunitiesRouter.post('/:id/notes', async (req, res) => {
   const parsed = z.object({ body: z.string().min(1) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   const orgId = req.auth!.organizationId;
-  const opp = await queryOne('SELECT id FROM opportunities WHERE id=$1 AND organization_id=$2', [req.params.id, orgId]);
+  const actorId = req.auth!.userId;
+  const opp = await queryOne<{ id: string; title: string }>('SELECT id, title FROM opportunities WHERE id=$1 AND organization_id=$2', [req.params.id, orgId]);
   if (!opp) return res.status(404).json({ error: 'Oportunidad no encontrada' });
-  const author = await queryOne<{ name: string }>('SELECT name FROM users WHERE id=$1', [req.auth!.userId]);
+  const author = await queryOne<{ name: string }>('SELECT name FROM users WHERE id=$1', [actorId]);
   const [row] = await query(
     `INSERT INTO opportunity_notes (organization_id, opportunity_id, body, author_name)
      VALUES ($1,$2,$3,$4) RETURNING *`,
     [orgId, req.params.id, parsed.data.body, author?.name ?? null],
   );
+  logActivity({
+    orgId, entityType: 'opportunity', entityId: req.params.id, actorId, actorName: author?.name ?? null,
+    eventType: 'opp_note_added',
+    meta: { title: opp.title, body_preview: parsed.data.body.slice(0, 100) },
+  }).catch(console.error);
   res.status(201).json(row);
 });
 
@@ -226,6 +289,20 @@ opportunitiesRouter.delete('/notes/:noteId', async (req, res) => {
   const row = await queryOne('DELETE FROM opportunity_notes WHERE id=$1 AND organization_id=$2 RETURNING id', [req.params.noteId, req.auth!.organizationId]);
   if (!row) return res.status(404).json({ error: 'Nota no encontrada' });
   res.status(204).end();
+});
+
+// GET /:id/appointments — citas ligadas a esta oportunidad
+opportunitiesRouter.get('/:id/appointments', async (req, res) => {
+  const rows = await query(
+    `SELECT a.*, u.name AS user_name, c.first_name AS contact_first_name, c.last_name AS contact_last_name
+     FROM appointments a
+     LEFT JOIN users    u ON u.id = a.user_id
+     LEFT JOIN contacts c ON c.id = a.contact_id
+     WHERE a.opportunity_id = $1 AND a.organization_id = $2
+     ORDER BY a.start_at DESC`,
+    [req.params.id, req.auth!.organizationId],
+  );
+  res.json(rows);
 });
 
 // ── Exportar CSV ────────────────────────────────────────────────────────────

@@ -1,5 +1,4 @@
-# Solo Postgres para desarrollo local. La app corre fuera de Docker (node directo).
-# ponytail: un solo servicio; añadir la app al compose cuando despleguemos, no antes.
+# Servicios de desarrollo local. La app Node corre fuera de Docker (node --watch).
 services:
   db:
     image: postgres:17-alpine
@@ -14,5 +13,34 @@ services:
     volumes:
       - crm_pgdata:/var/lib/postgresql/data
 
+  evolution:
+    image: evoapicloud/evolution-api:latest
+    container_name: crm_evolution
+    restart: unless-stopped
+    # network_mode host permite que Evolution llame a localhost:3100 (webhook)
+    # directamente sin necesidad de configurar host.docker.internal en Linux.
+    network_mode: host
+    environment:
+      - SERVER_URL=http://localhost:8080
+      - AUTHENTICATION_TYPE=apikey
+      - AUTHENTICATION_API_KEY=crm-evo-dev-key-2024
+      - LOG_LEVEL=ERROR,WARN
+      - DEL_INSTANCE=false
+      - LANGUAGE=es
+      - CONFIG_SESSION_PHONE_CLIENT=Chrome
+      - CONFIG_SESSION_PHONE_NAME=Chrome
+      - QRCODE_LIMIT=30
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://crm:crm@localhost:5434/evolution?schema=evolution_api
+      - CACHE_REDIS_ENABLED=false
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
+      - DATABASE_SAVE_MESSAGE_UPDATE=true
+      - DATABASE_SAVE_DATA_CONTACTS=true
+      - DATABASE_SAVE_DATA_CHATS=true
+    volumes:
+      - crm_evolution_data:/evolution/instances
+
 volumes:
   crm_pgdata:
+  crm_evolution_data:

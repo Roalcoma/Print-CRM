@@ -46,18 +46,20 @@ onBeforeUnmount(() => listen(false));
 </script>
 
 <template>
-  <div ref="triggerEl" :class="triggerClass" @click="toggle"><slot name="trigger" :open="open" /></div>
-  <Teleport to="body">
-    <Transition name="dropdown">
-      <div
-        v-if="open"
-        ref="menuEl"
-        class="fixed z-[60] overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-dropdown"
-        :style="{ top: pos.top + 'px', left: pos.left + 'px', minWidth: pos.minWidth + 'px' }"
-        @click="close"
-      >
-        <slot :close="close" />
-      </div>
-    </Transition>
-  </Teleport>
+  <div ref="triggerEl" :class="triggerClass" @click="toggle">
+    <slot name="trigger" :open="open" />
+    <Teleport to="body">
+      <Transition name="dropdown">
+        <div
+          v-if="open"
+          ref="menuEl"
+          class="fixed z-[60] overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-dropdown"
+          :style="{ top: pos.top + 'px', left: pos.left + 'px', minWidth: pos.minWidth + 'px' }"
+          @click="close"
+        >
+          <slot :close="close" />
+        </div>
+      </Transition>
+    </Teleport>
+  </div>
 </template>

@@ -289,60 +289,112 @@ async function deleteNote(id: string) {
   <div class="flex h-full flex-col">
     <OppTabs />
 
-    <!-- Toolbar -->
-    <div class="z-[4] flex flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-6 py-3 shadow-toolbar">
-      <!-- Selector de pipeline premium -->
-      <Dropdown width="240px">
-        <template #trigger="{ open }">
-          <button class="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-all hover:border-slate-400 hover:shadow-md" :class="open && 'border-primary ring-2 ring-primary/20'">
-            <span class="h-2 w-2 rounded-full bg-primary"></span>
-            {{ current?.name ?? 'Pipeline' }}
-            <ChevronDown class="h-4 w-4 text-slate-400 transition-transform" :class="open && 'rotate-180'" />
-          </button>
-        </template>
-        <template #default="{ close }">
-          <button v-for="p in pipelines" :key="p.id"
-            class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-slate-100"
-            :class="p.id === currentId ? 'text-primary' : 'text-slate-700'"
-            @click="currentId = p.id; close()">
-            {{ p.name }}
-            <Check v-if="p.id === currentId" class="h-4 w-4" />
-          </button>
-        </template>
-      </Dropdown>
-      <span class="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-600">{{ totalLeads }} oportunidades</span>
-
-      <div class="ml-auto flex flex-wrap items-center gap-2">
-        <ViewToggle v-model="viewMode" />
-        <div class="relative">
-          <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input v-model="search" @input="onSearch" placeholder="Buscar oportunidades…" class="w-56 rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm shadow-sm transition-all focus:border-primary focus:shadow-md focus:ring-2 focus:ring-primary/20 focus:outline-none" />
-        </div>
-        <button class="flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm transition-all hover:shadow-md" :class="showFilters || activeFilterCount ? 'border-primary bg-primary/5 text-primary' : 'border-slate-300 text-slate-600 hover:border-slate-400 hover:bg-slate-50'" @click="showFilters = !showFilters">
-          <Filter class="h-4 w-4" /> Filtros <span v-if="activeFilterCount" class="rounded-full bg-primary px-1.5 text-xs text-white">{{ activeFilterCount }}</span>
+    <!-- Toolbar superior: tabs de vista + controles -->
+    <div class="z-[4] border-b border-slate-200 bg-white shadow-toolbar">
+      <!-- Fila 1: tabs de vista + acciones -->
+      <div class="flex items-center gap-0 px-4 pt-1">
+        <!-- View tabs (Tablero / Lista / Archivadas) -->
+        <button
+          class="view-tab"
+          :class="viewMode === 'board' ? 'view-tab--active' : ''"
+          @click="viewMode = 'board'"
+        >
+          <Kanban class="h-3.5 w-3.5" /> Tablero
+        </button>
+        <button
+          class="view-tab"
+          :class="viewMode === 'list' ? 'view-tab--active' : ''"
+          @click="viewMode = 'list'"
+        >
+          <SlidersHorizontal class="h-3.5 w-3.5" /> Lista
         </button>
 
-        <!-- Menú de acciones (⋮) -->
-        <Dropdown align="right" width="180px">
+        <!-- Divider -->
+        <div class="mx-3 h-5 w-px bg-slate-200"></div>
+
+        <!-- Pipeline selector -->
+        <Dropdown width="240px">
           <template #trigger="{ open }">
-            <button class="cursor-pointer rounded-lg border border-slate-300 p-2 text-slate-500 shadow-sm transition-all hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700 hover:shadow-md" :class="open && 'border-primary text-primary'" aria-label="Más acciones">
-              <MoreVertical class="h-4 w-4" />
+            <button class="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all hover:border-slate-300 hover:shadow-sm" :class="open && 'border-primary ring-2 ring-primary/20'">
+              <span class="h-2 w-2 rounded-full bg-primary"></span>
+              {{ current?.name ?? 'Pipeline' }}
+              <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open && 'rotate-180'" />
             </button>
           </template>
-          <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="exportCsv">
-            <Download class="h-4 w-4 text-slate-400" /> Exportar CSV
-          </button>
-          <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="fileInput?.click()">
-            <Upload class="h-4 w-4 text-slate-400" /> Importar CSV
-          </button>
-          <div class="my-1 border-t border-slate-100"></div>
-          <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="showCustomize = true">
-            <SlidersHorizontal class="h-4 w-4 text-slate-400" /> Personalizar tarjetas
-          </button>
+          <template #default="{ close }">
+            <button v-for="p in pipelines" :key="p.id"
+              class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-slate-100"
+              :class="p.id === currentId ? 'text-primary' : 'text-slate-700'"
+              @click="currentId = p.id; close()">
+              {{ p.name }}
+              <Check v-if="p.id === currentId" class="h-4 w-4" />
+            </button>
+          </template>
         </Dropdown>
-        <input ref="fileInput" type="file" accept=".csv" class="hidden" @change="onImportFile" />
 
-        <button class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md hover:shadow-primary/40" @click="openCreate"><Plus class="h-4 w-4" /> Nueva</button>
+        <!-- Count badge -->
+        <span class="ml-2 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{{ totalLeads }}</span>
+
+        <!-- Right actions -->
+        <div class="ml-auto flex items-center gap-2 py-2">
+          <!-- Search -->
+          <div class="relative">
+            <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input v-model="search" @input="onSearch" placeholder="Buscar oportunidades…" class="w-52 rounded-lg border border-slate-200 py-1.5 pl-9 pr-3 text-sm transition-all focus:border-primary focus:shadow-sm focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+          </div>
+
+          <!-- Filtros button -->
+          <button
+            class="flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-all"
+            :class="showFilters || activeFilterCount ? 'border-primary bg-primary/5 text-primary shadow-sm' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'"
+            @click="showFilters = !showFilters"
+          >
+            <Filter class="h-4 w-4" />
+            Filtros
+            <span v-if="activeFilterCount" class="rounded-full bg-primary px-1.5 text-xs font-bold text-white">{{ activeFilterCount }}</span>
+          </button>
+
+          <!-- More actions -->
+          <Dropdown align="right" width="180px">
+            <template #trigger="{ open }">
+              <button class="cursor-pointer rounded-lg border border-slate-200 p-2 text-slate-400 transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700" :class="open && 'border-primary text-primary'" aria-label="Más acciones">
+                <MoreVertical class="h-4 w-4" />
+              </button>
+            </template>
+            <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="exportCsv">
+              <Download class="h-4 w-4 text-slate-400" /> Exportar CSV
+            </button>
+            <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="fileInput?.click()">
+              <Upload class="h-4 w-4 text-slate-400" /> Importar CSV
+            </button>
+            <div class="my-1 border-t border-slate-100"></div>
+            <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="showCustomize = true">
+              <SlidersHorizontal class="h-4 w-4 text-slate-400" /> Personalizar tarjetas
+            </button>
+          </Dropdown>
+          <input ref="fileInput" type="file" accept=".csv" class="hidden" @change="onImportFile" />
+
+          <!-- CTA primario -->
+          <button
+            class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md hover:shadow-primary/40"
+            @click="openCreate"
+          >
+            <Plus class="h-4 w-4" /> Crear
+          </button>
+        </div>
+      </div>
+
+      <!-- Fila 2: filter chips activos -->
+      <div v-if="activeFilterCount > 0" class="flex flex-wrap items-center gap-2 px-4 pb-2">
+        <span class="text-xs font-medium text-slate-400">Filtros activos:</span>
+        <div v-for="(c, i) in conditions.filter(c => c.field && c.op && (NO_VALUE.includes(c.op) || (c.value !== '' && c.value != null)))" :key="i"
+          class="toolbar-chip toolbar-chip--active"
+          @click="removeCondition(conditions.indexOf(c))"
+        >
+          <span>{{ FIELDS.find(f => f.key === c.field)?.label ?? c.field }}: {{ c.value }}</span>
+          <span class="toolbar-chip__remove"><X class="h-3 w-3" /></span>
+        </div>
+        <button class="text-xs font-medium text-slate-400 hover:text-red-600 transition-colors" @click="clearFilters">Limpiar todo</button>
       </div>
     </div>
 
@@ -395,15 +447,24 @@ async function deleteNote(id: string) {
     <!-- Tablero kanban -->
     <LoadingState v-if="loading" label="Cargando oportunidades…" />
     <div v-else-if="viewMode === 'board'" class="flex flex-1 gap-4 overflow-x-auto bg-slate-100/60 p-6">
-      <div v-for="stage in current?.stages ?? []" :key="stage.id" class="flex w-80 flex-shrink-0 flex-col overflow-hidden rounded-md border border-slate-200 bg-white shadow-card" @dragover.prevent @drop="onDrop(stage.id)">
-        <div class="flex items-center justify-between px-4 py-3" :style="{ backgroundColor: stage.color }">
+      <div
+        v-for="stage in current?.stages ?? []"
+        :key="stage.id"
+        class="flex w-80 flex-shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card"
+        @dragover.prevent
+        @drop="onDrop(stage.id)"
+      >
+        <!-- Kanban column header — estilo Flowlu -->
+        <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3 bg-white">
           <div class="flex items-center gap-2">
+            <span class="inline-block h-2.5 w-2.5 rounded-full flex-shrink-0" :style="{ backgroundColor: stage.color }"></span>
             <span class="text-sm font-semibold text-slate-800">{{ stage.name }}</span>
-            <span class="rounded-sm bg-white/70 px-1.5 py-0.5 text-xs font-semibold text-slate-600">{{ stageOpps(stage.id).length }}</span>
+            <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-500">{{ stageOpps(stage.id).length }}</span>
           </div>
-          <span class="text-xs font-medium text-slate-600">{{ stageSum(stage.id) }}</span>
+          <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-600">{{ stageSum(stage.id) }}</span>
         </div>
-        <div class="flex-1 overflow-y-auto bg-slate-50/50 p-2.5">
+
+        <div class="flex-1 overflow-y-auto bg-slate-50/40 p-2.5">
           <TransitionGroup name="list" tag="div" class="space-y-2.5">
             <OpportunityCard
               v-for="opp in stageOpps(stage.id)"
@@ -418,38 +479,61 @@ async function deleteNote(id: string) {
             />
           </TransitionGroup>
           <p v-if="stageOpps(stage.id).length === 0" class="py-8 text-center text-xs text-slate-400">Sin oportunidades</p>
+
+          <!-- Quick Add button (estilo Flowlu) -->
+          <button
+            class="kanban-quick-add"
+            @click="openCreate"
+          >
+            <Plus class="h-3.5 w-3.5" />
+            Añadir oportunidad
+          </button>
         </div>
       </div>
     </div>
 
     <!-- Vista de lista -->
     <div v-else class="flex-1 overflow-auto bg-slate-100/40 p-6">
-      <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-card">
-        <table class="w-full text-sm">
+      <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
+        <table class="data-table w-full text-sm">
           <thead>
-            <tr class="border-b border-slate-200 bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-              <th class="px-4 py-3">Oportunidad</th>
-              <th class="px-2 py-3">Etapa</th>
-              <th class="px-2 py-3">Valor</th>
-              <th class="px-2 py-3">Estado</th>
-              <th class="px-2 py-3">Contacto</th>
-              <th class="px-2 py-3">Responsable</th>
-              <th class="px-2 py-3">Creado</th>
+            <tr class="border-b border-slate-200 bg-slate-50 text-left">
+              <th class="sortable px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Oportunidad</th>
+              <th class="sortable px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Etapa</th>
+              <th class="sortable px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Valor</th>
+              <th class="sortable px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Estado</th>
+              <th class="px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Contacto</th>
+              <th class="px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Responsable</th>
+              <th class="sortable px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Creado</th>
             </tr>
           </thead>
-          <tbody>
-            <tr v-for="opp in opps" :key="opp.id" class="cursor-pointer border-b border-slate-100 transition-colors last:border-0 hover:bg-[#F69008]/5" @click="openEdit(opp)">
-              <td class="px-4 py-3 font-medium text-slate-900">{{ opp.title }}</td>
-              <td class="px-2 py-3">
-                <span class="rounded-sm px-2 py-0.5 text-xs font-medium text-slate-700" :style="{ backgroundColor: stageById[opp.stage_id]?.color }">{{ stageById[opp.stage_id]?.name }}</span>
+          <tbody class="divide-y divide-slate-100">
+            <tr
+              v-for="opp in opps"
+              :key="opp.id"
+              class="group cursor-pointer transition-colors hover:bg-[#F69008]/5"
+              @click="openEdit(opp)"
+            >
+              <td class="px-4 py-3">
+                <span class="font-semibold text-slate-900 group-hover:text-primary transition-colors">{{ opp.title }}</span>
+                <p v-if="opp.business_name" class="text-xs text-slate-400 mt-0.5">{{ opp.business_name }}</p>
               </td>
-              <td class="px-2 py-3 font-semibold text-emerald-600">{{ money(Number(opp.value)) }}</td>
-              <td class="px-2 py-3"><span class="rounded-sm px-1.5 py-0.5 text-[11px] font-semibold" :class="statusBadgeCls[opp.status]">{{ statusLbl[opp.status] }}</span></td>
-              <td class="px-2 py-3 text-slate-600">{{ [opp.contact_first_name, opp.contact_last_name].filter(Boolean).join(' ') || '—' }}</td>
-              <td class="px-2 py-3 text-slate-600">{{ opp.owner_name || '—' }}</td>
-              <td class="px-2 py-3 text-slate-500">{{ new Date(opp.created_at).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' }) }}</td>
+              <td class="px-3 py-3">
+                <span class="rounded-full px-2.5 py-0.5 text-xs font-medium text-slate-700" :style="{ backgroundColor: (stageById[opp.stage_id]?.color ?? '#e2e8f0') + '33', color: stageById[opp.stage_id]?.color ?? '#475569' }">
+                  {{ stageById[opp.stage_id]?.name ?? '—' }}
+                </span>
+              </td>
+              <td class="px-3 py-3 font-semibold text-emerald-600">{{ money(Number(opp.value)) }}</td>
+              <td class="px-3 py-3">
+                <span class="rounded-full px-2.5 py-0.5 text-[11px] font-semibold" :class="statusBadgeCls[opp.status]">{{ statusLbl[opp.status] }}</span>
+              </td>
+              <td class="px-3 py-3 text-slate-600">{{ [opp.contact_first_name, opp.contact_last_name].filter(Boolean).join(' ') || '—' }}</td>
+              <td class="px-3 py-3 text-slate-600">{{ opp.owner_name || '—' }}</td>
+              <td class="px-3 py-3 text-xs text-slate-400">{{ new Date(opp.created_at).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' }) }}</td>
             </tr>
-            <tr v-if="opps.length === 0"><td colspan="7" class="px-4 py-12 text-center text-slate-400">Sin oportunidades</td></tr>
+            <tr v-if="opps.length === 0">
+              <td colspan="7" class="px-4 py-12 text-center text-slate-400">Sin oportunidades para mostrar</td>
+            </tr>
           </tbody>
         </table>
       </div>
