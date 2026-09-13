@@ -183,12 +183,12 @@ function goToAgency() {
         </div>
       </template>
 
-      <!-- Clientes de agencia (solo si tiene agency access) -->
+      <!-- Cuentas CRM de agencia (solo si tiene agency access) -->
       <template v-if="hasAgencyAccess && filteredAgencyClients.length > 0">
         <div class="mx-3 h-px bg-slate-100"></div>
         <div class="max-h-64 overflow-y-auto py-1.5">
           <p class="px-4 pt-1 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-            Clientes de agencia
+            Cuentas CRM
           </p>
           <button
             v-for="c in filteredAgencyClients"
@@ -206,9 +206,13 @@ function goToAgency() {
               ></span>
             </div>
             <div class="min-w-0 flex-1 text-left">
-              <p class="truncate text-sm font-medium text-slate-800 leading-tight">
-                {{ c.company || c.name }}
-              </p>
+              <div class="flex items-center gap-1.5">
+                <p class="truncate text-sm font-medium text-slate-800 leading-tight">{{ c.company || c.name }}</p>
+                <span
+                  v-if="c.type === 'own'"
+                  class="flex-shrink-0 rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-sky-600"
+                >Propia</span>
+              </div>
               <p class="truncate text-xs text-slate-400 leading-tight">{{ c.email }}</p>
             </div>
             <Loader2 v-if="switching === c.id" class="h-4 w-4 flex-shrink-0 animate-spin text-primary" />

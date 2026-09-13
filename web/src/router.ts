@@ -15,8 +15,9 @@ const routes = [
     children: [
       { path: '', redirect: '/agency/dashboard' },
       { path: 'dashboard', component: () => import('./views/agency/AgencyDashboard.vue'), meta: { title: 'Dashboard', agencyOnly: true } },
-      { path: 'clients', component: () => import('./views/agency/AgencyClients.vue'), meta: { title: 'Clientes', agencyOnly: true } },
-      { path: 'clients/:id', component: () => import('./views/agency/AgencyClientDetail.vue'), meta: { title: 'Cliente', agencyOnly: true } },
+      { path: 'clients', component: () => import('./views/agency/AgencyClients.vue'), meta: { title: 'Cuentas CRM', agencyOnly: true } },
+      { path: 'clients/:id', component: () => import('./views/agency/AgencyClientDetail.vue'), meta: { title: 'Cuenta CRM', agencyOnly: true } },
+      { path: 'plans', component: () => import('./views/agency/AgencyPlans.vue'), meta: { title: 'Planes', agencyOnly: true } },
     ],
   },
   {

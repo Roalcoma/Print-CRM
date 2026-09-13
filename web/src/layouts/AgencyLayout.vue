@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router';
-import { LayoutDashboard, Users, LogOut, Building2, ChevronRight, Menu, ChevronDown } from 'lucide-vue-next';
+import { LayoutDashboard, Users, LogOut, Building2, ChevronRight, Menu, ChevronDown, CreditCard } from 'lucide-vue-next';
 import { useAgencyStore } from '../stores/agency';
 import AccountSwitcher from '../components/AccountSwitcher.vue';
 import Dropdown from '../components/Dropdown.vue';
@@ -30,8 +30,9 @@ onMounted(async () => {
 });
 
 const nav = [
-  { to: '/agency/dashboard', label: 'Dashboard', icon: LayoutDashboard, match: '/agency/dashboard' },
-  { to: '/agency/clients',   label: 'Clientes',   icon: Users,           match: '/agency/clients' },
+  { to: '/agency/dashboard', label: 'Dashboard',   icon: LayoutDashboard, match: '/agency/dashboard' },
+  { to: '/agency/clients',   label: 'Cuentas CRM', icon: Users,           match: '/agency/clients' },
+  { to: '/agency/plans',     label: 'Planes',       icon: CreditCard,      match: '/agency/plans' },
 ];
 
 const isActive = (path: string) => route.path.startsWith(path);

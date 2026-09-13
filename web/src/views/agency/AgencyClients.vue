@@ -14,6 +14,7 @@ interface AgencyClient {
   country: string | null;
   plan: string;
   status: string;
+  type: 'own' | 'client';
   trial_ends_at: string | null;
   monthly_value: string;
   notes: string | null;
@@ -40,9 +41,10 @@ const error = ref('');
 const q = ref('');
 const filterStatus = ref('');
 const filterPlan = ref('');
+const filterType = ref('');
 const page = ref(1);
 
-// New client modal
+// New account modal
 const showModal = ref(false);
 const submitting = ref(false);
 const formError = ref('');
@@ -59,6 +61,7 @@ const form = ref({
   country: '',
   plan: 'starter' as 'starter' | 'pro' | 'enterprise',
   status: 'active' as 'active' | 'trial',
+  type: 'client' as 'own' | 'client',
   monthlyValue: 0,
   notes: '',
 });
@@ -71,6 +74,7 @@ async function load() {
     if (q.value) params.set('q', q.value);
     if (filterStatus.value) params.set('status', filterStatus.value);
     if (filterPlan.value) params.set('plan', filterPlan.value);
+    if (filterType.value) params.set('type', filterType.value);
     const res = await agencyApi.get<{ clients: AgencyClient[]; total: number }>(`/clients?${params}`);
     clients.value = res.clients;
     total.value = res.total;
@@ -89,7 +93,7 @@ watch(q, () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => { page.value = 1; load(); }, 350);
 });
-watch([filterStatus, filterPlan], () => { page.value = 1; load(); });
+watch([filterStatus, filterPlan, filterType], () => { page.value = 1; load(); });
 
 async function createClient() {
   formError.value = '';
@@ -116,7 +120,7 @@ function resetModal() {
   showTempPass.value = false;
   copied.value = false;
   formError.value = '';
-  form.value = { name: '', company: '', email: '', phone: '', country: '', plan: 'starter', status: 'active', monthlyValue: 0, notes: '' };
+  form.value = { name: '', company: '', email: '', phone: '', country: '', plan: 'starter', status: 'active', type: 'client', monthlyValue: 0, notes: '' };
 }
 
 async function copyPassword() {
@@ -170,15 +174,15 @@ const totalPages = computed(() => Math.ceil(total.value / 20));
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
-        <h2 class="text-xl font-bold text-white">Clientes</h2>
-        <p class="text-sm text-slate-400 mt-0.5">{{ total }} clientes en total</p>
+        <h2 class="text-xl font-bold text-white">Cuentas CRM</h2>
+        <p class="text-sm text-slate-400 mt-0.5">{{ total }} cuentas en total</p>
       </div>
       <button
         class="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-500 transition-colors cursor-pointer shadow-lg shadow-violet-900/40"
         @click="showModal = true"
       >
         <Plus class="h-4 w-4" />
-        Nuevo Cliente
+        Nueva Cuenta
       </button>
     </div>
 
@@ -188,7 +192,7 @@ const totalPages = computed(() => Math.ceil(total.value / 20));
         <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
         <input
           v-model="q"
-          placeholder="Buscar clientes…"
+          placeholder="Buscar cuentas…"
           class="w-full rounded-lg border border-slate-700 bg-slate-800/60 py-2 pl-9 pr-3 text-sm text-slate-200 placeholder-slate-500 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 focus:outline-none transition-all"
         />
       </div>
@@ -211,6 +215,14 @@ const totalPages = computed(() => Math.ceil(total.value / 20));
         <option value="pro">Pro</option>
         <option value="enterprise">Enterprise</option>
       </select>
+      <select
+        v-model="filterType"
+        class="rounded-lg border border-slate-700 bg-slate-800/60 py-2 pl-3 pr-8 text-sm text-slate-300 focus:border-violet-500 focus:outline-none cursor-pointer"
+      >
+        <option value="">Todos los tipos</option>
+        <option value="own">Propias</option>
+        <option value="client">Clientes</option>
+      </select>
     </div>
 
     <!-- Error -->
@@ -226,8 +238,8 @@ const totalPages = computed(() => Math.ceil(total.value / 20));
       <table v-else class="w-full text-sm">
         <thead>
           <tr class="border-b border-slate-800/60">
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Cliente</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Email</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Cuenta</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo</th>
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Plan</th>
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Estado</th>
             <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Valor/mes</th>
@@ -236,12 +248,10 @@ const totalPages = computed(() => Math.ceil(total.value / 20));
           </tr>
         </thead>
         <tbody>
-          <tr
-            v-if="clients.length === 0"
-          >
-            <td colspan="7" class="py-12 text-center text-slate-500">
-              No hay clientes aún.
-              <button class="ml-1 text-violet-400 hover:text-violet-300 cursor-pointer" @click="showModal = true">Crear el primero</button>
+          <tr v-if="clients.length === 0">
+            <td colspan="8" class="py-12 text-center text-slate-500">
+              No hay cuentas aún.
+              <button class="ml-1 text-violet-400 hover:text-violet-300 cursor-pointer" @click="showModal = true">Crear la primera</button>
             </td>
           </tr>
           <tr
@@ -251,10 +261,19 @@ const totalPages = computed(() => Math.ceil(total.value / 20));
             @click="router.push(`/agency/clients/${client.id}`)"
           >
             <td class="px-4 py-3">
-              <p class="font-medium text-slate-200">{{ client.name }}</p>
-              <p v-if="client.company" class="text-xs text-slate-500">{{ client.company }}</p>
+              <p class="font-medium text-slate-200">{{ client.company || client.name }}</p>
+              <p class="text-xs text-slate-500">{{ client.email }}</p>
             </td>
-            <td class="px-4 py-3 text-slate-400">{{ client.email }}</td>
+            <td class="px-4 py-3">
+              <span
+                class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium"
+                :class="client.type === 'own'
+                  ? 'bg-sky-900/60 text-sky-300 border-sky-700/60'
+                  : 'bg-slate-700/60 text-slate-300 border-slate-600/60'"
+              >
+                {{ client.type === 'own' ? 'Propia' : 'Cliente' }}
+              </span>
+            </td>
             <td class="px-4 py-3">
               <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium" :class="planBadge(client.plan)">
                 {{ planLabel(client.plan) }}
@@ -341,7 +360,7 @@ const totalPages = computed(() => Math.ceil(total.value / 20));
           <!-- Form view -->
           <div v-else>
             <div class="flex items-center justify-between border-b border-slate-800/60 px-6 py-4">
-              <h3 class="font-bold text-white">Nuevo Cliente</h3>
+              <h3 class="font-bold text-white">Nueva Cuenta CRM</h3>
               <button class="text-slate-500 hover:text-slate-300 cursor-pointer transition-colors" @click="resetModal">
                 <X class="h-5 w-5" />
               </button>
@@ -377,6 +396,26 @@ const totalPages = computed(() => Math.ceil(total.value / 20));
                   <label class="mb-1 block text-xs font-medium text-slate-400">País</label>
                   <input v-model="form.country"
                     class="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 focus:outline-none" />
+                </div>
+              </div>
+
+              <!-- Tipo de cuenta -->
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-400">Tipo de cuenta</label>
+                <div class="grid grid-cols-2 gap-2">
+                  <button
+                    v-for="opt in [{ value: 'client', label: 'Cliente', desc: 'Cuenta de un cliente externo' }, { value: 'own', label: 'Propia', desc: 'Pruebas o negocio propio' }]"
+                    :key="opt.value"
+                    type="button"
+                    class="rounded-lg border px-3 py-2.5 text-left transition-all cursor-pointer"
+                    :class="form.type === opt.value
+                      ? 'border-violet-500 bg-violet-900/20 text-violet-300'
+                      : 'border-slate-700 text-slate-400 hover:border-slate-600'"
+                    @click="form.type = opt.value as 'own' | 'client'"
+                  >
+                    <p class="text-sm font-semibold">{{ opt.label }}</p>
+                    <p class="text-xs opacity-70 mt-0.5">{{ opt.desc }}</p>
+                  </button>
                 </div>
               </div>
 
@@ -420,7 +459,7 @@ const totalPages = computed(() => Math.ceil(total.value / 20));
                 </button>
                 <button type="submit" :disabled="submitting"
                   class="flex-1 rounded-lg bg-violet-600 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer">
-                  {{ submitting ? 'Creando…' : 'Crear y provisionar CRM' }}
+                  {{ submitting ? 'Creando…' : 'Crear cuenta CRM' }}
                 </button>
               </div>
             </form>

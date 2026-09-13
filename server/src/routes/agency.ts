@@ -36,10 +36,14 @@ interface AgencyClientRow {
   phone: string | null;
   country: string | null;
   plan: string;
+  plan_id: string | null;
   status: string;
+  type: 'own' | 'client';
   trial_ends_at: string | null;
   monthly_value: string;
   notes: string | null;
+  courtesy_extra_users: number;
+  courtesy_full_access: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -214,7 +218,7 @@ agencyRouter.get('/dashboard', requireAgencyAuth, async (req, res) => {
 // ─── Clients ─────────────────────────────────────────────────────────────────
 
 agencyRouter.get('/clients', requireAgencyAuth, async (req, res) => {
-  const { q, status, plan, page = '1', limit = '20' } = req.query as Record<string, string>;
+  const { q, status, plan, type, page = '1', limit = '20' } = req.query as Record<string, string>;
   const offset = (Number(page) - 1) * Number(limit);
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -230,6 +234,10 @@ agencyRouter.get('/clients', requireAgencyAuth, async (req, res) => {
   if (plan) {
     params.push(plan);
     conditions.push(`ac.plan = $${params.length}`);
+  }
+  if (type) {
+    params.push(type);
+    conditions.push(`ac.type = $${params.length}`);
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -263,8 +271,10 @@ const createClientSchema = z.object({
   email: z.string().email(),
   phone: z.string().optional(),
   country: z.string().optional(),
-  plan: z.enum(['starter', 'pro', 'enterprise']).default('starter'),
+  plan: z.enum(['free', 'starter', 'pro', 'enterprise']).default('starter'),
+  planId: z.string().uuid().optional(),
   status: z.enum(['active', 'trial', 'suspended', 'cancelled']).default('active'),
+  type: z.enum(['own', 'client']).default('client'),
   monthlyValue: z.number().optional().default(0),
   trialEndsAt: z.string().optional(),
   notes: z.string().optional(),
@@ -300,14 +310,14 @@ agencyRouter.post('/clients', requireAgencyAuth, async (req, res) => {
       [orgId, d.email, hash, d.name],
     );
 
-    // Crear registro de cliente de agencia
+    // Crear registro de cuenta CRM
     const clientResult = await client.query<AgencyClientRow>(
       `INSERT INTO agency_clients
-         (organization_id, name, company, email, phone, country, plan, status, trial_ends_at, monthly_value, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         (organization_id, name, company, email, phone, country, plan, plan_id, status, type, trial_ends_at, monthly_value, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        RETURNING *`,
       [orgId, d.name, d.company ?? null, d.email, d.phone ?? null, d.country ?? null,
-       d.plan, d.status, d.trialEndsAt ?? null, d.monthlyValue, d.notes ?? null],
+       d.plan, d.planId ?? null, d.status, d.type, d.trialEndsAt ?? null, d.monthlyValue, d.notes ?? null],
     );
 
     await client.query('COMMIT');
@@ -343,11 +353,18 @@ agencyRouter.get('/clients/:id', requireAgencyAuth, async (req, res) => {
   const [client, activities] = await Promise.all([
     queryOne<AgencyClientRow & {
       org_name: string | null;
+      plan_name: string | null;
+      plan_price: string | null;
+      plan_max_users: number | null;
     }>(
       `SELECT ac.*,
-              o.name AS org_name
+              o.name  AS org_name,
+              p.name  AS plan_name,
+              p.price_usd AS plan_price,
+              p.max_users AS plan_max_users
        FROM agency_clients ac
        LEFT JOIN organizations o ON o.id = ac.organization_id
+       LEFT JOIN plans p ON p.id = ac.plan_id
        WHERE ac.id = $1`,
       [id],
     ),
@@ -381,8 +398,10 @@ const updateClientSchema = z.object({
   email: z.string().email().optional(),
   phone: z.string().optional(),
   country: z.string().optional(),
-  plan: z.enum(['starter', 'pro', 'enterprise']).optional(),
+  plan: z.enum(['free', 'starter', 'pro', 'enterprise']).optional(),
+  planId: z.string().uuid().nullable().optional(),
   status: z.enum(['active', 'trial', 'suspended', 'cancelled']).optional(),
+  type: z.enum(['own', 'client']).optional(),
   monthlyValue: z.number().optional(),
   trialEndsAt: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
@@ -404,7 +423,9 @@ agencyRouter.patch('/clients/:id', requireAgencyAuth, async (req, res) => {
     phone: d.phone,
     country: d.country,
     plan: d.plan,
+    plan_id: d.planId,
     status: d.status,
+    type: d.type,
     monthly_value: d.monthlyValue,
     trial_ends_at: d.trialEndsAt,
     notes: d.notes,
@@ -507,6 +528,117 @@ agencyRouter.post('/clients/:id/impersonate', requireAgencyAuth, async (req, res
     },
   });
 });
+
+// ─── Plans ───────────────────────────────────────────────────────────────────
+
+interface PlanRow {
+  id: string; name: string; slug: string; price_usd: string;
+  max_users: number; features: Record<string, unknown>;
+  is_active: boolean; sort_order: number; created_at: string;
+}
+
+agencyRouter.get('/plans', requireAgencyAuth, async (_req, res) => {
+  const rows = await query<PlanRow>('SELECT * FROM plans ORDER BY sort_order, created_at');
+  res.json({ plans: rows });
+});
+
+agencyRouter.post('/plans', requireAgencyAuth, async (req, res) => {
+  const { name, slug, priceUsd, maxUsers, features } = req.body ?? {};
+  if (!name || !slug) return res.status(400).json({ error: 'name y slug requeridos' });
+  const [plan] = await query<PlanRow>(
+    `INSERT INTO plans (name, slug, price_usd, max_users, features, sort_order)
+     VALUES ($1, $2, $3, $4, $5, (SELECT COALESCE(MAX(sort_order),0)+1 FROM plans))
+     RETURNING *`,
+    [name, slug, Number(priceUsd ?? 0), Number(maxUsers ?? 0), JSON.stringify(features ?? {})],
+  );
+  res.status(201).json(plan);
+});
+
+agencyRouter.patch('/plans/:id', requireAgencyAuth, async (req, res) => {
+  const { name, priceUsd, maxUsers, features, isActive } = req.body ?? {};
+  const fields: string[] = [];
+  const params: unknown[] = [];
+  if (name       !== undefined) { params.push(name);               fields.push(`name=$${params.length}`); }
+  if (priceUsd   !== undefined) { params.push(Number(priceUsd));   fields.push(`price_usd=$${params.length}`); }
+  if (maxUsers   !== undefined) { params.push(Number(maxUsers));   fields.push(`max_users=$${params.length}`); }
+  if (features   !== undefined) { params.push(JSON.stringify(features)); fields.push(`features=$${params.length}`); }
+  if (isActive   !== undefined) { params.push(Boolean(isActive));  fields.push(`is_active=$${params.length}`); }
+  if (!fields.length) return res.status(400).json({ error: 'Sin campos' });
+  params.push(req.params.id);
+  const [plan] = await query<PlanRow>(
+    `UPDATE plans SET ${fields.join(',')} WHERE id=$${params.length} RETURNING *`, params,
+  );
+  if (!plan) return res.status(404).json({ error: 'Plan no encontrado' });
+  res.json(plan);
+});
+
+// ─── Payments ────────────────────────────────────────────────────────────────
+
+interface PaymentRow {
+  id: string; client_id: string; amount_usd: string; status: string;
+  method: string | null; period_start: string | null; period_end: string | null;
+  paid_at: string | null; notes: string | null; created_at: string;
+}
+
+agencyRouter.get('/clients/:id/payments', requireAgencyAuth, async (req, res) => {
+  const rows = await query<PaymentRow>(
+    'SELECT * FROM agency_payments WHERE client_id=$1 ORDER BY created_at DESC',
+    [req.params.id],
+  );
+  res.json({ payments: rows });
+});
+
+agencyRouter.post('/clients/:id/payments', requireAgencyAuth, async (req, res) => {
+  const { amountUsd, status, method, periodStart, periodEnd, paidAt, notes } = req.body ?? {};
+  if (!amountUsd) return res.status(400).json({ error: 'amountUsd requerido' });
+  const [payment] = await query<PaymentRow>(
+    `INSERT INTO agency_payments (client_id,amount_usd,status,method,period_start,period_end,paid_at,notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    [req.params.id, Number(amountUsd), status ?? 'paid', method ?? null,
+     periodStart ?? null, periodEnd ?? null, paidAt ?? null, notes ?? null],
+  );
+  await logActivity(req.agencyAuth!.adminId, req.params.id, 'payment_recorded', { amount: amountUsd, status });
+  res.status(201).json(payment);
+});
+
+agencyRouter.patch('/clients/:id/payments/:pid', requireAgencyAuth, async (req, res) => {
+  const { status, paidAt, notes } = req.body ?? {};
+  const fields: string[] = [];
+  const params: unknown[] = [];
+  if (status !== undefined) { params.push(status);  fields.push(`status=$${params.length}`); }
+  if (paidAt !== undefined) { params.push(paidAt);  fields.push(`paid_at=$${params.length}`); }
+  if (notes  !== undefined) { params.push(notes);   fields.push(`notes=$${params.length}`); }
+  if (!fields.length) return res.status(400).json({ error: 'Sin campos' });
+  params.push(req.params.pid);
+  const [p] = await query<PaymentRow>(
+    `UPDATE agency_payments SET ${fields.join(',')} WHERE id=$${params.length} RETURNING *`, params,
+  );
+  if (!p) return res.status(404).json({ error: 'Pago no encontrado' });
+  res.json(p);
+});
+
+agencyRouter.delete('/clients/:id/payments/:pid', requireAgencyAuth, async (req, res) => {
+  await query('DELETE FROM agency_payments WHERE id=$1 AND client_id=$2', [req.params.pid, req.params.id]);
+  res.status(204).end();
+});
+
+// ─── Courtesy ────────────────────────────────────────────────────────────────
+
+agencyRouter.patch('/clients/:id/courtesy', requireAgencyAuth, async (req, res) => {
+  const { courtesyExtraUsers, courtesyFullAccess } = req.body ?? {};
+  const updated = await queryOne<AgencyClientRow>(
+    `UPDATE agency_clients
+     SET courtesy_extra_users=$1, courtesy_full_access=$2, updated_at=now()
+     WHERE id=$3 RETURNING *`,
+    [Number(courtesyExtraUsers ?? 0), Boolean(courtesyFullAccess ?? false), req.params.id],
+  );
+  if (!updated) return res.status(404).json({ error: 'Cuenta no encontrada' });
+  await logActivity(req.agencyAuth!.adminId, req.params.id, 'courtesy_updated',
+    { extraUsers: courtesyExtraUsers, fullAccess: courtesyFullAccess });
+  res.json(updated);
+});
+
+// ─── Provision ───────────────────────────────────────────────────────────────
 
 agencyRouter.post('/clients/:id/provision', requireAgencyAuth, async (req, res) => {
   const id = req.params.id as string;

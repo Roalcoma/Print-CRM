@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import {
   ArrowLeft, Building2, Mail, Phone, Globe, FileText, Edit3,
   Activity, CreditCard, X, Check, ExternalLink, RefreshCw,
-  Copy, Eye, EyeOff,
+  Copy, Eye, EyeOff, Plus, Gift, Trash2, ChevronDown,
 } from 'lucide-vue-next';
 import { agencyApi } from '../../agencyApi';
 
@@ -17,13 +17,33 @@ interface AgencyClient {
   phone: string | null;
   country: string | null;
   plan: string;
+  plan_id: string | null;
+  plan_name: string | null;
+  plan_price: string | null;
+  plan_max_users: number | null;
   status: string;
+  type: 'own' | 'client';
   trial_ends_at: string | null;
   monthly_value: string;
   notes: string | null;
+  courtesy_extra_users: number;
+  courtesy_full_access: boolean;
   created_at: string;
   updated_at: string;
   org_name: string | null;
+}
+
+interface Payment {
+  id: string;
+  client_id: string;
+  amount_usd: string;
+  status: 'pending' | 'paid' | 'overdue' | 'cancelled';
+  method: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  paid_at: string | null;
+  notes: string | null;
+  created_at: string;
 }
 
 interface OrgUser {
@@ -72,9 +92,27 @@ const editForm = ref({
   country: '',
   plan: 'starter' as string,
   status: 'active' as string,
+  type: 'client' as 'own' | 'client',
   monthlyValue: 0,
   notes: '',
 });
+
+// Payments
+const payments = ref<Payment[]>([]);
+const showPaymentModal = ref(false);
+const savingPayment = ref(false);
+const paymentForm = ref({
+  amountUsd: 0,
+  status: 'paid' as Payment['status'],
+  method: '',
+  periodStart: '',
+  periodEnd: '',
+  notes: '',
+});
+
+// Courtesy
+const savingCourtesy = ref(false);
+const courtesyForm = ref({ courtesyExtraUsers: 0, courtesyFullAccess: false });
 
 // Provision
 const provisioning = ref(false);
@@ -100,9 +138,17 @@ async function load() {
       country: res.client.country ?? '',
       plan: res.client.plan,
       status: res.client.status,
+      type: res.client.type,
       monthlyValue: Number(res.client.monthly_value),
       notes: res.client.notes ?? '',
     };
+    courtesyForm.value = {
+      courtesyExtraUsers: res.client.courtesy_extra_users ?? 0,
+      courtesyFullAccess: res.client.courtesy_full_access ?? false,
+    };
+    // Load payments separately
+    const pmRes = await agencyApi.get<{ payments: Payment[] }>(`/clients/${id}/payments`);
+    payments.value = pmRes.payments;
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Error al cargar';
   } finally {
@@ -116,7 +162,7 @@ async function saveEdit() {
   saveError.value = '';
   saving.value = true;
   try {
-    await agencyApi.patch(`/clients/${id}`, {
+    const updated = await agencyApi.patch<AgencyClient>(`/clients/${id}`, {
       ...editForm.value,
       monthlyValue: Number(editForm.value.monthlyValue),
       company: editForm.value.company || undefined,
@@ -124,12 +170,59 @@ async function saveEdit() {
       country: editForm.value.country || undefined,
       notes: editForm.value.notes || undefined,
     });
+    // Actualiza el cliente en memoria sin recargar (evita el flash del skeleton)
+    client.value = { ...client.value!, ...updated };
     showEdit.value = false;
-    await load();
   } catch (e) {
     saveError.value = e instanceof Error ? e.message : 'Error al guardar';
   } finally {
     saving.value = false;
+  }
+}
+
+async function addPayment() {
+  savingPayment.value = true;
+  try {
+    const p = await agencyApi.post<Payment>(`/clients/${id}/payments`, {
+      ...paymentForm.value,
+      amountUsd: Number(paymentForm.value.amountUsd),
+      periodStart: paymentForm.value.periodStart || undefined,
+      periodEnd: paymentForm.value.periodEnd || undefined,
+      notes: paymentForm.value.notes || undefined,
+    });
+    payments.value = [p, ...payments.value];
+    showPaymentModal.value = false;
+    paymentForm.value = { amountUsd: 0, status: 'paid', method: '', periodStart: '', periodEnd: '', notes: '' };
+  } catch (e) {
+    alert(e instanceof Error ? e.message : 'Error al registrar pago');
+  } finally {
+    savingPayment.value = false;
+  }
+}
+
+async function deletePayment(pid: string) {
+  if (!confirm('¿Eliminar este pago?')) return;
+  await agencyApi.del(`/clients/${id}/payments/${pid}`);
+  payments.value = payments.value.filter(p => p.id !== pid);
+}
+
+async function updatePaymentStatus(p: Payment, status: Payment['status']) {
+  const updated = await agencyApi.patch<Payment>(`/clients/${id}/payments/${p.id}`, {
+    status,
+    paidAt: status === 'paid' ? new Date().toISOString() : undefined,
+  });
+  payments.value = payments.value.map(x => x.id === updated.id ? updated : x);
+}
+
+async function saveCourtesy() {
+  savingCourtesy.value = true;
+  try {
+    const updated = await agencyApi.patch<AgencyClient>(`/clients/${id}/courtesy`, courtesyForm.value);
+    client.value = { ...client.value!, ...updated };
+  } catch (e) {
+    alert(e instanceof Error ? e.message : 'Error al guardar regalía');
+  } finally {
+    savingCourtesy.value = false;
   }
 }
 
@@ -228,6 +321,13 @@ async function openCRM() {
   }
 }
 
+const PAYMENT_STATUS: Record<string, { label: string; cls: string }> = {
+  paid:      { label: 'Pagado',    cls: 'bg-emerald-900/60 text-emerald-300 border-emerald-700/60' },
+  pending:   { label: 'Pendiente', cls: 'bg-amber-900/60 text-amber-300 border-amber-700/60' },
+  overdue:   { label: 'Vencido',   cls: 'bg-red-900/60 text-red-300 border-red-700/60' },
+  cancelled: { label: 'Cancelado', cls: 'bg-slate-700/60 text-slate-400 border-slate-600/60' },
+};
+
 function roleBadge(role: string) {
   const m: Record<string, string> = { owner: 'text-violet-400', admin: 'text-blue-400', member: 'text-slate-400' };
   return m[role] ?? 'text-slate-400';
@@ -242,7 +342,7 @@ function roleBadge(role: string) {
       @click="router.push('/agency/clients')"
     >
       <ArrowLeft class="h-4 w-4" />
-      Clientes
+      Cuentas CRM
     </button>
 
     <!-- Loading -->
@@ -266,6 +366,14 @@ function roleBadge(role: string) {
               <h2 class="text-2xl font-bold text-white">{{ client.name }}</h2>
               <p v-if="client.company" class="text-slate-400 text-sm mt-0.5">{{ client.company }}</p>
               <div class="flex flex-wrap gap-2 mt-2">
+                <span
+                  class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium"
+                  :class="client.type === 'own'
+                    ? 'bg-sky-900/60 text-sky-300 border-sky-700/60'
+                    : 'bg-slate-700/60 text-slate-300 border-slate-600/60'"
+                >
+                  {{ client.type === 'own' ? 'Propia' : 'Cliente' }}
+                </span>
                 <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium" :class="planBadge(client.plan)">
                   {{ planLabel(client.plan) }}
                 </span>
@@ -441,35 +549,113 @@ function roleBadge(role: string) {
           </div>
 
           <!-- Billing tab -->
-          <div v-if="activeTab === 'billing'" class="p-5 space-y-5">
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div v-if="activeTab === 'billing'" class="p-5 space-y-6">
+
+            <!-- Plan + stats -->
+            <div class="grid grid-cols-2 gap-4">
               <div class="rounded-lg bg-slate-800/40 border border-slate-700/40 p-4">
-                <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold mb-2">Plan Actual</p>
-                <span class="inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold" :class="planBadge(client.plan)">
-                  {{ planLabel(client.plan) }}
-                </span>
+                <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold mb-2">Plan</p>
+                <p class="text-base font-bold text-white">{{ client.plan_name ?? planLabel(client.plan) }}</p>
+                <p class="text-xs text-slate-500 mt-0.5">
+                  ${{ client.plan_price ?? client.monthly_value }}/mes ·
+                  {{ client.plan_max_users != null
+                    ? (client.plan_max_users >= 999 ? 'usuarios ilimitados' : `owner + ${client.plan_max_users} usuario${client.plan_max_users !== 1 ? 's' : ''}`)
+                    : '' }}
+                </p>
               </div>
               <div class="rounded-lg bg-slate-800/40 border border-slate-700/40 p-4">
-                <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold mb-2">MRR</p>
-                <p class="text-2xl font-bold text-emerald-400">{{ formatCurrency(client.monthly_value) }}</p>
-                <p class="text-xs text-slate-600 mt-0.5">por mes</p>
+                <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold mb-2">Pagos registrados</p>
+                <p class="text-2xl font-bold text-emerald-400">
+                  {{ formatCurrency(payments.filter(p => p.status === 'paid').reduce((s, p) => s + Number(p.amount_usd), 0)) }}
+                </p>
+                <p class="text-xs text-slate-500 mt-0.5">{{ payments.filter(p => p.status === 'paid').length }} pago(s)</p>
               </div>
             </div>
 
+            <!-- Regalías -->
+            <div class="rounded-lg border border-violet-700/30 bg-violet-900/10 p-4 space-y-3">
+              <div class="flex items-center gap-2">
+                <Gift class="h-4 w-4 text-violet-400" />
+                <p class="text-sm font-semibold text-violet-300">Regalías</p>
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="mb-1 block text-xs text-slate-400">Usuarios extra de cortesía</label>
+                  <input v-model.number="courtesyForm.courtesyExtraUsers" type="number" min="0"
+                    class="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none" />
+                </div>
+                <div class="flex flex-col justify-end">
+                  <label class="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" v-model="courtesyForm.courtesyFullAccess" class="rounded border-slate-600 bg-slate-800 accent-violet-500 h-4 w-4" />
+                    <span class="text-sm text-slate-300">Acceso completo al CRM</span>
+                  </label>
+                </div>
+              </div>
+              <button
+                :disabled="savingCourtesy"
+                class="rounded-lg bg-violet-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-60 transition-colors cursor-pointer"
+                @click="saveCourtesy"
+              >{{ savingCourtesy ? 'Guardando…' : 'Guardar regalías' }}</button>
+            </div>
+
+            <!-- Historial de pagos -->
             <div>
-              <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold mb-3">Cambiar Plan</p>
-              <div class="grid grid-cols-3 gap-2">
+              <div class="flex items-center justify-between mb-3">
+                <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Historial de pagos</p>
                 <button
-                  v-for="plan in ['starter', 'pro', 'enterprise']"
-                  :key="plan"
-                  class="rounded-lg border py-2.5 text-sm font-medium transition-all cursor-pointer"
-                  :class="client.plan === plan
-                    ? 'border-violet-500 bg-violet-900/20 text-violet-300'
-                    : 'border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-200'"
-                  @click="editForm.plan = plan; saveEdit()"
+                  class="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 transition-colors cursor-pointer"
+                  @click="showPaymentModal = true"
                 >
-                  {{ planLabel(plan) }}
+                  <Plus class="h-3.5 w-3.5" />
+                  Registrar pago
                 </button>
+              </div>
+
+              <div v-if="payments.length === 0" class="py-6 text-center text-slate-500 text-sm">
+                Sin pagos registrados aún
+              </div>
+
+              <div v-else class="space-y-2">
+                <div
+                  v-for="p in payments"
+                  :key="p.id"
+                  class="flex items-center gap-3 rounded-lg bg-slate-800/40 border border-slate-700/40 px-3 py-2.5"
+                >
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-semibold text-white">${{ Number(p.amount_usd).toFixed(2) }}</span>
+                      <span
+                        class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold"
+                        :class="PAYMENT_STATUS[p.status]?.cls ?? ''"
+                      >{{ PAYMENT_STATUS[p.status]?.label }}</span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-0.5">
+                      {{ formatDate(p.created_at) }}
+                      <span v-if="p.method"> · {{ p.method }}</span>
+                      <span v-if="p.period_start"> · {{ p.period_start }} → {{ p.period_end }}</span>
+                    </p>
+                    <p v-if="p.notes" class="text-xs text-slate-600 mt-0.5 italic">{{ p.notes }}</p>
+                  </div>
+                  <div class="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      v-if="p.status !== 'paid'"
+                      class="rounded p-1 text-slate-500 hover:text-emerald-400 hover:bg-slate-700 cursor-pointer transition-colors"
+                      title="Marcar como pagado"
+                      @click="updatePaymentStatus(p, 'paid')"
+                    ><Check class="h-3.5 w-3.5" /></button>
+                    <button
+                      v-if="p.status === 'pending'"
+                      class="rounded p-1 text-slate-500 hover:text-red-400 hover:bg-slate-700 cursor-pointer transition-colors"
+                      title="Marcar como vencido"
+                      @click="updatePaymentStatus(p, 'overdue')"
+                    ><ChevronDown class="h-3.5 w-3.5" /></button>
+                    <button
+                      class="rounded p-1 text-slate-500 hover:text-red-400 hover:bg-slate-700 cursor-pointer transition-colors"
+                      title="Eliminar"
+                      @click="deletePayment(p.id)"
+                    ><Trash2 class="h-3.5 w-3.5" /></button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -483,7 +669,7 @@ function roleBadge(role: string) {
         <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="showEdit = false"></div>
         <div class="relative z-10 w-full max-w-lg rounded-2xl border border-slate-700/60 bg-slate-900 shadow-2xl">
           <div class="flex items-center justify-between border-b border-slate-800/60 px-6 py-4">
-            <h3 class="font-bold text-white">Editar Cliente</h3>
+            <h3 class="font-bold text-white">Editar Cuenta CRM</h3>
             <button class="text-slate-500 hover:text-slate-300 cursor-pointer" @click="showEdit = false">
               <X class="h-5 w-5" />
             </button>
@@ -513,6 +699,23 @@ function roleBadge(role: string) {
                 <input v-model="editForm.country" class="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none" />
               </div>
             </div>
+            <!-- Tipo de cuenta -->
+            <div>
+              <label class="mb-1 block text-xs font-medium text-slate-400">Tipo de cuenta</label>
+              <div class="grid grid-cols-2 gap-2">
+                <button
+                  v-for="opt in [{ value: 'client', label: 'Cliente' }, { value: 'own', label: 'Propia' }]"
+                  :key="opt.value"
+                  type="button"
+                  class="rounded-lg border px-3 py-2 text-sm font-medium transition-all cursor-pointer"
+                  :class="editForm.type === opt.value
+                    ? 'border-violet-500 bg-violet-900/20 text-violet-300'
+                    : 'border-slate-700 text-slate-400 hover:border-slate-600'"
+                  @click="editForm.type = opt.value as 'own' | 'client'"
+                >{{ opt.label }}</button>
+              </div>
+            </div>
+
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <label class="mb-1 block text-xs font-medium text-slate-400">Plan</label>
@@ -545,6 +748,71 @@ function roleBadge(role: string) {
               <button type="button" class="flex-1 rounded-lg border border-slate-700 py-2 text-sm text-slate-400 hover:text-slate-200 cursor-pointer" @click="showEdit = false">Cancelar</button>
               <button type="submit" :disabled="saving" class="flex-1 rounded-lg bg-violet-600 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-60 cursor-pointer transition-colors">
                 {{ saving ? 'Guardando…' : 'Guardar' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Add payment modal -->
+    <Teleport to="body">
+      <div v-if="showPaymentModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="showPaymentModal = false"></div>
+        <div class="relative z-10 w-full max-w-md rounded-2xl border border-slate-700/60 bg-slate-900 shadow-2xl">
+          <div class="flex items-center justify-between border-b border-slate-800/60 px-6 py-4">
+            <h3 class="font-bold text-white">Registrar pago</h3>
+            <button class="text-slate-500 hover:text-slate-300 cursor-pointer" @click="showPaymentModal = false">
+              <X class="h-5 w-5" />
+            </button>
+          </div>
+          <form class="p-6 space-y-4" @submit.prevent="addPayment">
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-400">Monto (USD) *</label>
+                <div class="relative">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+                  <input v-model.number="paymentForm.amountUsd" type="number" min="0" step="0.01" required
+                    class="w-full rounded-lg border border-slate-700 bg-slate-800/60 pl-7 pr-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none" />
+                </div>
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-400">Estado</label>
+                <select v-model="paymentForm.status"
+                  class="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none cursor-pointer">
+                  <option value="paid">Pagado</option>
+                  <option value="pending">Pendiente</option>
+                  <option value="overdue">Vencido</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-slate-400">Método de pago</label>
+              <input v-model="paymentForm.method" placeholder="Transferencia, efectivo, Zelle…"
+                class="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none" />
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-400">Período desde</label>
+                <input v-model="paymentForm.periodStart" type="date"
+                  class="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none" />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-400">Período hasta</label>
+                <input v-model="paymentForm.periodEnd" type="date"
+                  class="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none" />
+              </div>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-slate-400">Notas</label>
+              <textarea v-model="paymentForm.notes" rows="2" placeholder="Referencia, observaciones…"
+                class="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none resize-none"></textarea>
+            </div>
+            <div class="flex gap-2 pt-1">
+              <button type="button" class="flex-1 rounded-lg border border-slate-700 py-2 text-sm text-slate-400 hover:text-slate-200 cursor-pointer" @click="showPaymentModal = false">Cancelar</button>
+              <button type="submit" :disabled="savingPayment"
+                class="flex-1 rounded-lg bg-violet-600 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-60 cursor-pointer transition-colors">
+                {{ savingPayment ? 'Guardando…' : 'Registrar pago' }}
               </button>
             </div>
           </form>
