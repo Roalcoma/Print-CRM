@@ -25,10 +25,15 @@ const total     = ref(0);
 const page      = ref(1);
 const limit     = ref(50);
 
-// Filters & sort
-const filterStatus  = ref('');
-const filterSource  = ref('');
-const sortBy        = ref('created_at');
+// Filters & sort — persistidos en localStorage
+const CONTACTS_PREF_KEY = 'crm.contacts.prefs';
+function loadContactPrefs() {
+  try { return JSON.parse(localStorage.getItem(CONTACTS_PREF_KEY) || '{}'); } catch { return {}; }
+}
+const _cp = loadContactPrefs();
+const filterStatus  = ref<string>(_cp.filterStatus || '');
+const filterSource  = ref<string>(_cp.filterSource || '');
+const sortBy        = ref<string>(_cp.sortBy       || 'created_at');
 
 // Bulk selection
 const selected   = ref<Set<string>>(new Set());
@@ -100,7 +105,11 @@ onMounted(async () => {
 let searchTimer: ReturnType<typeof setTimeout>;
 function onSearch() { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page.value = 1; load(); }, 250); }
 
-watch([filterStatus, filterSource, sortBy], () => { page.value = 1; load(); });
+watch([filterStatus, filterSource, sortBy], ([status, source, sort]) => {
+  localStorage.setItem(CONTACTS_PREF_KEY, JSON.stringify({ filterStatus: status, filterSource: source, sortBy: sort }));
+  page.value = 1;
+  load();
+});
 
 // ── tags ──────────────────────────────────────────────────────────────────────
 function addTag(raw: string) {
@@ -452,22 +461,24 @@ const statusLabel: Record<string, string> = {
                 <div class="min-w-0">
                   <div class="flex items-center gap-2">
                     <p class="truncate font-medium text-slate-900">{{ c.first_name }} {{ c.last_name ?? '' }}</p>
+                    <!-- Badge estado: solo visible en móvil donde la columna Estado está oculta -->
                     <span
                       v-if="c.status && c.status !== 'active'"
-                      class="hidden flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium sm:inline-block"
+                      class="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium md:hidden"
                       :class="statusBadge[c.status] ?? 'bg-slate-100 text-slate-500'"
                     >{{ statusLabel[c.status] }}</span>
                   </div>
-                  <div class="mt-0.5 flex items-center gap-2">
-                    <p v-if="c.company" class="truncate text-xs text-slate-400">{{ c.company }}<span v-if="c.position" class="hidden sm:inline"> · {{ c.position }}</span></p>
-                    <template v-else>
+                  <div class="mt-0.5">
+                    <p v-if="c.company" class="truncate text-xs text-slate-400">{{ c.company }}<span v-if="c.position"> · {{ c.position }}</span></p>
+                    <!-- Teléfono/email: solo en móvil donde esas columnas están ocultas -->
+                    <div v-else class="flex items-center gap-1 md:hidden">
                       <Phone v-if="c.phone" class="h-3 w-3 flex-shrink-0 text-slate-300" />
                       <p v-if="c.phone" class="truncate text-xs text-slate-400">{{ c.phone }}</p>
                       <template v-else-if="c.email">
                         <Mail class="h-3 w-3 flex-shrink-0 text-slate-300" />
                         <p class="truncate text-xs text-slate-400">{{ c.email }}</p>
                       </template>
-                    </template>
+                    </div>
                   </div>
                 </div>
               </div>

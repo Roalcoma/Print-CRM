@@ -155,12 +155,27 @@ const SORT_OPTIONS = [
   { key: 'updated_at',        label: 'Última actualización' },
   { key: 'last_stage_change', label: 'Último cambio de etapa' },
 ];
-const sortBy  = ref<string>('');
-const sortDir = ref<'asc' | 'desc'>('desc');
-const hasSort  = computed(() => !!sortBy.value);
+// Sort — persistido en localStorage; default: más reciente primero
+const OPPS_PREF_KEY = 'crm.opps.sort';
+function loadOppSort() {
+  try { return JSON.parse(localStorage.getItem(OPPS_PREF_KEY) || '{}'); } catch { return {}; }
+}
+const _os = loadOppSort();
+const sortBy  = ref<string>(_os.sortBy  ?? 'created_at');
+const sortDir = ref<'asc' | 'desc'>(_os.sortDir ?? 'desc');
+const hasSort = computed(() => sortBy.value !== 'created_at' || sortDir.value !== 'desc');
 
-function clearSort() { sortBy.value = ''; sortDir.value = 'desc'; loadOpps(); }
-function toggleSortDir() { sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'; loadOpps(); }
+function saveOppSort() {
+  localStorage.setItem(OPPS_PREF_KEY, JSON.stringify({ sortBy: sortBy.value, sortDir: sortDir.value }));
+}
+function clearSort() {
+  sortBy.value = 'created_at'; sortDir.value = 'desc';
+  saveOppSort(); loadOpps();
+}
+function toggleSortDir() {
+  sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
+  saveOppSort(); loadOpps();
+}
 
 async function loadOpps() {
   if (!currentId.value) return;
@@ -445,7 +460,7 @@ async function deleteNote(id: string) {
                 <button v-for="opt in SORT_OPTIONS" :key="opt.key"
                   class="flex w-full cursor-pointer items-center justify-between px-4 py-2 text-[13px] transition-colors"
                   :class="sortBy === opt.key ? 'bg-primary/5 font-semibold text-primary' : 'text-slate-700 hover:bg-slate-50'"
-                  @click="sortBy === opt.key ? toggleSortDir() : (sortBy = opt.key, sortDir = 'desc', loadOpps())">
+                  @click="sortBy === opt.key ? toggleSortDir() : (sortBy = opt.key, sortDir = 'desc', saveOppSort(), loadOpps())">
                   <span>{{ opt.label }}</span>
                   <span v-if="sortBy === opt.key" class="flex items-center gap-1 text-[11px] font-medium">
                     <component :is="sortDir === 'asc' ? ArrowUp : ArrowDown" class="h-3.5 w-3.5" />
@@ -494,7 +509,7 @@ async function deleteNote(id: string) {
             <button v-for="opt in SORT_OPTIONS" :key="opt.key"
               class="flex w-full cursor-pointer items-center justify-between px-3 py-2 text-[13px] transition-colors"
               :class="sortBy === opt.key ? 'font-semibold text-primary' : 'text-slate-700 hover:bg-slate-50'"
-              @click="sortBy === opt.key ? toggleSortDir() : (sortBy = opt.key, sortDir = 'desc', loadOpps())">
+              @click="sortBy === opt.key ? toggleSortDir() : (sortBy = opt.key, sortDir = 'desc', saveOppSort(), loadOpps())">
               <span>{{ opt.label }}</span>
               <component v-if="sortBy === opt.key" :is="sortDir === 'asc' ? ArrowUp : ArrowDown" class="h-3.5 w-3.5" />
             </button>
@@ -695,12 +710,11 @@ async function deleteNote(id: string) {
 
     <!-- Tablero kanban -->
     <LoadingState v-if="loading" label="Cargando oportunidades…" />
-    <div v-else-if="viewMode === 'board'" class="flex flex-1 gap-3 overflow-x-auto bg-slate-100/60 p-3 sm:gap-4 sm:p-6" style="scroll-snap-type: x mandatory;">
+    <div v-else-if="viewMode === 'board'" class="flex flex-1 gap-3 overflow-x-auto bg-slate-100/60 p-3 sm:gap-4 sm:p-6">
       <div
         v-for="stage in current?.stages ?? []"
         :key="stage.id"
         class="flex w-[calc(100vw-3.5rem)] flex-shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card sm:w-80"
-        style="scroll-snap-align: start;"
         @dragover.prevent
         @drop="onDrop(stage.id)"
       >
