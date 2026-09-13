@@ -77,17 +77,29 @@ opportunitiesRouter.get('/', async (req, res) => {
 });
 
 // ── Listado con búsqueda + filtros ────────────────────────────────────────────
+const SORT_COLS: Record<string, string> = {
+  title:           'o.title',
+  status:          'o.status',
+  value:           'o.value::numeric',
+  source:          'o.source',
+  created_at:      'o.created_at',
+  updated_at:      'o.updated_at',
+  last_stage_change: 'o.stage_changed_at',
+};
+
 const querySchema = z.object({
   pipelineId: z.string().uuid(),
   search: z.string().optional(),
   match: z.enum(['AND', 'OR']).optional(),
   filters: z.array(z.object({ field: z.string(), op: z.string(), value: z.unknown().optional() })).optional(),
+  sort_by:  z.string().optional(),
+  sort_dir: z.enum(['asc', 'desc']).optional(),
 });
 
 opportunitiesRouter.post('/query', async (req, res) => {
   const parsed = querySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
-  const { pipelineId, search, match, filters } = parsed.data;
+  const { pipelineId, search, match, filters, sort_by, sort_dir } = parsed.data;
 
   const where = ['o.organization_id = $1', 'o.pipeline_id = $2'];
   const params: unknown[] = [req.auth!.organizationId, pipelineId];
@@ -101,7 +113,13 @@ opportunitiesRouter.post('/query', async (req, res) => {
     if (f.sql) { where.push(f.sql); params.push(...f.params); }
   }
 
-  const rows = await query(`${BASE_SELECT} WHERE ${where.join(' AND ')} ORDER BY o.position, o.created_at`, params);
+  const sortCol = (sort_by && SORT_COLS[sort_by]) ? SORT_COLS[sort_by] : null;
+  const dir = sort_dir === 'asc' ? 'ASC' : 'DESC';
+  const orderBy = sortCol
+    ? `${sortCol} ${dir} NULLS LAST`
+    : 'o.position, o.created_at';
+
+  const rows = await query(`${BASE_SELECT} WHERE ${where.join(' AND ')} ORDER BY ${orderBy}`, params);
   res.json(rows);
 });
 
