@@ -208,8 +208,24 @@ function actionDot(action: string) {
   return 'bg-slate-500';
 }
 
-function openCRM() {
-  window.open('/', '_blank');
+async function openCRM() {
+  if (!client.value?.organization_id) {
+    alert('Este cliente no tiene CRM provisionado. Usa "Provisionar CRM" primero.');
+    return;
+  }
+  try {
+    const res = await agencyApi.post<{
+      token: string;
+      client: { id: string; name: string; company: string | null; email: string };
+    }>(`/clients/${id}/impersonate`);
+
+    const { setToken } = await import('../../api');
+    setToken(res.token);
+    localStorage.setItem('crm_impersonated_client', JSON.stringify(res.client));
+    window.location.href = '/dashboard';
+  } catch (e) {
+    alert(e instanceof Error ? e.message : 'Error al acceder al CRM');
+  }
 }
 
 function roleBadge(role: string) {

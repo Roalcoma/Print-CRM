@@ -5,6 +5,7 @@ export interface AuthClaims {
   userId: string;
   organizationId: string;
   role: string;
+  impersonatedByAgency?: boolean;
 }
 
 export function signToken(claims: AuthClaims): string {

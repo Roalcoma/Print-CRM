@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router';
-import { LayoutDashboard, Users, LogOut, Building2, ChevronRight, Menu } from 'lucide-vue-next';
+import { LayoutDashboard, Users, LogOut, Building2, ChevronRight, Menu, ChevronDown } from 'lucide-vue-next';
 import { useAgencyStore } from '../stores/agency';
+import AccountSwitcher from '../components/AccountSwitcher.vue';
+import Dropdown from '../components/Dropdown.vue';
 
 const agency = useAgencyStore();
 const router = useRouter();
@@ -59,16 +61,22 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile));
       <aside v-show="!isMobile || mobileOpen"
         class="flex w-[220px] flex-shrink-0 flex-col bg-[#0f172a] shadow-2xl"
         :class="isMobile ? 'fixed inset-y-0 left-0 z-[60]' : ''">
-      <!-- Logo -->
-      <div class="flex h-16 items-center gap-3 border-b border-slate-800/60 px-5">
-        <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-900/50">
-          <Building2 class="h-5 w-5 text-white" />
-        </div>
-        <div class="leading-tight">
-          <p class="text-[13px] font-bold tracking-wide text-white">AGENCY</p>
-          <p class="text-[10px] text-slate-500 uppercase tracking-widest">Backoffice</p>
-        </div>
-      </div>
+      <!-- Logo + Account Switcher -->
+      <Dropdown width="300" triggerClass="block w-full">
+        <template #trigger="{ open }">
+          <div class="flex h-16 cursor-pointer items-center gap-3 border-b border-slate-800/60 px-5 hover:bg-slate-800/30 transition-colors">
+            <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-900/50">
+              <Building2 class="h-5 w-5 text-white" />
+            </div>
+            <div class="min-w-0 flex-1 leading-tight">
+              <p class="text-[13px] font-bold tracking-wide text-white">AGENCY</p>
+              <p class="text-[10px] text-slate-500 uppercase tracking-widest">Backoffice</p>
+            </div>
+            <ChevronDown class="h-4 w-4 flex-shrink-0 text-slate-600 transition-transform" :class="open ? 'rotate-180' : ''" />
+          </div>
+        </template>
+        <AccountSwitcher @close="() => {}" />
+      </Dropdown>
 
       <!-- Navigation -->
       <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-1">

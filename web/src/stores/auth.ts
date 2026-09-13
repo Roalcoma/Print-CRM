@@ -3,12 +3,29 @@ import { ref, computed } from 'vue';
 import { api, setToken, getToken } from '../api';
 import type { User } from '../types';
 
+function decodeJwt(token: string): Record<string, unknown> {
+  try { return JSON.parse(atob(token.split('.')[1])); } catch { return {}; }
+}
+
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null);
   const preferences = ref<Record<string, unknown>>({});
   const isAuthenticated = ref(!!getToken());
 
-  const isAdmin = computed(() => user.value?.role === 'owner' || user.value?.role === 'admin');
+  const isAdmin = computed(() => user.value?.role === 'owner' || user.value?.role === 'admin')
+
+  const isImpersonated = computed(() => {
+    const t = getToken();
+    return !!t && decodeJwt(t).impersonatedByAgency === true;
+  })
+
+  const impersonatedClient = computed<{ id: string; name: string; company: string | null } | null>(() => {
+    if (!isImpersonated.value) return null;
+    try {
+      const raw = localStorage.getItem('crm_impersonated_client');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
   // ¿El usuario puede acceder a este módulo? Admin/owner siempre; el resto según permisos.
   function can(module: string) {
     if (isAdmin.value) return true;
@@ -61,5 +78,5 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated.value = false;
   }
 
-  return { user, preferences, isAuthenticated, isAdmin, can, login, register, init, savePreferences, logout };
+  return { user, preferences, isAuthenticated, isAdmin, isImpersonated, impersonatedClient, can, login, register, init, savePreferences, logout };
 });

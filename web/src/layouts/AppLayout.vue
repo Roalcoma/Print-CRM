@@ -8,6 +8,8 @@ import {
 } from 'lucide-vue-next';
 import { useAuthStore } from '../stores/auth';
 import NotificationsDropdown from '../components/NotificationsDropdown.vue';
+import AccountSwitcher from '../components/AccountSwitcher.vue';
+import Dropdown from '../components/Dropdown.vue';
 
 const auth   = useAuthStore();
 const router = useRouter();
@@ -273,6 +275,18 @@ const s = computed(() => isDark.value
               class="w-44 rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm transition-all focus:border-primary focus:bg-white focus:shadow-sm focus:ring-2 focus:ring-primary/20 focus:outline-none lg:w-52"
             />
           </div>
+
+          <!-- Account switcher (solo cuando es sesión de agencia) -->
+          <Dropdown v-if="auth.isImpersonated" width="300" align="right">
+            <template #trigger>
+              <button class="flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 transition-colors cursor-pointer">
+                <span class="h-2 w-2 rounded-full bg-violet-500 animate-pulse"></span>
+                {{ auth.impersonatedClient?.company || auth.impersonatedClient?.name || 'Cliente' }}
+                <ChevronDown class="h-3.5 w-3.5 text-violet-400" />
+              </button>
+            </template>
+            <AccountSwitcher :current-client-id="auth.impersonatedClient?.id" @close="() => {}" />
+          </Dropdown>
 
           <!-- Notifications -->
           <NotificationsDropdown />

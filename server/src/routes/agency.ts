@@ -412,6 +412,53 @@ agencyRouter.delete('/clients/:id', requireAgencyAuth, async (req, res) => {
   res.json(updated);
 });
 
+// ─── Impersonation ───────────────────────────────────────────────────────────
+
+agencyRouter.post('/clients/:id/impersonate', requireAgencyAuth, async (req, res) => {
+  const id = req.params.id as string;
+  const client = await queryOne<AgencyClientRow>(
+    'SELECT * FROM agency_clients WHERE id = $1',
+    [id],
+  );
+  if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
+  if (!client.organization_id) return res.status(400).json({ error: 'Este cliente no tiene CRM provisionado aún' });
+
+  const owner = await queryOne<{ id: string; email: string; name: string; role: string }>(
+    `SELECT id, email, name, role FROM users
+     WHERE organization_id = $1 AND role = 'owner'
+     ORDER BY created_at
+     LIMIT 1`,
+    [client.organization_id],
+  );
+  if (!owner) return res.status(400).json({ error: 'No se encontró usuario owner para esta organización' });
+
+  const crmToken = jwt.sign(
+    {
+      userId: owner.id,
+      organizationId: client.organization_id,
+      role: owner.role,
+      impersonatedByAgency: true,
+    },
+    env.jwtSecret,
+    { expiresIn: '8h' },
+  );
+
+  await logActivity(req.agencyAuth!.adminId, id, 'crm_accessed', {
+    orgId: client.organization_id,
+    ownerEmail: owner.email,
+  });
+
+  res.json({
+    token: crmToken,
+    client: {
+      id: client.id,
+      name: client.name,
+      company: client.company,
+      email: client.email,
+    },
+  });
+});
+
 agencyRouter.post('/clients/:id/provision', requireAgencyAuth, async (req, res) => {
   const id = req.params.id as string;
   const client = await queryOne<AgencyClientRow>('SELECT * FROM agency_clients WHERE id = $1', [id]);

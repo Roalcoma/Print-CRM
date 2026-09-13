@@ -469,72 +469,58 @@ const statusLabel: Record<string, string> = {
     <!-- ── Table ───────────────────────────────────────────────────────────── -->
     <LoadingState v-if="loading" label="Cargando contactos…" />
 
-    <div v-else class="flex-1 overflow-auto">
-      <table class="w-full text-sm">
-        <thead class="sticky top-0 z-[1] border-b border-slate-200 bg-white text-left">
-          <tr>
-            <th class="w-10 px-4 py-3">
-              <input
-                type="checkbox"
-                :checked="allChecked"
-                @change="toggleAll"
-                class="cursor-pointer rounded border-slate-300 accent-primary"
-              />
+    <div v-else class="flex-1 overflow-auto bg-slate-50/40">
+      <table class="w-full">
+        <!-- Header fijo -->
+        <thead class="sticky top-0 z-[1]">
+          <tr class="border-b-2 border-slate-200 bg-white">
+            <th class="w-10 pl-4 pr-2 py-3">
+              <input type="checkbox" :checked="allChecked" @change="toggleAll"
+                class="cursor-pointer rounded border-slate-300 accent-primary" />
             </th>
-            <th class="px-4 py-3 text-xs font-semibold text-slate-500">Contacto</th>
-            <th class="hidden px-4 py-3 text-xs font-semibold text-slate-500 md:table-cell">Email</th>
-            <th class="hidden px-4 py-3 text-xs font-semibold text-slate-500 lg:table-cell">Teléfono</th>
-            <th class="hidden px-4 py-3 text-xs font-semibold text-slate-500 xl:table-cell">Etiquetas</th>
-            <th class="hidden px-4 py-3 text-xs font-semibold text-slate-500 xl:table-cell">Origen</th>
-            <th class="hidden px-4 py-3 text-xs font-semibold text-slate-500 xl:table-cell">Estado</th>
-            <th class="hidden px-4 py-3 text-xs font-semibold text-slate-500 xl:table-cell">Creado</th>
-            <th class="px-4 py-3 w-10"></th>
+            <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Contacto</th>
+            <th class="hidden px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 md:table-cell">Email</th>
+            <th class="hidden px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 lg:table-cell">Teléfono</th>
+            <th class="hidden px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 xl:table-cell">Etiquetas</th>
+            <th class="hidden px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 xl:table-cell">Origen</th>
+            <th class="hidden px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 xl:table-cell">Estado</th>
+            <th class="hidden px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 xl:table-cell">Creado</th>
+            <th class="w-10 pr-4 py-3"></th>
           </tr>
         </thead>
+
         <tbody>
           <tr
             v-for="c in contacts"
             :key="c.id"
-            class="cursor-pointer border-b border-slate-100 transition-colors last:border-0 hover:bg-[#F69008]/5"
-            :class="{ 'bg-[#F69008]/8': selected.has(c.id) }"
+            class="group cursor-pointer border-b border-slate-100 bg-white transition-all duration-100 last:border-0 hover:bg-[#FFF8EE] hover:shadow-[inset_3px_0_0_#F69008]"
+            :class="selected.has(c.id) ? 'bg-[#FFF8EE] shadow-[inset_3px_0_0_#F69008]' : ''"
             @click="router.push(`/contacts/${c.id}`)"
           >
             <!-- Checkbox -->
-            <td class="px-4 py-3" @click.stop>
-              <input
-                type="checkbox"
-                :checked="selected.has(c.id)"
-                @change="toggleOne(c.id, $event)"
-                class="cursor-pointer rounded border-slate-300 accent-primary"
-              />
+            <td class="w-10 pl-4 pr-2 py-0" @click.stop>
+              <input type="checkbox" :checked="selected.has(c.id)" @change="toggleOne(c.id, $event)"
+                class="cursor-pointer rounded border-slate-300 accent-primary" />
             </td>
 
-            <!-- Avatar + nombre + info -->
-            <td class="px-4 py-2.5">
+            <!-- Avatar + nombre -->
+            <td class="px-3 py-2.5">
               <div class="flex items-center gap-3">
                 <div
-                  class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-sm"
+                  class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-[11px] font-bold text-white shadow-sm"
                   :style="{ backgroundColor: avatarBg(c) }"
                 >{{ initials(c) }}</div>
                 <div class="min-w-0">
-                  <div class="flex items-center gap-2">
-                    <p class="truncate font-medium text-slate-900">{{ c.first_name }} {{ c.last_name ?? '' }}</p>
-                    <!-- Badge estado: solo visible en móvil donde la columna Estado está oculta -->
-                    <span
-                      v-if="c.status && c.status !== 'active'"
-                      class="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium md:hidden"
-                      :class="statusBadge[c.status] ?? 'bg-slate-100 text-slate-500'"
-                    >{{ statusLabel[c.status] }}</span>
-                  </div>
-                  <div class="mt-0.5">
-                    <p v-if="c.company" class="truncate text-xs text-slate-400">{{ c.company }}<span v-if="c.position"> · {{ c.position }}</span></p>
-                    <!-- Teléfono/email: solo en móvil donde esas columnas están ocultas -->
-                    <div v-else class="flex items-center gap-1 md:hidden">
+                  <p class="truncate text-[13px] font-semibold leading-tight text-slate-900">{{ c.first_name }} {{ c.last_name ?? '' }}</p>
+                  <div class="mt-0.5 flex items-center gap-1.5">
+                    <p v-if="c.company" class="truncate text-[11px] text-slate-400">{{ c.company }}<span v-if="c.position" class="text-slate-300"> · {{ c.position }}</span></p>
+                    <span v-if="c.status && c.status !== 'active'" class="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold md:hidden" :class="statusBadge[c.status]">{{ statusLabel[c.status] }}</span>
+                    <div v-if="!c.company" class="flex items-center gap-1 md:hidden">
                       <Phone v-if="c.phone" class="h-3 w-3 flex-shrink-0 text-slate-300" />
-                      <p v-if="c.phone" class="truncate text-xs text-slate-400">{{ c.phone }}</p>
+                      <p v-if="c.phone" class="truncate text-[11px] text-slate-400">{{ c.phone }}</p>
                       <template v-else-if="c.email">
                         <Mail class="h-3 w-3 flex-shrink-0 text-slate-300" />
-                        <p class="truncate text-xs text-slate-400">{{ c.email }}</p>
+                        <p class="truncate text-[11px] text-slate-400">{{ c.email }}</p>
                       </template>
                     </div>
                   </div>
@@ -543,63 +529,79 @@ const statusLabel: Record<string, string> = {
             </td>
 
             <!-- Email -->
-            <td class="hidden px-4 py-3 text-slate-600 md:table-cell">
-              <a v-if="c.email" :href="`mailto:${c.email}`" class="hover:text-primary hover:underline" @click.stop>{{ c.email }}</a>
-              <span v-else class="text-slate-300">—</span>
+            <td class="hidden px-3 py-2.5 md:table-cell">
+              <a v-if="c.email" :href="`mailto:${c.email}`" class="flex items-center gap-1.5 text-slate-500 transition-colors hover:text-primary" @click.stop>
+                <Mail class="h-3.5 w-3.5 flex-shrink-0 text-slate-300" />
+                <span class="truncate text-[12px]">{{ c.email }}</span>
+              </a>
+              <span v-else class="text-slate-200 select-none text-sm">—</span>
             </td>
 
             <!-- Phone -->
-            <td class="hidden px-4 py-3 text-slate-600 lg:table-cell">
-              <a v-if="c.phone" :href="`tel:${c.phone}`" class="hover:text-primary" @click.stop>{{ c.phone }}</a>
-              <span v-else class="text-slate-300">—</span>
+            <td class="hidden px-3 py-2.5 lg:table-cell">
+              <a v-if="c.phone" :href="`tel:${c.phone}`" class="flex items-center gap-1.5 text-slate-500 transition-colors hover:text-primary" @click.stop>
+                <Phone class="h-3.5 w-3.5 flex-shrink-0 text-slate-300" />
+                <span class="text-[12px]">{{ c.phone }}</span>
+              </a>
+              <span v-else class="text-slate-200 select-none text-sm">—</span>
             </td>
 
             <!-- Tags -->
-            <td class="hidden px-4 py-3 xl:table-cell">
+            <td class="hidden px-3 py-2.5 xl:table-cell">
               <div v-if="c.tags?.length" class="flex flex-wrap gap-1">
-                <span v-for="t in c.tags.slice(0, 3)" :key="t" class="rounded-sm bg-[#F69008]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#D97706]">{{ t }}</span>
-                <span v-if="c.tags.length > 3" class="rounded-sm bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">+{{ c.tags.length - 3 }}</span>
+                <span v-for="t in c.tags.slice(0, 3)" :key="t"
+                  class="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                  :class="t === 'whatsapp' ? 'bg-[#25D366]/10 text-[#128C7E]' : 'bg-[#F69008]/10 text-[#D97706]'"
+                >{{ t }}</span>
+                <span v-if="c.tags.length > 3" class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-400">+{{ c.tags.length - 3 }}</span>
               </div>
-              <span v-else class="text-slate-300">—</span>
+              <span v-else class="text-slate-200 select-none text-sm">—</span>
             </td>
 
             <!-- Source -->
-            <td class="hidden px-4 py-3 xl:table-cell">
-              <span v-if="c.source" class="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-600">
-                {{ sourceLabel[c.source] ?? c.source }}
-              </span>
-              <span v-else class="text-slate-300">—</span>
+            <td class="hidden px-3 py-2.5 xl:table-cell">
+              <span v-if="c.source"
+                class="rounded-full px-2.5 py-1 text-[10px] font-semibold"
+                :class="c.source === 'whatsapp' ? 'bg-[#25D366]/10 text-[#128C7E]' : 'bg-blue-50 text-blue-600'"
+              >{{ sourceLabel[c.source] ?? c.source }}</span>
+              <span v-else class="text-slate-200 select-none text-sm">—</span>
             </td>
 
-            <!-- Status badge -->
-            <td class="hidden px-4 py-3 xl:table-cell">
-              <span
-                class="rounded-full px-2.5 py-0.5 text-xs font-medium"
+            <!-- Status -->
+            <td class="hidden px-3 py-2.5 xl:table-cell">
+              <span class="rounded-full px-2.5 py-1 text-[10px] font-semibold"
                 :class="statusBadge[c.status] ?? 'bg-slate-100 text-slate-500'"
               >{{ statusLabel[c.status] ?? c.status }}</span>
             </td>
 
             <!-- Created -->
-            <td class="hidden px-4 py-3 text-xs text-slate-400 xl:table-cell">{{ shortDate(c.created_at) }}</td>
+            <td class="hidden px-3 py-2.5 xl:table-cell">
+              <span class="text-[11px] text-slate-400">{{ shortDate(c.created_at) }}</span>
+            </td>
 
             <!-- Actions -->
-            <td class="px-4 py-3 text-right" @click.stop>
+            <td class="pr-4 pl-2 py-2.5 text-right" @click.stop>
               <button
-                class="cursor-pointer rounded p-1.5 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-500"
+                class="cursor-pointer rounded-lg p-1.5 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 text-slate-300"
                 @click="remove(c.id, $event)"
                 aria-label="Eliminar"
               >
-                <Trash2 class="h-4 w-4" />
+                <Trash2 class="h-3.5 w-3.5" />
               </button>
             </td>
           </tr>
 
           <!-- Empty state -->
           <tr v-if="contacts.length === 0">
-            <td colspan="9" class="px-4 py-16 text-center">
-              <div class="flex flex-col items-center gap-2 text-slate-400">
-                <Users class="h-8 w-8 opacity-30" />
-                <p class="text-sm">No hay contactos{{ q ? ' que coincidan' : ' todavía' }}.</p>
+            <td colspan="9" class="px-4 py-20 text-center">
+              <div class="flex flex-col items-center gap-3">
+                <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
+                  <Users class="h-7 w-7 text-slate-300" />
+                </div>
+                <div>
+                  <p class="text-sm font-medium text-slate-500">Sin contactos</p>
+                  <p class="mt-0.5 text-xs text-slate-400">{{ q ? 'Ningún contacto coincide con tu búsqueda.' : 'Agrega tu primer contacto con el botón de arriba.' }}</p>
+                </div>
               </div>
             </td>
           </tr>
