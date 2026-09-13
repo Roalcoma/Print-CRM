@@ -97,7 +97,7 @@ async function computeSlots(
             return slot < bEnd && slotWithBuffer > bStart;
           });
           if (!hasConflict) {
-            times.push(formatTime(slot, timezone));
+            times.push(slot.toISOString()); // instante UTC; el frontend convierte a la TZ del visitante
           }
         }
 
@@ -125,7 +125,7 @@ bookingRouter.get('/:slug', async (req, res) => {
     timezone: string; description: string | null; booking_enabled: boolean;
     duration_minutes: number; buffer_minutes: number;
     min_notice_hours: number; max_advance_days: number;
-    custom_message: string | null; user_id: string;
+    custom_message: string | null; user_id: string; logo_url: string | null;
   }>(
     'SELECT * FROM calendars WHERE slug=$1 AND is_active=true',
     [req.params.slug],
@@ -157,6 +157,7 @@ bookingRouter.get('/:slug', async (req, res) => {
       duration_minutes: cal.duration_minutes,
       custom_message:   cal.custom_message,
       owner_name:       owner?.name ?? '',
+      logo_url:         cal.logo_url,
     },
     slots,
   });
