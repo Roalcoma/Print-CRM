@@ -22,7 +22,7 @@ export const CARD_FIELD_META: { key: string; label: string }[] = [
 ];
 
 export const DEFAULT_CARD_CONFIG: CardConfig = {
-  fields: ['owner', 'status', 'value', 'tags', 'contact_name', 'contact_email', 'created_at'],
+  fields: ['owner', 'status', 'value', 'source', 'tags', 'contact_name', 'contact_email', 'created_at'],
   layout: 'default',
 };
 

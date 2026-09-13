@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Phone, Mail, StickyNote, PanelRightOpen, Tag } from 'lucide-vue-next';
+import { Phone, Mail, StickyNote, PanelRightOpen, Tag, MessageCircle, Globe } from 'lucide-vue-next';
 import type { Opportunity } from '../types';
 import type { CardConfig } from '../cardConfig';
 import AppointmentBadge from './AppointmentBadge.vue';
 
 const props = defineProps<{ opp: Opportunity; config: CardConfig }>();
-const emit = defineEmits<{ action: [tab: 'detalles' | 'notas'] }>();
+const emit = defineEmits<{
+  action: [tab: 'detalles' | 'notas'];
+  openConversation: [contactId: string];
+}>();
 
 const money = (n: number) => n.toLocaleString('es-VE', { style: 'currency', currency: 'USD' });
 const shortDate = (d: string) => new Date(d).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -19,6 +22,22 @@ const showOwner = computed(() => props.config.fields.includes('owner'));
 const bodyFields = computed(() => props.config.fields.filter(k => k !== 'owner' && k !== 'tags'));
 const showTags = computed(() => props.config.fields.includes('tags') && (props.opp.tags?.length ?? 0) > 0);
 const labeled = computed(() => props.config.layout === 'default');
+
+const SOURCE_META: Record<string, { label: string; cls: string }> = {
+  whatsapp:   { label: 'WhatsApp',    cls: 'bg-emerald-50 text-emerald-700' },
+  facebook:   { label: 'Facebook',    cls: 'bg-blue-50 text-blue-700' },
+  instagram:  { label: 'Instagram',   cls: 'bg-pink-50 text-pink-700' },
+  tiktok:     { label: 'TikTok',      cls: 'bg-slate-900 text-white' },
+  google:     { label: 'Google',      cls: 'bg-red-50 text-red-600' },
+  linkedin:   { label: 'LinkedIn',    cls: 'bg-sky-50 text-sky-700' },
+  referido:   { label: 'Referido',    cls: 'bg-violet-50 text-violet-700' },
+  sitio_web:  { label: 'Sitio web',   cls: 'bg-indigo-50 text-indigo-700' },
+  email:      { label: 'Email',       cls: 'bg-amber-50 text-amber-700' },
+  llamada:    { label: 'Llamada',     cls: 'bg-teal-50 text-teal-700' },
+};
+function sourceMeta(s: string) {
+  return SOURCE_META[s.toLowerCase()] ?? { label: s, cls: 'bg-slate-100 text-slate-600' };
+}
 
 const ownerInitials = computed(() => {
   const n = props.opp.owner_name;
@@ -57,9 +76,13 @@ const nameInitials = (n: string) => n.split(' ').map(w => w[0]).slice(0, 2).join
         <p v-else-if="key === 'business_name' && opp.business_name" class="text-xs text-slate-500">
           <span v-if="labeled" class="text-slate-400">Empresa:</span> {{ opp.business_name }}
         </p>
-        <p v-else-if="key === 'source' && opp.source" class="text-xs text-slate-500">
-          <span v-if="labeled" class="text-slate-400">Fuente:</span> {{ opp.source }}
-        </p>
+        <div v-else-if="key === 'source' && opp.source" class="flex items-center gap-1.5">
+          <span v-if="labeled" class="text-xs text-slate-400">Fuente:</span>
+          <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold" :class="sourceMeta(opp.source).cls">
+            <Globe class="h-2.5 w-2.5" />
+            {{ sourceMeta(opp.source).label }}
+          </span>
+        </div>
         <p v-else-if="key === 'created_at'" class="text-[11px] text-slate-400">
           <span v-if="labeled" class="text-slate-400">Creado:</span> {{ shortDate(opp.created_at) }}
         </p>
@@ -82,6 +105,15 @@ const nameInitials = (n: string) => n.split(' ').map(w => w[0]).slice(0, 2).join
 
     <!-- Fila de acciones rápidas (estilo GHL) -->
     <div class="mt-2.5 flex items-center gap-0.5 border-t border-slate-100 pt-2 text-slate-400">
+      <!-- WhatsApp: visible cuando la oportunidad tiene contact_id y viene de WhatsApp o tiene teléfono -->
+      <button
+        v-if="opp.contact_id && (opp.source === 'whatsapp' || opp.contact_phone)"
+        class="cursor-pointer rounded-md p-1.5 transition-colors hover:bg-emerald-50 hover:text-emerald-600"
+        title="Ver conversación de WhatsApp"
+        @click.stop="emit('openConversation', opp.contact_id)"
+      >
+        <MessageCircle class="h-4 w-4" />
+      </button>
       <a v-if="opp.contact_phone" :href="`tel:${opp.contact_phone}`" class="cursor-pointer rounded-md p-1.5 transition-colors hover:bg-slate-100 hover:text-primary" title="Llamar" @click.stop>
         <Phone class="h-4 w-4" />
       </a>

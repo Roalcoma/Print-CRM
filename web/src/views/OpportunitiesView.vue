@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
-import { Plus, Search, Filter, Download, Upload, X, Trash2, MoreVertical, ChevronDown, Check, UserRound, Briefcase, Kanban, StickyNote, UserPlus, Link2, SlidersHorizontal } from 'lucide-vue-next';
+import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import { useRouter } from 'vue-router';
+import { Plus, Search, Filter, Download, Upload, X, Trash2, MoreVertical, ChevronDown, Check, UserRound, Briefcase, Kanban, StickyNote, UserPlus, Link2, SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-vue-next';
 import { api, getToken } from '../api';
 import type { Pipeline, Opportunity, FilterCondition, FilterOp, Note, User, Task, TaskStatus } from '../types';
 import { ListTodo, CalendarClock } from 'lucide-vue-next';
@@ -15,6 +16,8 @@ import StatusSelect from '../components/StatusSelect.vue';
 import { normalizeCardConfig, type CardConfig } from '../cardConfig';
 import { useAuthStore } from '../stores/auth';
 
+const KNOWN_SOURCES = ['whatsapp','facebook','instagram','tiktok','google','linkedin','referido','sitio_web','email','llamada'];
+
 const pipelines = ref<Pipeline[]>([]);
 const users = ref<User[]>([]);
 const currentId = ref<string>('');
@@ -24,6 +27,7 @@ const loading = ref(true);
 const reloading = ref(false);
 
 // Personalización de tarjetas (persistida en la cuenta del usuario).
+const router = useRouter();
 const auth = useAuthStore();
 const cardConfig = computed<CardConfig>(() => normalizeCardConfig(auth.preferences.cardConfig));
 const showCustomize = ref(false);
@@ -44,9 +48,69 @@ const statusBadgeCls: Record<string, string> = { open: 'bg-blue-50 text-blue-600
 const statusLbl: Record<string, string> = { open: 'Abierta', won: 'Ganada', lost: 'Perdida' };
 
 const search = ref('');
-const showFilters = ref(false);
+const showFilters = ref(false);    // sidebar de filtros
 const match = ref<'AND' | 'OR'>('AND');
 const conditions = ref<FilterCondition[]>([]);
+
+// ── Quick-filter sidebar state ────────────────────────────────────────────────
+const qf = ref({
+  statuses:      [] as string[],
+  stageIds:      [] as string[],
+  owner_id:      '',
+  value_min:     '',
+  value_max:     '',
+  source:        '',
+  business_name: '',
+  contact:       '',
+  tags:          '',
+  created_from:  '',
+  created_to:    '',
+});
+
+const activeQfCount = computed(() => {
+  const q = qf.value;
+  return [
+    q.statuses.length > 0, q.stageIds.length > 0, !!q.owner_id,
+    !!q.value_min || !!q.value_max, !!q.source, !!q.business_name,
+    !!q.contact, !!q.tags, !!q.created_from || !!q.created_to,
+  ].filter(Boolean).length;
+});
+
+function toggleQfStatus(v: string) {
+  const i = qf.value.statuses.indexOf(v);
+  if (i >= 0) qf.value.statuses.splice(i, 1); else qf.value.statuses.push(v);
+}
+function toggleQfStage(id: string) {
+  const i = qf.value.stageIds.indexOf(id);
+  if (i >= 0) qf.value.stageIds.splice(i, 1); else qf.value.stageIds.push(id);
+}
+function applyQf() {
+  conditions.value = [];
+  qf.value.statuses.forEach(s  => conditions.value.push({ field: 'status',        op: 'is',       value: s }));
+  qf.value.stageIds.forEach(id => conditions.value.push({ field: 'stage',         op: 'is',       value: id }));
+  if (qf.value.owner_id)      conditions.value.push({ field: 'owner_id',      op: 'is',       value: qf.value.owner_id });
+  if (qf.value.value_min)     conditions.value.push({ field: 'value',         op: 'gte',      value: qf.value.value_min });
+  if (qf.value.value_max)     conditions.value.push({ field: 'value',         op: 'lte',      value: qf.value.value_max });
+  if (qf.value.source)        conditions.value.push({ field: 'source',        op: 'contains', value: qf.value.source });
+  if (qf.value.business_name) conditions.value.push({ field: 'business_name', op: 'contains', value: qf.value.business_name });
+  if (qf.value.contact)       conditions.value.push({ field: 'contact',       op: 'contains', value: qf.value.contact });
+  if (qf.value.tags)          conditions.value.push({ field: 'tags',          op: 'contains', value: qf.value.tags });
+  if (qf.value.created_from)  conditions.value.push({ field: 'created_at',    op: 'after',    value: qf.value.created_from });
+  if (qf.value.created_to)    conditions.value.push({ field: 'created_at',    op: 'before',   value: qf.value.created_to });
+  const hasMulti = qf.value.statuses.length > 1 || qf.value.stageIds.length > 1;
+  match.value = hasMulti ? 'OR' : 'AND';
+  loadOpps();
+  showFilters.value = false;
+}
+function clearQf() {
+  qf.value = {
+    statuses: [], stageIds: [], owner_id: '', value_min: '', value_max: '',
+    source: '', business_name: '', contact: '', tags: '', created_from: '', created_to: '',
+  };
+  conditions.value = [];
+  match.value = 'AND';
+  loadOpps();
+}
 
 const current = computed(() => pipelines.value.find(p => p.id === currentId.value) ?? null);
 const totalLeads = computed(() => opps.value.length);
@@ -81,6 +145,23 @@ async function loadPipelines() {
   pipelines.value = await api.get<Pipeline[]>('/pipelines');
   if ((!currentId.value || !current.value) && pipelines.value[0]) currentId.value = pipelines.value[0].id;
 }
+// ── Sort ──────────────────────────────────────────────────────────────────────
+const SORT_OPTIONS = [
+  { key: 'title',             label: 'Nombre de oportunidad' },
+  { key: 'status',            label: 'Estado' },
+  { key: 'value',             label: 'Valor' },
+  { key: 'source',            label: 'Fuente' },
+  { key: 'created_at',        label: 'Fecha de creación' },
+  { key: 'updated_at',        label: 'Última actualización' },
+  { key: 'last_stage_change', label: 'Último cambio de etapa' },
+];
+const sortBy  = ref<string>('');
+const sortDir = ref<'asc' | 'desc'>('desc');
+const hasSort  = computed(() => !!sortBy.value);
+
+function clearSort() { sortBy.value = ''; sortDir.value = 'desc'; loadOpps(); }
+function toggleSortDir() { sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'; loadOpps(); }
+
 async function loadOpps() {
   if (!currentId.value) return;
   reloading.value = true;
@@ -90,11 +171,18 @@ async function loadOpps() {
   try {
     opps.value = await api.post<Opportunity[]>('/opportunities/query', {
       pipelineId: currentId.value, search: search.value || undefined, match: match.value, filters,
+      sort_by: sortBy.value || undefined, sort_dir: sortDir.value,
     });
   } finally {
     reloading.value = false;
   }
 }
+function onSourceChange(e: Event) {
+  const v = (e.target as HTMLSelectElement).value;
+  form.value.source = v === 'otro' ? '' : v;
+  if (v === 'otro') nextTick(() => { (document.getElementById('source-custom') as HTMLInputElement | null)?.focus(); });
+}
+
 onMounted(async () => {
   try {
     users.value = await api.get<User[]>('/users');
@@ -218,6 +306,10 @@ function openCreate() {
   form.value = blankForm();
   showForm.value = true;
 }
+function openConversation(contactId: string) {
+  router.push({ path: '/conversations', query: { contact_id: contactId } });
+}
+
 async function openEdit(o: Opportunity, tab: 'detalles' | 'notas' = 'detalles') {
   editing.value = o;
   modalTab.value = tab;
@@ -346,13 +438,53 @@ async function deleteNote(id: string) {
           <!-- Filtros button -->
           <button
             class="flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-all"
-            :class="showFilters || activeFilterCount ? 'border-primary bg-primary/5 text-primary shadow-sm' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'"
-            @click="showFilters = !showFilters"
+            :class="showFilters || activeQfCount ? 'border-primary bg-primary/5 text-primary shadow-sm' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'"
+            @click="showFilters = true"
           >
             <Filter class="h-4 w-4" />
             Filtros
-            <span v-if="activeFilterCount" class="rounded-full bg-primary px-1.5 text-xs font-bold text-white">{{ activeFilterCount }}</span>
+            <span v-if="activeQfCount" class="rounded-full bg-primary px-1.5 text-xs font-bold text-white">{{ activeQfCount }}</span>
           </button>
+
+          <!-- Sort button -->
+          <Dropdown align="right" width="260px">
+            <template #trigger="{ open }">
+              <button
+                class="flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-all"
+                :class="hasSort || open ? 'border-primary bg-primary/5 text-primary shadow-sm' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'"
+              >
+                <ArrowUpDown class="h-4 w-4" />
+                Ordenar
+                <span v-if="hasSort" class="rounded-full bg-primary px-1.5 text-xs font-bold text-white">1</span>
+              </button>
+            </template>
+
+            <!-- Cabecera -->
+            <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+              <p class="text-[13px] font-semibold text-slate-800">Ordenar por</p>
+              <button v-if="hasSort" class="cursor-pointer text-[11px] font-medium text-primary hover:underline" @click="clearSort">Limpiar</button>
+            </div>
+
+            <!-- Lista de opciones -->
+            <div class="py-1.5">
+              <button
+                v-for="opt in SORT_OPTIONS"
+                :key="opt.key"
+                class="flex w-full cursor-pointer items-center justify-between px-4 py-2 text-[13px] transition-colors"
+                :class="sortBy === opt.key
+                  ? 'bg-primary/5 font-semibold text-primary'
+                  : 'text-slate-700 hover:bg-slate-50'"
+                @click="sortBy === opt.key ? toggleSortDir() : (sortBy = opt.key, sortDir = 'desc', loadOpps())"
+              >
+                <span>{{ opt.label }}</span>
+                <span v-if="sortBy === opt.key" class="flex items-center gap-1 text-[11px] font-medium">
+                  <component :is="sortDir === 'asc' ? ArrowUp : ArrowDown" class="h-3.5 w-3.5" />
+                  {{ sortDir === 'asc' ? 'A → Z' : 'Z → A' }}
+                </span>
+                <Check v-else-if="false" class="h-3.5 w-3.5 opacity-0" />
+              </button>
+            </div>
+          </Dropdown>
 
           <!-- More actions -->
           <Dropdown align="right" width="180px">
@@ -398,51 +530,154 @@ async function deleteNote(id: string) {
       </div>
     </div>
 
-    <!-- Panel de filtros -->
-    <Transition name="expand">
-    <div v-if="showFilters" class="border-b border-slate-200 bg-slate-50/80 px-6 py-4">
-      <div class="mb-3 flex flex-wrap items-center gap-3">
-        <span class="text-sm font-semibold text-slate-700">Filtrar oportunidades</span>
-        <div class="flex items-center gap-2 text-sm text-slate-500">
-          <span>que cumplan</span>
-          <select v-model="match" @change="loadOpps" class="cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1 text-sm font-medium text-slate-700 shadow-sm focus:border-primary focus:outline-none">
-            <option value="AND">TODAS</option>
-            <option value="OR">CUALQUIERA</option>
-          </select>
-          <span>las condiciones</span>
-        </div>
-        <div class="ml-auto flex items-center gap-3">
-          <Spinner v-if="reloading" :size="16" />
-          <button v-if="conditions.length" class="cursor-pointer text-sm font-medium text-slate-500 transition-colors hover:text-red-600" @click="clearFilters">Limpiar todo</button>
-        </div>
-      </div>
+    <!-- Sidebar de filtros (estilo GHL) -->
+    <Teleport to="body">
+      <Transition name="filter-sidebar">
+        <div v-if="showFilters" class="fixed inset-0 z-50 flex justify-end" @click.self="showFilters = false">
+          <!-- Backdrop -->
+          <div class="absolute inset-0 bg-black/20 backdrop-blur-[1px]" @click="showFilters = false"></div>
 
-      <div class="space-y-2">
-        <div v-for="(c, i) in conditions" :key="i" class="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
-          <span class="pl-1 text-xs font-medium text-slate-400">{{ i === 0 ? 'Donde' : match === 'AND' ? 'Y' : 'O' }}</span>
-          <select v-model="c.field" @change="onFieldChange(c)" class="cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm transition-colors hover:border-slate-400 focus:border-primary focus:outline-none">
-            <option v-for="f in FIELDS" :key="f.key" :value="f.key">{{ f.label }}</option>
-          </select>
-          <select v-model="c.op" @change="loadOpps" class="cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm transition-colors hover:border-slate-400 focus:border-primary focus:outline-none">
-            <option v-for="op in OPS_BY_TYPE[fieldType(c.field)]" :key="op" :value="op">{{ OP_LABEL[op] }}</option>
-          </select>
-          <template v-if="!NO_VALUE.includes(c.op)">
-            <select v-if="fieldType(c.field) === 'enum'" v-model="c.value" @change="loadOpps" class="cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm hover:border-slate-400 focus:border-primary focus:outline-none">
-              <option v-for="s in STATUS_OPTS" :key="s.v" :value="s.v">{{ s.l }}</option>
-            </select>
-            <select v-else-if="fieldType(c.field) === 'stage'" v-model="c.value" @change="loadOpps" class="cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm hover:border-slate-400 focus:border-primary focus:outline-none">
-              <option v-for="s in current?.stages ?? []" :key="s.id" :value="s.id">{{ s.name }}</option>
-            </select>
-            <input v-else-if="fieldType(c.field) === 'number'" v-model="c.value" @input="onSearch" type="number" class="w-32 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:border-slate-400 focus:border-primary focus:outline-none" placeholder="Valor" />
-            <input v-else-if="fieldType(c.field) === 'date'" v-model="c.value" @change="loadOpps" type="date" class="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:border-slate-400 focus:border-primary focus:outline-none" />
-            <input v-else v-model="c.value" @input="onSearch" type="text" class="w-48 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:border-slate-400 focus:border-primary focus:outline-none" placeholder="Valor" />
-          </template>
-          <button class="ml-auto cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600" @click="removeCondition(i)"><X class="h-4 w-4" /></button>
+          <!-- Panel -->
+          <div class="relative flex h-full w-[340px] flex-col bg-white shadow-2xl">
+            <!-- Header -->
+            <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <div class="flex items-center gap-2.5">
+                <Filter class="h-4 w-4 text-primary" />
+                <span class="text-[15px] font-semibold text-slate-900">Filtros</span>
+                <span v-if="activeQfCount" class="rounded-full bg-primary px-2 py-0.5 text-[11px] font-bold text-white">{{ activeQfCount }}</span>
+              </div>
+              <button class="cursor-pointer rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700" @click="showFilters = false">
+                <X style="height:18px;width:18px" />
+              </button>
+            </div>
+
+            <!-- Body -->
+            <div class="flex-1 overflow-y-auto px-5 py-4 space-y-6">
+
+              <!-- Estado -->
+              <div>
+                <p class="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Estado</p>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    v-for="s in STATUS_OPTS" :key="s.v"
+                    class="qf-chip"
+                    :class="qf.statuses.includes(s.v) ? 'qf-chip--on' : ''"
+                    @click="toggleQfStatus(s.v)"
+                  >{{ s.l }}</button>
+                </div>
+              </div>
+
+              <!-- Etapa -->
+              <div>
+                <p class="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Etapa</p>
+                <div class="space-y-1.5">
+                  <label
+                    v-for="stage in current?.stages ?? []" :key="stage.id"
+                    class="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-50"
+                  >
+                    <span
+                      class="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors"
+                      :style="qf.stageIds.includes(stage.id)
+                        ? { background: stage.color, borderColor: stage.color }
+                        : { borderColor: '#CBD5E1', background: 'white' }"
+                      @click.prevent="toggleQfStage(stage.id)"
+                    >
+                      <Check v-if="qf.stageIds.includes(stage.id)" class="h-2.5 w-2.5 text-white" />
+                    </span>
+                    <span class="h-2 w-2 rounded-full flex-shrink-0" :style="{ background: stage.color }"></span>
+                    <span class="text-[13px] text-slate-700">{{ stage.name }}</span>
+                    <input type="checkbox" class="sr-only" :checked="qf.stageIds.includes(stage.id)" @change="toggleQfStage(stage.id)" />
+                  </label>
+                </div>
+              </div>
+
+              <!-- Responsable -->
+              <div>
+                <p class="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Responsable</p>
+                <select v-model="qf.owner_id" class="qf-input w-full">
+                  <option value="">Cualquiera</option>
+                  <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
+                </select>
+              </div>
+
+              <!-- Valor -->
+              <div>
+                <p class="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Valor (USD)</p>
+                <div class="flex items-center gap-2">
+                  <input v-model="qf.value_min" type="number" placeholder="Mínimo" class="qf-input flex-1 min-w-0" />
+                  <span class="text-slate-300 text-sm">—</span>
+                  <input v-model="qf.value_max" type="number" placeholder="Máximo" class="qf-input flex-1 min-w-0" />
+                </div>
+              </div>
+
+              <!-- Origen -->
+              <div>
+                <p class="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Origen</p>
+                <select v-model="qf.source" class="qf-input w-full cursor-pointer">
+                  <option value="">Todas las fuentes</option>
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="facebook">Facebook</option>
+                  <option value="instagram">Instagram</option>
+                  <option value="tiktok">TikTok</option>
+                  <option value="google">Google</option>
+                  <option value="linkedin">LinkedIn</option>
+                  <option value="referido">Referido</option>
+                  <option value="sitio_web">Sitio web</option>
+                  <option value="email">Email</option>
+                  <option value="llamada">Llamada telefónica</option>
+                </select>
+              </div>
+
+              <!-- Empresa -->
+              <div>
+                <p class="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Empresa</p>
+                <input v-model="qf.business_name" type="text" placeholder="Nombre de la empresa" class="qf-input w-full" />
+              </div>
+
+              <!-- Contacto -->
+              <div>
+                <p class="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Contacto</p>
+                <input v-model="qf.contact" type="text" placeholder="Nombre del contacto" class="qf-input w-full" />
+              </div>
+
+              <!-- Etiquetas -->
+              <div>
+                <p class="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Etiquetas</p>
+                <input v-model="qf.tags" type="text" placeholder="Ej. vip, caliente" class="qf-input w-full" />
+              </div>
+
+              <!-- Fecha de creación -->
+              <div>
+                <p class="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Fecha de creación</p>
+                <div class="space-y-2">
+                  <div class="flex items-center gap-2">
+                    <span class="w-12 text-right text-[11px] text-slate-400">Desde</span>
+                    <input v-model="qf.created_from" type="date" class="qf-input flex-1 min-w-0" />
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="w-12 text-right text-[11px] text-slate-400">Hasta</span>
+                    <input v-model="qf.created_to" type="date" class="qf-input flex-1 min-w-0" />
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Footer -->
+            <div class="flex items-center gap-2 border-t border-slate-100 px-5 py-3.5">
+              <button
+                class="cursor-pointer rounded-lg px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                @click="clearQf"
+              >Limpiar</button>
+              <button
+                class="ml-auto cursor-pointer rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md"
+                @click="applyQf"
+              >Aplicar filtros</button>
+            </div>
+          </div>
         </div>
-      </div>
-      <button class="mt-3 flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 transition-all hover:border-primary hover:bg-primary/5 hover:text-primary" @click="addCondition"><Plus class="h-4 w-4" />Añadir condición</button>
-    </div>
-    </Transition>
+      </Transition>
+    </Teleport>
 
     <!-- Tablero kanban -->
     <LoadingState v-if="loading" label="Cargando oportunidades…" />
@@ -454,14 +689,24 @@ async function deleteNote(id: string) {
         @dragover.prevent
         @drop="onDrop(stage.id)"
       >
-        <!-- Kanban column header — estilo Flowlu -->
-        <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3 bg-white">
-          <div class="flex items-center gap-2">
-            <span class="inline-block h-2.5 w-2.5 rounded-full flex-shrink-0" :style="{ backgroundColor: stage.color }"></span>
-            <span class="text-sm font-semibold text-slate-800">{{ stage.name }}</span>
-            <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-500">{{ stageOpps(stage.id).length }}</span>
+        <!-- Kanban column header — estilo GHL/Flowlu -->
+        <div
+          class="flex-shrink-0 rounded-t-xl px-4 pb-3 pt-3.5"
+          :style="{
+            borderTop: `3px solid ${stage.color}`,
+            background: `color-mix(in srgb, ${stage.color} 12%, #ffffff)`,
+          }"
+        >
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="text-[13px] font-semibold text-slate-800 leading-tight">{{ stage.name }}</span>
+              <span
+                class="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold text-slate-800"
+                :style="{ backgroundColor: stage.color }"
+              >{{ stageOpps(stage.id).length }}</span>
+            </div>
+            <span class="text-xs font-semibold text-slate-600">{{ stageSum(stage.id) }}</span>
           </div>
-          <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-600">{{ stageSum(stage.id) }}</span>
         </div>
 
         <div class="flex-1 overflow-y-auto bg-slate-50/40 p-2.5">
@@ -476,6 +721,7 @@ async function deleteNote(id: string) {
               @dragstart="onDragStart(opp.id)"
               @click="openEdit(opp)"
               @action="(tab: 'detalles' | 'notas') => openEdit(opp, tab)"
+              @open-conversation="openConversation"
             />
           </TransitionGroup>
           <p v-if="stageOpps(stage.id).length === 0" class="py-8 text-center text-xs text-slate-400">Sin oportunidades</p>
@@ -645,7 +891,31 @@ async function deleteNote(id: string) {
                 </div>
                 <div>
                   <label class="mb-1 block text-sm font-medium text-slate-700">Fuente</label>
-                  <input v-model="form.source" placeholder="Ej: Facebook Ads, Referido…" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+                  <select
+                    class="w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"
+                    :value="KNOWN_SOURCES.includes(form.source) || form.source === '' ? form.source : 'otro'"
+                    @change="onSourceChange"
+                  >
+                    <option value="">Sin especificar</option>
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="facebook">Facebook</option>
+                    <option value="instagram">Instagram</option>
+                    <option value="tiktok">TikTok</option>
+                    <option value="google">Google</option>
+                    <option value="linkedin">LinkedIn</option>
+                    <option value="referido">Referido</option>
+                    <option value="sitio_web">Sitio web</option>
+                    <option value="email">Email</option>
+                    <option value="llamada">Llamada telefónica</option>
+                    <option value="otro">Otro (personalizado)</option>
+                  </select>
+                  <input
+                    v-if="!KNOWN_SOURCES.includes(form.source) && form.source !== ''"
+                    id="source-custom"
+                    v-model="form.source"
+                    placeholder="Escribe la fuente…"
+                    class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"
+                  />
                 </div>
                 <div>
                   <label class="mb-1 block text-sm font-medium text-slate-700">Seguidores</label>
@@ -775,3 +1045,34 @@ async function deleteNote(id: string) {
     </Transition>
   </div>
 </template>
+
+<style>
+/* ── Filter sidebar transitions ─────────────────────────────────────────── */
+.filter-sidebar-enter-active,
+.filter-sidebar-leave-active { transition: opacity 0.22s ease; }
+.filter-sidebar-enter-active .relative,
+.filter-sidebar-leave-active .relative { transition: transform 0.25s cubic-bezier(0.4,0,0.2,1); }
+.filter-sidebar-enter-from,
+.filter-sidebar-leave-to { opacity: 0; }
+.filter-sidebar-enter-from .relative,
+.filter-sidebar-leave-to .relative { transform: translateX(100%); }
+
+/* ── Quick-filter chip ───────────────────────────────────────────────────── */
+.qf-chip {
+  cursor: pointer; border-radius: 999px; border: 1.5px solid #E2E8F0;
+  padding: 4px 14px; font-size: 12px; font-weight: 500;
+  color: #64748B; background: white;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.qf-chip:hover { border-color: #F69008; color: #F69008; }
+.qf-chip--on { border-color: #F69008; background: #FFF7ED; color: #F69008; font-weight: 600; }
+
+/* ── Quick-filter input ─────────────────────────────────────────────────── */
+.qf-input {
+  border-radius: 8px; border: 1.5px solid #E2E8F0;
+  padding: 6px 10px; font-size: 13px; color: #1E293B;
+  background: white; transition: border-color 0.15s, box-shadow 0.15s; outline: none;
+}
+.qf-input:focus { border-color: #F69008; box-shadow: 0 0 0 3px rgba(246,144,8,0.15); }
+.qf-input::placeholder { color: #94A3B8; }
+</style>
