@@ -4,9 +4,11 @@ import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router';
 import {
   LayoutGrid, BookUser, TrendingUp, ListChecks,
   CalendarDays, MessagesSquare, LogOut, Search,
-  SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Zap, Menu,
+  SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Zap, Menu, Building2,
 } from 'lucide-vue-next';
 import { useAuthStore } from '../stores/auth';
+import { api } from '../api';
+import { getAgencyToken, setAgencyToken } from '../agencyApi';
 import NotificationsDropdown from '../components/NotificationsDropdown.vue';
 import AccountSwitcher from '../components/AccountSwitcher.vue';
 import Dropdown from '../components/Dropdown.vue';
@@ -90,6 +92,21 @@ onUnmounted(() => {
 function logout() {
   auth.logout();
   router.push('/login');
+}
+
+const hasAgencyAccess = computed(() => !!getAgencyToken());
+
+async function goToAgency() {
+  if (!hasAgencyAccess.value) {
+    try {
+      const res = await api.post<{ token: string }>('/agency/auth/exchange');
+      setAgencyToken(res.token);
+    } catch {
+      window.location.href = '/agency/login';
+      return;
+    }
+  }
+  window.location.href = '/agency/dashboard';
 }
 
 // ── Theme tokens ──────────────────────────────────────────────────────────────
@@ -209,6 +226,19 @@ const s = computed(() => isDark.value
 
           <!-- Spacer: empuja Settings al fondo -->
           <div class="flex-1"></div>
+
+          <!-- Agency panel link -->
+          <div v-if="auth.isAdmin" class="mb-1 h-px" :class="s.navDivider"></div>
+          <button
+            v-if="auth.isAdmin"
+            :title="collapsed ? 'Agencia' : undefined"
+            class="nav-item mb-1 flex w-full items-center rounded-md transition-all duration-150 cursor-pointer text-left"
+            :class="s.settingsInactive"
+            @click="goToAgency"
+          >
+            <Building2 class="nav-icon h-[18px] w-[18px] flex-shrink-0" />
+            <span class="nav-label">Agencia</span>
+          </button>
 
           <!-- Settings -->
           <div class="mb-1 h-px" :class="s.navDivider"></div>

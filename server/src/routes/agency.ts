@@ -132,6 +132,37 @@ agencyRouter.get('/auth/me', requireAgencyAuth, async (req, res) => {
   res.json(publicAdmin(admin));
 });
 
+// Intercambia un CRM token válido por un agency token, si el email del usuario
+// está registrado como agency admin.
+agencyRouter.post('/auth/exchange', async (req, res) => {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No autenticado' });
+  }
+  let crmClaims: { userId: string };
+  try {
+    crmClaims = jwt.verify(header.slice(7), env.jwtSecret) as { userId: string };
+  } catch {
+    return res.status(401).json({ error: 'Token CRM inválido o expirado' });
+  }
+
+  const user = await queryOne<{ email: string }>(
+    'SELECT email FROM users WHERE id = $1',
+    [crmClaims.userId],
+  );
+  if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+  const admin = await queryOne<AgencyAdminRow>(
+    'SELECT * FROM agency_admins WHERE email = $1 AND is_active = true',
+    [user.email],
+  );
+  if (!admin) return res.status(403).json({ error: 'Sin acceso al panel de agencia' });
+
+  await query('UPDATE agency_admins SET last_login_at = now() WHERE id = $1', [admin.id]);
+  const token = signAgencyToken({ adminId: admin.id, role: admin.role });
+  res.json({ token, admin: publicAdmin(admin) });
+});
+
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 
 agencyRouter.get('/dashboard', requireAgencyAuth, async (req, res) => {
@@ -423,20 +454,38 @@ agencyRouter.post('/clients/:id/impersonate', requireAgencyAuth, async (req, res
   if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
   if (!client.organization_id) return res.status(400).json({ error: 'Este cliente no tiene CRM provisionado aún' });
 
-  const owner = await queryOne<{ id: string; email: string; name: string; role: string }>(
-    `SELECT id, email, name, role FROM users
+  // Busca al agency admin en la tabla users por email para mantener su identidad
+  // al entrar al CRM del cliente (solo cambia la org, no el usuario).
+  const agencyAdmin = await queryOne<AgencyAdminRow>(
+    'SELECT * FROM agency_admins WHERE id = $1',
+    [req.agencyAuth!.adminId],
+  );
+  const adminCrmUser = agencyAdmin
+    ? await queryOne<{ id: string; role: string }>(
+        'SELECT id, role FROM users WHERE email = $1',
+        [agencyAdmin.email],
+      )
+    : null;
+
+  // Recae en el owner de la org si el admin no tiene cuenta CRM propia
+  const fallbackOwner = adminCrmUser ? null : await queryOne<{ id: string; email: string; role: string }>(
+    `SELECT id, email, role FROM users
      WHERE organization_id = $1 AND role = 'owner'
-     ORDER BY created_at
-     LIMIT 1`,
+     ORDER BY created_at LIMIT 1`,
     [client.organization_id],
   );
-  if (!owner) return res.status(400).json({ error: 'No se encontró usuario owner para esta organización' });
+  if (!adminCrmUser && !fallbackOwner) {
+    return res.status(400).json({ error: 'No se encontró usuario owner para esta organización' });
+  }
+
+  const actingUserId = adminCrmUser?.id ?? fallbackOwner!.id;
+  const actingRole   = adminCrmUser?.role ?? fallbackOwner!.role;
 
   const crmToken = jwt.sign(
     {
-      userId: owner.id,
+      userId: actingUserId,
       organizationId: client.organization_id,
-      role: owner.role,
+      role: actingRole,
       impersonatedByAgency: true,
     },
     env.jwtSecret,
@@ -445,7 +494,7 @@ agencyRouter.post('/clients/:id/impersonate', requireAgencyAuth, async (req, res
 
   await logActivity(req.agencyAuth!.adminId, id, 'crm_accessed', {
     orgId: client.organization_id,
-    ownerEmail: owner.email,
+    adminEmail: agencyAdmin?.email,
   });
 
   res.json({
