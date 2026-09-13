@@ -176,6 +176,11 @@ function toggleSortDir() {
   sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
   saveOppSort(); loadOpps();
 }
+function selectSort(key: string) {
+  if (sortBy.value === key) { toggleSortDir(); return; }
+  sortBy.value = key; sortDir.value = 'desc';
+  saveOppSort(); loadOpps();
+}
 
 async function loadOpps() {
   if (!currentId.value) return;
@@ -460,7 +465,7 @@ async function deleteNote(id: string) {
                 <button v-for="opt in SORT_OPTIONS" :key="opt.key"
                   class="flex w-full cursor-pointer items-center justify-between px-4 py-2 text-[13px] transition-colors"
                   :class="sortBy === opt.key ? 'bg-primary/5 font-semibold text-primary' : 'text-slate-700 hover:bg-slate-50'"
-                  @click="sortBy === opt.key ? toggleSortDir() : (sortBy = opt.key, sortDir = 'desc', saveOppSort(), loadOpps())">
+                  @click="selectSort(opt.key)">
                   <span>{{ opt.label }}</span>
                   <span v-if="sortBy === opt.key" class="flex items-center gap-1 text-[11px] font-medium">
                     <component :is="sortDir === 'asc' ? ArrowUp : ArrowDown" class="h-3.5 w-3.5" />
@@ -509,7 +514,7 @@ async function deleteNote(id: string) {
             <button v-for="opt in SORT_OPTIONS" :key="opt.key"
               class="flex w-full cursor-pointer items-center justify-between px-3 py-2 text-[13px] transition-colors"
               :class="sortBy === opt.key ? 'font-semibold text-primary' : 'text-slate-700 hover:bg-slate-50'"
-              @click="sortBy === opt.key ? toggleSortDir() : (sortBy = opt.key, sortDir = 'desc', saveOppSort(), loadOpps())">
+              @click="selectSort(opt.key)">
               <span>{{ opt.label }}</span>
               <component v-if="sortBy === opt.key" :is="sortDir === 'asc' ? ArrowUp : ArrowDown" class="h-3.5 w-3.5" />
             </button>

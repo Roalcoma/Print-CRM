@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   Plus, Trash2, Search, X, Users, UserCheck, TrendingUp,
@@ -34,6 +34,17 @@ const _cp = loadContactPrefs();
 const filterStatus  = ref<string>(_cp.filterStatus || '');
 const filterSource  = ref<string>(_cp.filterSource || '');
 const sortBy        = ref<string>(_cp.sortBy       || 'created_at');
+
+function saveContactPrefs() {
+  localStorage.setItem(CONTACTS_PREF_KEY, JSON.stringify({
+    filterStatus: filterStatus.value,
+    filterSource: filterSource.value,
+    sortBy: sortBy.value,
+  }));
+}
+function setStatus(v: string)  { filterStatus.value = v; saveContactPrefs(); page.value = 1; load(); }
+function setSource(v: string)  { filterSource.value = v; saveContactPrefs(); page.value = 1; load(); }
+function setSort(v: string)    { sortBy.value = v;       saveContactPrefs(); page.value = 1; load(); }
 
 // Bulk selection
 const selected   = ref<Set<string>>(new Set());
@@ -105,11 +116,6 @@ onMounted(async () => {
 let searchTimer: ReturnType<typeof setTimeout>;
 function onSearch() { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page.value = 1; load(); }, 250); }
 
-watch([filterStatus, filterSource, sortBy], ([status, source, sort]) => {
-  localStorage.setItem(CONTACTS_PREF_KEY, JSON.stringify({ filterStatus: status, filterSource: source, sortBy: sort }));
-  page.value = 1;
-  load();
-});
 
 // ── tags ──────────────────────────────────────────────────────────────────────
 function addTag(raw: string) {
@@ -245,167 +251,219 @@ const statusLabel: Record<string, string> = {
   <div class="flex h-full flex-col overflow-hidden bg-slate-50">
 
     <!-- ── Stat bar ──────────────────────────────────────────────────────────── -->
-    <div class="flex flex-shrink-0 items-center gap-0 overflow-x-auto border-b border-slate-200 bg-white px-4 sm:px-6">
-      <div class="flex flex-shrink-0 items-center gap-2.5 border-r border-slate-100 py-3 pr-5 sm:py-3.5">
+
+    <!-- Desktop: tarjetas con números grandes -->
+    <div class="hidden border-b border-slate-200 bg-white md:flex">
+      <div class="flex flex-1 items-center gap-3.5 px-6 py-4 border-r border-slate-100">
+        <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-[#F69008]/10">
+          <Users class="h-5 w-5 text-[#F69008]" />
+        </div>
+        <div>
+          <p class="text-2xl font-bold leading-none text-slate-900">{{ stats?.total ?? '—' }}</p>
+          <p class="mt-1 text-xs font-medium text-slate-400">Total contactos</p>
+        </div>
+      </div>
+      <div class="flex flex-1 items-center gap-3.5 px-6 py-4 border-r border-slate-100">
+        <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-50">
+          <UserCheck class="h-5 w-5 text-emerald-600" />
+        </div>
+        <div>
+          <p class="text-2xl font-bold leading-none text-slate-900">{{ stats?.active ?? '—' }}</p>
+          <p class="mt-1 text-xs font-medium text-slate-400">Activos</p>
+        </div>
+      </div>
+      <div class="flex flex-1 items-center gap-3.5 px-6 py-4 border-r border-slate-100">
+        <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50">
+          <TrendingUp class="h-5 w-5 text-blue-500" />
+        </div>
+        <div>
+          <p class="text-2xl font-bold leading-none text-slate-900">{{ stats?.new_this_month ?? '—' }}</p>
+          <p class="mt-1 text-xs font-medium text-slate-400">Nuevos este mes</p>
+        </div>
+      </div>
+      <div class="flex flex-1 items-center gap-3.5 px-6 py-4">
+        <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-violet-50">
+          <Building2 class="h-5 w-5 text-violet-500" />
+        </div>
+        <div>
+          <p class="text-2xl font-bold leading-none text-slate-900">{{ stats?.companies ?? '—' }}</p>
+          <p class="mt-1 text-xs font-medium text-slate-400">Compañías</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Móvil: tira compacta con scroll horizontal -->
+    <div class="flex flex-shrink-0 items-center gap-0 overflow-x-auto border-b border-slate-200 bg-white px-4 md:hidden">
+      <div class="flex flex-shrink-0 items-center gap-2 border-r border-slate-100 py-3 pr-4">
         <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-[#F69008]/10">
           <Users class="h-4 w-4 text-[#F69008]" />
         </div>
         <div>
-          <p class="text-base font-bold leading-none text-slate-900">{{ stats?.total ?? '—' }}</p>
-          <p class="mt-0.5 text-[11px] text-slate-400">Total</p>
+          <p class="text-sm font-bold leading-none text-slate-900">{{ stats?.total ?? '—' }}</p>
+          <p class="mt-0.5 text-[10px] text-slate-400">Total</p>
         </div>
       </div>
-      <div class="flex flex-shrink-0 items-center gap-2.5 border-r border-slate-100 py-3 px-5 sm:py-3.5">
+      <div class="flex flex-shrink-0 items-center gap-2 border-r border-slate-100 py-3 px-4">
         <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50">
           <UserCheck class="h-4 w-4 text-emerald-600" />
         </div>
         <div>
-          <p class="text-base font-bold leading-none text-slate-900">{{ stats?.active ?? '—' }}</p>
-          <p class="mt-0.5 text-[11px] text-slate-400">Activos</p>
+          <p class="text-sm font-bold leading-none text-slate-900">{{ stats?.active ?? '—' }}</p>
+          <p class="mt-0.5 text-[10px] text-slate-400">Activos</p>
         </div>
       </div>
-      <div class="flex flex-shrink-0 items-center gap-2.5 border-r border-slate-100 py-3 px-5 sm:py-3.5">
+      <div class="flex flex-shrink-0 items-center gap-2 border-r border-slate-100 py-3 px-4">
         <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50">
           <TrendingUp class="h-4 w-4 text-blue-500" />
         </div>
         <div>
-          <p class="text-base font-bold leading-none text-slate-900">{{ stats?.new_this_month ?? '—' }}</p>
-          <p class="mt-0.5 text-[11px] text-slate-400">Este mes</p>
+          <p class="text-sm font-bold leading-none text-slate-900">{{ stats?.new_this_month ?? '—' }}</p>
+          <p class="mt-0.5 text-[10px] text-slate-400">Este mes</p>
         </div>
       </div>
-      <div class="flex flex-shrink-0 items-center gap-2.5 py-3 pl-5 sm:py-3.5">
+      <div class="flex flex-shrink-0 items-center gap-2 py-3 pl-4">
         <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-50">
           <Building2 class="h-4 w-4 text-violet-500" />
         </div>
         <div>
-          <p class="text-base font-bold leading-none text-slate-900">{{ stats?.companies ?? '—' }}</p>
-          <p class="mt-0.5 text-[11px] text-slate-400">Compañías</p>
+          <p class="text-sm font-bold leading-none text-slate-900">{{ stats?.companies ?? '—' }}</p>
+          <p class="mt-0.5 text-[10px] text-slate-400">Compañías</p>
         </div>
       </div>
     </div>
 
     <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
-    <!-- Fila 1: búsqueda + nuevo -->
-    <div class="flex items-center gap-2 border-b border-slate-100 bg-white px-4 py-2.5 sm:px-6">
-      <div class="relative flex-1">
-        <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input
-          v-model="q"
-          @input="onSearch"
-          placeholder="Buscar contactos…"
-          class="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm transition-all focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 focus:outline-none"
-        />
+    <div class="border-b border-slate-200 bg-white">
+
+      <!-- Móvil fila 1: búsqueda + CTA (solo visible en <md) -->
+      <div class="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5 md:hidden">
+        <div class="relative flex-1">
+          <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input v-model="q" @input="onSearch" placeholder="Buscar contactos…"
+            class="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm transition-all focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+        </div>
+        <Transition name="fade">
+          <button v-if="selected.size > 0" class="btn btn-danger btn-sm flex-shrink-0" @click="bulkDelete">
+            <Trash2 class="h-4 w-4" />
+          </button>
+        </Transition>
+        <button class="btn btn-primary btn-sm flex-shrink-0" @click="showForm = true">
+          <Plus class="h-4 w-4" />
+        </button>
       </div>
 
-      <!-- Bulk delete (aparece al seleccionar) -->
-      <Transition name="fade">
-        <button v-if="selected.size > 0" class="btn btn-danger btn-sm flex-shrink-0" @click="bulkDelete">
-          <Trash2 class="h-4 w-4" />
-          <span class="hidden sm:inline">{{ selected.size }} Eliminar</span>
-        </button>
-      </Transition>
+      <!-- Móvil fila 2 / Desktop fila única -->
+      <div class="flex items-center gap-2 overflow-x-auto px-4 py-2 sm:px-6 md:py-3">
 
-      <button class="btn btn-primary btn-sm flex-shrink-0" @click="showForm = true">
-        <Plus class="h-4 w-4" />
-        <span class="hidden sm:inline">Nuevo contacto</span>
-      </button>
-    </div>
+        <!-- Desktop only: búsqueda con ancho fijo -->
+        <div class="relative mr-1 hidden w-56 flex-shrink-0 lg:w-72 md:block">
+          <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input v-model="q" @input="onSearch" placeholder="Buscar contactos…"
+            class="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-9 pr-3 text-sm transition-all focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+        </div>
+        <div class="hidden h-5 w-px flex-shrink-0 bg-slate-200 md:block"></div>
 
-    <!-- Fila 2: filtros (scroll horizontal en móvil) -->
-    <div class="flex items-center gap-2 overflow-x-auto border-b border-slate-200 bg-white px-4 py-2 sm:px-6">
-      <!-- Status filter -->
-      <Dropdown width="148">
-        <template #trigger="{ open }">
-          <button class="btn btn-secondary btn-sm flex-shrink-0" :class="(open || filterStatus) && 'btn-secondary--active'">
-            {{ statusFilterLabel }}
-            <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''" />
-          </button>
-        </template>
-        <div class="py-0.5">
-          <button v-for="opt in [{ v:'', l:'Todo estado' }, { v:'active', l:'Activo' }, { v:'inactive', l:'Inactivo' }, { v:'blocked', l:'Bloqueado' }]"
-            :key="opt.v"
-            class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50"
-            :class="filterStatus === opt.v ? 'text-primary font-medium' : 'text-slate-700'"
-            @click="filterStatus = opt.v"
-          >
-            <Check v-if="filterStatus === opt.v" class="h-3.5 w-3.5 flex-shrink-0" />
-            <span v-else class="h-3.5 w-3.5 flex-shrink-0" />
-            {{ opt.l }}
+        <!-- Filtros (siempre visibles, scroll en móvil) -->
+        <Dropdown width="148">
+          <template #trigger="{ open }">
+            <button class="btn btn-secondary btn-sm flex-shrink-0" :class="(open || filterStatus) && 'btn-secondary--active'">
+              {{ statusFilterLabel }}
+              <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''" />
+            </button>
+          </template>
+          <div class="py-0.5">
+            <button v-for="opt in [{ v:'', l:'Todo estado' }, { v:'active', l:'Activo' }, { v:'inactive', l:'Inactivo' }, { v:'blocked', l:'Bloqueado' }]"
+              :key="opt.v"
+              class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50"
+              :class="filterStatus === opt.v ? 'text-primary font-medium' : 'text-slate-700'"
+              @click="setStatus(opt.v)"
+            >
+              <Check v-if="filterStatus === opt.v" class="h-3.5 w-3.5 flex-shrink-0" />
+              <span v-else class="h-3.5 w-3.5 flex-shrink-0" />
+              {{ opt.l }}
+            </button>
+          </div>
+        </Dropdown>
+
+        <Dropdown width="148">
+          <template #trigger="{ open }">
+            <button class="btn btn-secondary btn-sm flex-shrink-0" :class="(open || filterSource) && 'btn-secondary--active'">
+              {{ sourceFilterLabel }}
+              <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''" />
+            </button>
+          </template>
+          <div class="py-0.5">
+            <button class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50"
+              :class="filterSource === '' ? 'text-primary font-medium' : 'text-slate-700'" @click="setSource('')">
+              <Check v-if="filterSource === ''" class="h-3.5 w-3.5 flex-shrink-0" />
+              <span v-else class="h-3.5 w-3.5 flex-shrink-0" />
+              Todo origen
+            </button>
+            <button v-for="s in sourceOptions" :key="s"
+              class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50"
+              :class="filterSource === s ? 'text-primary font-medium' : 'text-slate-700'"
+              @click="setSource(s)"
+            >
+              <Check v-if="filterSource === s" class="h-3.5 w-3.5 flex-shrink-0" />
+              <span v-else class="h-3.5 w-3.5 flex-shrink-0" />
+              {{ sourceLabel[s] }}
+            </button>
+          </div>
+        </Dropdown>
+
+        <Dropdown width="156">
+          <template #trigger="{ open }">
+            <button class="btn btn-secondary btn-sm flex-shrink-0" :class="(open || sortBy !== 'created_at') && 'btn-secondary--active'">
+              {{ sortLabel }}
+              <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''" />
+            </button>
+          </template>
+          <div class="py-0.5">
+            <button v-for="opt in [{ v:'created_at', l:'Más reciente' }, { v:'name', l:'Nombre A-Z' }, { v:'company', l:'Empresa A-Z' }]"
+              :key="opt.v"
+              class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50"
+              :class="sortBy === opt.v ? 'text-primary font-medium' : 'text-slate-700'"
+              @click="setSort(opt.v)"
+            >
+              <Check v-if="sortBy === opt.v" class="h-3.5 w-3.5 flex-shrink-0" />
+              <span v-else class="h-3.5 w-3.5 flex-shrink-0" />
+              {{ opt.l }}
+            </button>
+          </div>
+        </Dropdown>
+
+        <input ref="importInput" type="file" accept=".csv" class="hidden" @change="onImportFile" />
+        <Dropdown align="right" width="160">
+          <template #trigger>
+            <button class="btn btn-secondary btn-sm flex-shrink-0">
+              <span v-if="importing"><Spinner :size="14" /></span>
+              <Download v-else class="h-4 w-4" />
+              <ChevronDown class="h-3.5 w-3.5" />
+            </button>
+          </template>
+          <div class="py-0.5">
+            <button class="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50" @click="exportCsv">
+              <Download class="h-4 w-4 text-slate-400" /> Exportar CSV
+            </button>
+            <button class="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50" @click="triggerImport">
+              <Upload class="h-4 w-4 text-slate-400" /> Importar CSV
+            </button>
+          </div>
+        </Dropdown>
+
+        <!-- Desktop only: bulk delete + CTA -->
+        <div class="ml-auto hidden flex-shrink-0 items-center gap-2 md:flex">
+          <Transition name="fade">
+            <button v-if="selected.size > 0" class="btn btn-danger btn-sm" @click="bulkDelete">
+              <Trash2 class="h-4 w-4" /> {{ selected.size }} Eliminar
+            </button>
+          </Transition>
+          <button class="btn btn-primary btn-sm" @click="showForm = true">
+            <Plus class="h-4 w-4" /> Nuevo contacto
           </button>
         </div>
-      </Dropdown>
 
-      <!-- Source filter -->
-      <Dropdown width="148">
-        <template #trigger="{ open }">
-          <button class="btn btn-secondary btn-sm flex-shrink-0" :class="(open || filterSource) && 'btn-secondary--active'">
-            {{ sourceFilterLabel }}
-            <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''" />
-          </button>
-        </template>
-        <div class="py-0.5">
-          <button
-            class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50"
-            :class="filterSource === '' ? 'text-primary font-medium' : 'text-slate-700'"
-            @click="filterSource = ''"
-          >
-            <Check v-if="filterSource === ''" class="h-3.5 w-3.5 flex-shrink-0" />
-            <span v-else class="h-3.5 w-3.5 flex-shrink-0" />
-            Todo origen
-          </button>
-          <button v-for="s in sourceOptions" :key="s"
-            class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50"
-            :class="filterSource === s ? 'text-primary font-medium' : 'text-slate-700'"
-            @click="filterSource = s"
-          >
-            <Check v-if="filterSource === s" class="h-3.5 w-3.5 flex-shrink-0" />
-            <span v-else class="h-3.5 w-3.5 flex-shrink-0" />
-            {{ sourceLabel[s] }}
-          </button>
-        </div>
-      </Dropdown>
-
-      <!-- Sort -->
-      <Dropdown width="156">
-        <template #trigger="{ open }">
-          <button class="btn btn-secondary btn-sm flex-shrink-0" :class="(open || sortBy !== 'created_at') && 'btn-secondary--active'">
-            {{ sortLabel }}
-            <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''" />
-          </button>
-        </template>
-        <div class="py-0.5">
-          <button v-for="opt in [{ v:'created_at', l:'Más reciente' }, { v:'name', l:'Nombre A-Z' }, { v:'company', l:'Empresa A-Z' }]"
-            :key="opt.v"
-            class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50"
-            :class="sortBy === opt.v ? 'text-primary font-medium' : 'text-slate-700'"
-            @click="sortBy = opt.v"
-          >
-            <Check v-if="sortBy === opt.v" class="h-3.5 w-3.5 flex-shrink-0" />
-            <span v-else class="h-3.5 w-3.5 flex-shrink-0" />
-            {{ opt.l }}
-          </button>
-        </div>
-      </Dropdown>
-
-      <!-- Export/Import -->
-      <input ref="importInput" type="file" accept=".csv" class="hidden" @change="onImportFile" />
-      <Dropdown align="right" width="160">
-        <template #trigger>
-          <button class="btn btn-secondary btn-sm flex-shrink-0">
-            <span v-if="importing"><Spinner :size="14" /></span>
-            <Download v-else class="h-4 w-4" />
-            <ChevronDown class="h-3.5 w-3.5" />
-          </button>
-        </template>
-        <div class="py-0.5">
-          <button class="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50" @click="exportCsv">
-            <Download class="h-4 w-4 text-slate-400" /> Exportar CSV
-          </button>
-          <button class="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50" @click="triggerImport">
-            <Upload class="h-4 w-4 text-slate-400" /> Importar CSV
-          </button>
-        </div>
-      </Dropdown>
+      </div>
     </div>
 
     <!-- ── Table ───────────────────────────────────────────────────────────── -->
