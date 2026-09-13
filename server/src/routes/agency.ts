@@ -40,6 +40,7 @@ interface AgencyClientRow {
   status: string;
   type: 'own' | 'client';
   trial_ends_at: string | null;
+  trial_days_override: number | null;
   monthly_value: string;
   notes: string | null;
   courtesy_extra_users: number;
@@ -277,6 +278,7 @@ const createClientSchema = z.object({
   type: z.enum(['own', 'client']).default('client'),
   monthlyValue: z.number().optional().default(0),
   trialEndsAt: z.string().optional(),
+  trialDaysOverride: z.number().int().min(0).max(99).nullable().optional(),
   notes: z.string().optional(),
 });
 
@@ -310,14 +312,28 @@ agencyRouter.post('/clients', requireAgencyAuth, async (req, res) => {
       [orgId, d.email, hash, d.name],
     );
 
+    // Calcular trial_ends_at según trialDaysOverride o trialEndsAt
+    let trialEndsAt: string | null = d.trialEndsAt ?? null;
+    if (d.status === 'trial' && d.trialDaysOverride != null) {
+      if (d.trialDaysOverride === 0) {
+        trialEndsAt = null; // ilimitado
+      } else {
+        const end = new Date();
+        end.setDate(end.getDate() + d.trialDaysOverride);
+        trialEndsAt = end.toISOString();
+      }
+    }
+
     // Crear registro de cuenta CRM
     const clientResult = await client.query<AgencyClientRow>(
       `INSERT INTO agency_clients
-         (organization_id, name, company, email, phone, country, plan, plan_id, status, type, trial_ends_at, monthly_value, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         (organization_id, name, company, email, phone, country, plan, plan_id, status, type,
+          trial_ends_at, trial_days_override, monthly_value, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        RETURNING *`,
       [orgId, d.name, d.company ?? null, d.email, d.phone ?? null, d.country ?? null,
-       d.plan, d.planId ?? null, d.status, d.type, d.trialEndsAt ?? null, d.monthlyValue, d.notes ?? null],
+       d.plan, d.planId ?? null, d.status, d.type,
+       trialEndsAt, d.trialDaysOverride ?? null, d.monthlyValue, d.notes ?? null],
     );
 
     await client.query('COMMIT');
@@ -404,6 +420,7 @@ const updateClientSchema = z.object({
   type: z.enum(['own', 'client']).optional(),
   monthlyValue: z.number().optional(),
   trialEndsAt: z.string().nullable().optional(),
+  trialDaysOverride: z.number().int().min(0).max(99).nullable().optional(),
   notes: z.string().nullable().optional(),
 });
 
@@ -416,6 +433,22 @@ agencyRouter.patch('/clients/:id', requireAgencyAuth, async (req, res) => {
   const fields: string[] = [];
   const params: unknown[] = [];
 
+  // Calcular trial_ends_at si se envía trialDaysOverride
+  let resolvedTrialEndsAt = d.trialEndsAt;
+  if (d.trialDaysOverride !== undefined) {
+    if (d.trialDaysOverride === null || d.trialDaysOverride === 0) {
+      resolvedTrialEndsAt = null;
+    } else {
+      const end = new Date();
+      end.setDate(end.getDate() + d.trialDaysOverride);
+      resolvedTrialEndsAt = end.toISOString();
+    }
+    params.push(d.trialDaysOverride ?? null);
+    fields.push(`trial_days_override = $${params.length}`);
+    params.push(resolvedTrialEndsAt ?? null);
+    fields.push(`trial_ends_at = $${params.length}`);
+  }
+
   const map: Record<string, unknown> = {
     name: d.name,
     company: d.company,
@@ -427,9 +460,13 @@ agencyRouter.patch('/clients/:id', requireAgencyAuth, async (req, res) => {
     status: d.status,
     type: d.type,
     monthly_value: d.monthlyValue,
-    trial_ends_at: d.trialEndsAt,
     notes: d.notes,
   };
+
+  // trial_ends_at sin trialDaysOverride (campo legado)
+  if (d.trialEndsAt !== undefined && d.trialDaysOverride === undefined) {
+    map.trial_ends_at = d.trialEndsAt;
+  }
 
   for (const [col, val] of Object.entries(map)) {
     if (val !== undefined) {
@@ -635,6 +672,58 @@ agencyRouter.patch('/clients/:id/courtesy', requireAgencyAuth, async (req, res) 
   if (!updated) return res.status(404).json({ error: 'Cuenta no encontrada' });
   await logActivity(req.agencyAuth!.adminId, req.params.id, 'courtesy_updated',
     { extraUsers: courtesyExtraUsers, fullAccess: courtesyFullAccess });
+  res.json(updated);
+});
+
+// ─── CRM Audit ───────────────────────────────────────────────────────────────
+
+agencyRouter.get('/clients/:id/audit', requireAgencyAuth, async (req, res) => {
+  const client = await queryOne<{ organization_id: string | null }>(
+    'SELECT organization_id FROM agency_clients WHERE id = $1', [req.params.id],
+  );
+  if (!client) return res.status(404).json({ error: 'Cuenta no encontrada' });
+  if (!client.organization_id) return res.json({ entries: [], total: 0 });
+
+  const { page = '1', limit = '50', action } = req.query as Record<string, string>;
+  const offset = (Number(page) - 1) * Number(limit);
+  const conditions = ['organization_id = $1'];
+  const params: unknown[] = [client.organization_id];
+
+  if (action) {
+    params.push(action);
+    conditions.push(`action = $${params.length}`);
+  }
+
+  const where = conditions.join(' AND ');
+  const [entries, [countRow]] = await Promise.all([
+    query(
+      `SELECT * FROM crm_audit_log WHERE ${where} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, Number(limit), offset],
+    ),
+    query<{ total: string }>(`SELECT COUNT(*) AS total FROM crm_audit_log WHERE ${where}`, params),
+  ]);
+
+  res.json({ entries, total: Number(countRow?.total ?? 0) });
+});
+
+// ─── Trial ───────────────────────────────────────────────────────────────────
+
+agencyRouter.patch('/clients/:id/trial', requireAgencyAuth, async (req, res) => {
+  const { trialDaysOverride } = req.body ?? {};
+  const updated = await queryOne<AgencyClientRow>(
+    `UPDATE agency_clients
+     SET trial_days_override = $1,
+         trial_ends_at = CASE
+           WHEN $1::int IS NULL THEN NULL
+           WHEN $1::int = 0    THEN NULL
+           ELSE now() + ($1::int || ' days')::interval
+         END,
+         status = 'trial',
+         updated_at = now()
+     WHERE id = $2 RETURNING *`,
+    [trialDaysOverride ?? null, req.params.id],
+  );
+  if (!updated) return res.status(404).json({ error: 'Cuenta no encontrada' });
   res.json(updated);
 });
 

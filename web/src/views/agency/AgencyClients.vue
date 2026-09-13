@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { Plus, Search, ChevronRight, X, Copy, Check, Eye, EyeOff } from 'lucide-vue-next';
+import { Plus, Search, ChevronRight, X, Copy, Check, Eye, EyeOff, Infinity } from 'lucide-vue-next';
 import { agencyApi } from '../../agencyApi';
 
 interface AgencyClient {
@@ -64,6 +64,8 @@ const form = ref({
   type: 'client' as 'own' | 'client',
   monthlyValue: 0,
   notes: '',
+  trialUnlimited: false,
+  trialDays: 7,
 });
 
 async function load() {
@@ -99,9 +101,21 @@ async function createClient() {
   formError.value = '';
   submitting.value = true;
   try {
+    const trialDaysOverride = form.value.status === 'trial'
+      ? (form.value.trialUnlimited ? 0 : form.value.trialDays)
+      : undefined;
     const res = await agencyApi.post<{ client: AgencyClient; credentials: Credentials }>('/clients', {
-      ...form.value,
+      name: form.value.name,
+      company: form.value.company || undefined,
+      email: form.value.email,
+      phone: form.value.phone || undefined,
+      country: form.value.country || undefined,
+      plan: form.value.plan,
+      status: form.value.status,
+      type: form.value.type,
       monthlyValue: Number(form.value.monthlyValue),
+      notes: form.value.notes || undefined,
+      trialDaysOverride,
     });
     credentials.value = res.credentials;
     showCredentials.value = true;
@@ -120,7 +134,7 @@ function resetModal() {
   showTempPass.value = false;
   copied.value = false;
   formError.value = '';
-  form.value = { name: '', company: '', email: '', phone: '', country: '', plan: 'starter', status: 'active', type: 'client', monthlyValue: 0, notes: '' };
+  form.value = { name: '', company: '', email: '', phone: '', country: '', plan: 'starter', status: 'active', type: 'client', monthlyValue: 0, notes: '', trialUnlimited: false, trialDays: 7 };
 }
 
 async function copyPassword() {
@@ -436,6 +450,36 @@ const totalPages = computed(() => Math.ceil(total.value / 20));
                     <option value="active">Activo</option>
                     <option value="trial">Trial</option>
                   </select>
+                </div>
+              </div>
+
+              <!-- Días de trial (solo si status = trial) -->
+              <div v-if="form.status === 'trial'">
+                <label class="mb-1 block text-xs font-medium text-slate-400">Días de trial</label>
+                <div class="flex items-center gap-3">
+                  <div v-if="!form.trialUnlimited" class="flex-1">
+                    <input
+                      v-model.number="form.trialDays"
+                      type="number" min="1" max="99"
+                      class="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 focus:outline-none"
+                      placeholder="7"
+                    />
+                  </div>
+                  <div v-else class="flex-1 flex items-center gap-2 rounded-lg border border-amber-700/40 bg-amber-900/10 px-3 py-2">
+                    <Infinity class="h-4 w-4 text-amber-400" />
+                    <span class="text-sm text-amber-300">Sin vencimiento</span>
+                  </div>
+                  <button
+                    type="button"
+                    class="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all cursor-pointer whitespace-nowrap"
+                    :class="form.trialUnlimited
+                      ? 'border-amber-600/60 bg-amber-900/20 text-amber-300'
+                      : 'border-slate-700 text-slate-400 hover:border-slate-600'"
+                    @click="form.trialUnlimited = !form.trialUnlimited"
+                  >
+                    <Infinity class="h-3.5 w-3.5" />
+                    Sin límite
+                  </button>
                 </div>
               </div>
 

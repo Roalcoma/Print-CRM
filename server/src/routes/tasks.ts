@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
 import { logActivity } from '../activity.ts';
+import { audit } from '../audit.ts';
 
 export const tasksRouter = Router();
 
@@ -109,6 +110,7 @@ tasksRouter.post('/', async (req, res) => {
     orgId, entityType: 'task', entityId: row.id, actorId, actorName: actor?.name ?? null,
     eventType: 'task_created', meta: { title: t.title, priority: t.priority ?? 'medium' },
   }).catch(console.error);
+  audit({ req, action: 'task.created', entityType: 'task', entityId: row.id, entityName: t.title });
   res.status(201).json(await queryOne(`${BASE_SELECT} WHERE t.id = $1`, [row.id]));
 });
 
@@ -148,19 +150,24 @@ tasksRouter.patch('/:id', async (req, res) => {
         orgId, entityType: 'task', entityId: req.params.id, actorId, actorName: actor?.name ?? null,
         eventType: 'task_completed', meta: { title },
       }).catch(console.error);
+      audit({ req, action: 'task.status_changed', entityType: 'task', entityId: req.params.id, entityName: title, details: { from: existing.status, to: 'done' } });
     } else {
       logActivity({
         orgId, entityType: 'task', entityId: req.params.id, actorId, actorName: actor?.name ?? null,
         eventType: 'task_status_changed', meta: { from: existing.status, to: data.status as string, title },
       }).catch(console.error);
+      audit({ req, action: 'task.status_changed', entityType: 'task', entityId: req.params.id, entityName: title, details: { from: existing.status, to: data.status } });
     }
+  } else if (cols.filter(c => c !== 'status').length > 0) {
+    audit({ req, action: 'task.updated', entityType: 'task', entityId: req.params.id, entityName: existing.title });
   }
 
   res.json(await queryOne(`${BASE_SELECT} WHERE t.id = $1`, [req.params.id]));
 });
 
 tasksRouter.delete('/:id', async (req, res) => {
-  const row = await queryOne('DELETE FROM tasks WHERE id=$1 AND organization_id=$2 RETURNING id', [req.params.id, req.auth!.organizationId]);
+  const row = await queryOne<{ id: string; title: string }>('DELETE FROM tasks WHERE id=$1 AND organization_id=$2 RETURNING id, title', [req.params.id, req.auth!.organizationId]);
   if (!row) return res.status(404).json({ error: 'Tarea no encontrada' });
+  audit({ req, action: 'task.deleted', entityType: 'task', entityId: req.params.id, entityName: row.title });
   res.status(204).end();
 });

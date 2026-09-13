@@ -4,6 +4,7 @@ import { query, queryOne } from '../db.ts';
 import { buildFilters, type Condition } from '../filters.ts';
 import { toCsv, parseCsv } from '../csv.ts';
 import { logActivity } from '../activity.ts';
+import { audit } from '../audit.ts';
 
 export const opportunitiesRouter = Router();
 
@@ -174,6 +175,7 @@ opportunitiesRouter.post('/', async (req, res) => {
     eventType: 'opp_created',
     meta: { title: o.title, value: o.value ?? 0, stage_name: stageRow?.name ?? '' },
   }).catch(console.error);
+  audit({ req, action: 'opportunity.created', entityType: 'opportunity', entityId: row.id, entityName: o.title, details: { value: o.value, stage: stageRow?.name } });
 
   res.status(201).json(full);
 });
@@ -235,6 +237,7 @@ opportunitiesRouter.patch('/:id', async (req, res) => {
       eventType: 'opp_stage_changed',
       meta: { from: fromStage?.name ?? '', to: toStage?.name ?? '', title },
     }).catch(console.error);
+    audit({ req, action: 'opportunity.stage_changed', entityType: 'opportunity', entityId: req.params.id, entityName: title, details: { from: fromStage?.name, to: toStage?.name } });
   } else if ('status' in data && data.status !== existing.status) {
     if (data.status === 'won') {
       logActivity({
@@ -267,8 +270,9 @@ opportunitiesRouter.patch('/:id', async (req, res) => {
 });
 
 opportunitiesRouter.delete('/:id', async (req, res) => {
-  const row = await queryOne('DELETE FROM opportunities WHERE id=$1 AND organization_id=$2 RETURNING id', [req.params.id, req.auth!.organizationId]);
+  const row = await queryOne<{ id: string; title: string }>('DELETE FROM opportunities WHERE id=$1 AND organization_id=$2 RETURNING id, title', [req.params.id, req.auth!.organizationId]);
   if (!row) return res.status(404).json({ error: 'Oportunidad no encontrada' });
+  audit({ req, action: 'opportunity.deleted', entityType: 'opportunity', entityId: req.params.id, entityName: row.title });
   res.status(204).end();
 });
 

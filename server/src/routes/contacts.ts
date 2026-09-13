@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
 import { logActivity } from '../activity.ts';
+import { audit } from '../audit.ts';
 
 export const contactsRouter = Router();
 
@@ -263,6 +264,7 @@ contactsRouter.post('/', async (req, res) => {
   const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ');
   const actor    = await queryOne<{ name: string }>('SELECT name FROM users WHERE id=$1', [actorId]);
   logActivity({ orgId, entityType: 'contact', entityId: row.id, actorId, actorName: actor?.name ?? null, eventType: 'contact_created', meta: { name: fullName } }).catch(console.error);
+  audit({ req, action: 'contact.created', entityType: 'contact', entityId: row.id, entityName: fullName });
   res.status(201).json(row);
 });
 
@@ -398,6 +400,7 @@ contactsRouter.put('/:id', async (req, res) => {
   const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ');
   const actor    = await queryOne<{ name: string }>('SELECT name FROM users WHERE id=$1', [actorId]);
   logActivity({ orgId, entityType: 'contact', entityId: req.params.id, actorId, actorName: actor?.name ?? null, eventType: 'contact_updated', meta: { name: fullName } }).catch(console.error);
+  audit({ req, action: 'contact.updated', entityType: 'contact', entityId: req.params.id, entityName: fullName });
   res.json(row);
 });
 
@@ -435,15 +438,17 @@ contactsRouter.patch('/:id', async (req, res) => {
 
   const actor = await queryOne<{ name: string }>('SELECT name FROM users WHERE id=$1', [actorId]);
   logActivity({ orgId, entityType: 'contact', entityId: req.params.id, actorId, actorName: actor?.name ?? null, eventType: 'contact_updated', meta: { name: row.first_name } }).catch(console.error);
+  audit({ req, action: 'contact.updated', entityType: 'contact', entityId: req.params.id, entityName: `${row.first_name} ${row.last_name ?? ''}`.trim() });
   res.json(row);
 });
 
 // DELETE /:id
 contactsRouter.delete('/:id', async (req, res) => {
-  const row = await queryOne(
-    'DELETE FROM contacts WHERE id=$1 AND organization_id=$2 RETURNING id',
+  const row = await queryOne<{ id: string; first_name: string; last_name: string | null }>(
+    'DELETE FROM contacts WHERE id=$1 AND organization_id=$2 RETURNING id, first_name, last_name',
     [req.params.id, req.auth!.organizationId],
   );
   if (!row) return res.status(404).json({ error: 'Contacto no encontrado' });
+  audit({ req, action: 'contact.deleted', entityType: 'contact', entityId: req.params.id, entityName: `${row.first_name} ${row.last_name ?? ''}`.trim() });
   res.status(204).end();
 });

@@ -4,7 +4,8 @@ import { useRoute, useRouter } from 'vue-router';
 import {
   ArrowLeft, Building2, Mail, Phone, Globe, FileText, Edit3,
   Activity, CreditCard, X, Check, ExternalLink, RefreshCw,
-  Copy, Eye, EyeOff, Plus, Gift, Trash2, ChevronDown,
+  Copy, Eye, EyeOff, Plus, Gift, Trash2, ChevronDown, Clock,
+  ShieldCheck, User, Infinity,
 } from 'lucide-vue-next';
 import { agencyApi } from '../../agencyApi';
 
@@ -62,6 +63,19 @@ interface ActivityItem {
   admin_name: string | null;
 }
 
+interface AuditEntry {
+  id: string;
+  user_id: string | null;
+  user_name: string | null;
+  action: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  entity_name: string | null;
+  details: Record<string, unknown> | null;
+  ip: string | null;
+  created_at: string;
+}
+
 interface Credentials {
   email: string;
   password: string;
@@ -78,7 +92,7 @@ const orgUsers = ref<OrgUser[]>([]);
 const activities = ref<ActivityItem[]>([]);
 const loading = ref(true);
 const error = ref('');
-const activeTab = ref<'crm' | 'activity' | 'billing'>('crm');
+const activeTab = ref<'crm' | 'activity' | 'billing' | 'audit'>('crm');
 
 // Edit modal
 const showEdit = ref(false);
@@ -95,7 +109,16 @@ const editForm = ref({
   type: 'client' as 'own' | 'client',
   monthlyValue: 0,
   notes: '',
+  trialUnlimited: false,
+  trialDays: 7,
 });
+
+// Audit
+const auditEntries = ref<AuditEntry[]>([]);
+const auditLoading = ref(false);
+const auditTotal = ref(0);
+const auditPage = ref(1);
+const auditActionFilter = ref('');
 
 // Payments
 const payments = ref<Payment[]>([]);
@@ -130,6 +153,7 @@ async function load() {
     orgUsers.value = res.orgUsers;
     activities.value = res.activities;
     // Pre-fill edit form
+    const trialDaysOverride = (res.client as AgencyClient & { trial_days_override?: number | null }).trial_days_override;
     editForm.value = {
       name: res.client.name,
       company: res.client.company ?? '',
@@ -141,6 +165,8 @@ async function load() {
       type: res.client.type,
       monthlyValue: Number(res.client.monthly_value),
       notes: res.client.notes ?? '',
+      trialUnlimited: trialDaysOverride === 0,
+      trialDays: trialDaysOverride ?? 7,
     };
     courtesyForm.value = {
       courtesyExtraUsers: res.client.courtesy_extra_users ?? 0,
@@ -158,17 +184,36 @@ async function load() {
 
 onMounted(load);
 
+async function loadAudit() {
+  auditLoading.value = true;
+  try {
+    const params = new URLSearchParams({ page: String(auditPage.value), limit: '50' });
+    if (auditActionFilter.value) params.set('action', auditActionFilter.value);
+    const res = await agencyApi.get<{ entries: AuditEntry[]; total: number }>(`/clients/${id}/audit?${params}`);
+    auditEntries.value = res.entries;
+    auditTotal.value = res.total;
+  } catch { /* silencioso */ } finally {
+    auditLoading.value = false;
+  }
+}
+
 async function saveEdit() {
   saveError.value = '';
   saving.value = true;
   try {
+    const trialDaysOverride = editForm.value.trialUnlimited ? 0 : editForm.value.trialDays;
     const updated = await agencyApi.patch<AgencyClient>(`/clients/${id}`, {
-      ...editForm.value,
-      monthlyValue: Number(editForm.value.monthlyValue),
+      name: editForm.value.name,
       company: editForm.value.company || undefined,
+      email: editForm.value.email,
       phone: editForm.value.phone || undefined,
       country: editForm.value.country || undefined,
+      plan: editForm.value.plan,
+      status: editForm.value.status,
+      type: editForm.value.type,
+      monthlyValue: Number(editForm.value.monthlyValue),
       notes: editForm.value.notes || undefined,
+      trialDaysOverride,
     });
     // Actualiza el cliente en memoria sin recargar (evita el flash del skeleton)
     client.value = { ...client.value!, ...updated };
@@ -332,6 +377,42 @@ function roleBadge(role: string) {
   const m: Record<string, string> = { owner: 'text-violet-400', admin: 'text-blue-400', member: 'text-slate-400' };
   return m[role] ?? 'text-slate-400';
 }
+
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  login: 'Inicio de sesión',
+  'contact.created': 'Contacto creado',
+  'contact.updated': 'Contacto actualizado',
+  'contact.deleted': 'Contacto eliminado',
+  'opportunity.created': 'Oportunidad creada',
+  'opportunity.updated': 'Oportunidad actualizada',
+  'opportunity.stage_changed': 'Etapa cambiada',
+  'opportunity.deleted': 'Oportunidad eliminada',
+  'task.created': 'Tarea creada',
+  'task.updated': 'Tarea actualizada',
+  'task.status_changed': 'Estado de tarea cambiado',
+  'task.deleted': 'Tarea eliminada',
+  'user.created': 'Usuario creado',
+  'user.updated': 'Usuario actualizado',
+  'user.deleted': 'Usuario eliminado',
+};
+
+function auditActionLabel(action: string) {
+  return AUDIT_ACTION_LABELS[action] ?? action;
+}
+
+function auditActionDot(action: string) {
+  if (action.includes('created') || action === 'login') return 'bg-emerald-500';
+  if (action.includes('deleted')) return 'bg-red-500';
+  if (action.includes('updated') || action.includes('changed')) return 'bg-blue-500';
+  return 'bg-slate-500';
+}
+
+function auditActionBadge(action: string) {
+  if (action.includes('created') || action === 'login') return 'bg-emerald-900/50 text-emerald-300 border-emerald-700/50';
+  if (action.includes('deleted')) return 'bg-red-900/50 text-red-300 border-red-700/50';
+  if (action.includes('updated') || action.includes('changed')) return 'bg-blue-900/50 text-blue-300 border-blue-700/50';
+  return 'bg-slate-800/60 text-slate-400 border-slate-700/60';
+}
 </script>
 
 <template>
@@ -450,15 +531,20 @@ function roleBadge(role: string) {
         <!-- Right: tabs -->
         <div class="lg:col-span-2 rounded-xl border border-slate-800/60 bg-slate-900/60 overflow-hidden">
           <!-- Tab bar -->
-          <div class="flex border-b border-slate-800/60">
+          <div class="flex border-b border-slate-800/60 overflow-x-auto">
             <button
-              v-for="tab in [{ key: 'crm', label: 'CRM', icon: Building2 }, { key: 'activity', label: 'Actividad', icon: Activity }, { key: 'billing', label: 'Facturación', icon: CreditCard }]"
+              v-for="tab in [
+                { key: 'crm', label: 'CRM', icon: Building2 },
+                { key: 'activity', label: 'Actividad', icon: Activity },
+                { key: 'billing', label: 'Facturación', icon: CreditCard },
+                { key: 'audit', label: 'Auditoría', icon: ShieldCheck },
+              ]"
               :key="tab.key"
-              class="flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors cursor-pointer border-b-2"
+              class="flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors cursor-pointer border-b-2 whitespace-nowrap"
               :class="activeTab === tab.key
                 ? 'border-violet-500 text-violet-300 bg-violet-900/10'
                 : 'border-transparent text-slate-400 hover:text-slate-200'"
-              @click="activeTab = tab.key as typeof activeTab"
+              @click="activeTab = tab.key as typeof activeTab; if (tab.key === 'audit' && auditEntries.length === 0) loadAudit()"
             >
               <component :is="tab.icon" class="h-4 w-4" />
               {{ tab.label }}
@@ -543,6 +629,100 @@ function roleBadge(role: string) {
                   <div v-if="item.details && Object.keys(item.details).length > 0" class="mt-1.5 text-xs text-slate-600 font-mono bg-slate-800/50 rounded px-2 py-1">
                     {{ JSON.stringify(item.details) }}
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Audit tab -->
+          <div v-if="activeTab === 'audit'" class="p-5">
+            <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
+              <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Registro de auditoría del CRM</p>
+              <div class="flex items-center gap-2">
+                <select
+                  v-model="auditActionFilter"
+                  class="rounded-lg border border-slate-700 bg-slate-800/60 px-2 py-1.5 text-xs text-slate-300 focus:border-violet-500 focus:outline-none cursor-pointer"
+                  @change="auditPage = 1; loadAudit()"
+                >
+                  <option value="">Todas las acciones</option>
+                  <option value="login">Login</option>
+                  <option value="contact.created">Contacto creado</option>
+                  <option value="contact.updated">Contacto actualizado</option>
+                  <option value="contact.deleted">Contacto eliminado</option>
+                  <option value="opportunity.created">Oportunidad creada</option>
+                  <option value="opportunity.stage_changed">Etapa cambiada</option>
+                  <option value="opportunity.deleted">Oportunidad eliminada</option>
+                  <option value="task.created">Tarea creada</option>
+                  <option value="task.status_changed">Estado de tarea cambiado</option>
+                  <option value="task.deleted">Tarea eliminada</option>
+                </select>
+                <button
+                  class="rounded-lg border border-slate-700 p-1.5 text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-all cursor-pointer"
+                  title="Actualizar"
+                  @click="loadAudit()"
+                ><RefreshCw class="h-3.5 w-3.5" :class="auditLoading ? 'animate-spin' : ''" /></button>
+              </div>
+            </div>
+
+            <div v-if="!client.organization_id" class="py-8 text-center text-slate-500 text-sm">
+              Este cliente no tiene CRM provisionado. Sin datos de auditoría.
+            </div>
+
+            <div v-else-if="auditLoading && auditEntries.length === 0" class="space-y-2">
+              <div v-for="i in 5" :key="i" class="h-12 rounded-lg bg-slate-800/40 animate-pulse"></div>
+            </div>
+
+            <div v-else-if="auditEntries.length === 0" class="py-8 text-center">
+              <ShieldCheck class="mx-auto h-10 w-10 text-slate-700 mb-3" />
+              <p class="text-slate-500 text-sm">Sin registros de auditoría aún</p>
+            </div>
+
+            <div v-else class="space-y-1.5">
+              <div
+                v-for="entry in auditEntries"
+                :key="entry.id"
+                class="flex items-start gap-3 rounded-lg bg-slate-800/30 border border-slate-700/30 px-3 py-2.5 text-xs"
+              >
+                <div class="flex-shrink-0 mt-0.5">
+                  <div class="h-2 w-2 rounded-full mt-1" :class="auditActionDot(entry.action)"></div>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span
+                      class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold"
+                      :class="auditActionBadge(entry.action)"
+                    >{{ auditActionLabel(entry.action) }}</span>
+                    <span v-if="entry.entity_name" class="text-slate-300 font-medium truncate max-w-[180px]">{{ entry.entity_name }}</span>
+                  </div>
+                  <div class="flex items-center gap-3 mt-1 text-slate-500 flex-wrap">
+                    <span v-if="entry.user_name" class="flex items-center gap-1">
+                      <User class="h-3 w-3" />{{ entry.user_name }}
+                    </span>
+                    <span class="flex items-center gap-1">
+                      <Clock class="h-3 w-3" />{{ formatDate(entry.created_at) }}
+                    </span>
+                    <span v-if="entry.ip" class="font-mono text-[10px]">{{ entry.ip }}</span>
+                  </div>
+                  <div v-if="entry.details && Object.keys(entry.details).length > 0" class="mt-1 font-mono text-[10px] text-slate-600 bg-slate-800/50 rounded px-2 py-0.5 truncate">
+                    {{ JSON.stringify(entry.details) }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Pagination -->
+              <div v-if="auditTotal > 50" class="flex items-center justify-between pt-3">
+                <span class="text-xs text-slate-500">{{ auditTotal }} registros en total</span>
+                <div class="flex gap-2">
+                  <button
+                    :disabled="auditPage === 1"
+                    class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200 disabled:opacity-40 cursor-pointer transition-colors"
+                    @click="auditPage--; loadAudit()"
+                  >Anterior</button>
+                  <button
+                    :disabled="auditPage * 50 >= auditTotal"
+                    class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200 disabled:opacity-40 cursor-pointer transition-colors"
+                    @click="auditPage++; loadAudit()"
+                  >Siguiente</button>
                 </div>
               </div>
             </div>
@@ -739,6 +919,38 @@ function roleBadge(role: string) {
               <label class="mb-1 block text-xs font-medium text-slate-400">Valor mensual (USD)</label>
               <input v-model.number="editForm.monthlyValue" type="number" min="0" class="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none" />
             </div>
+
+            <!-- Días de trial -->
+            <div>
+              <label class="mb-1 block text-xs font-medium text-slate-400">Días de trial</label>
+              <div class="flex items-center gap-3">
+                <div v-if="!editForm.trialUnlimited" class="flex-1">
+                  <input
+                    v-model.number="editForm.trialDays"
+                    type="number" min="1" max="99"
+                    class="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none"
+                    placeholder="7"
+                  />
+                </div>
+                <div v-else class="flex-1 flex items-center gap-2 rounded-lg border border-amber-700/40 bg-amber-900/10 px-3 py-2">
+                  <Infinity class="h-4 w-4 text-amber-400" />
+                  <span class="text-sm text-amber-300">Ilimitado</span>
+                </div>
+                <button
+                  type="button"
+                  class="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all cursor-pointer whitespace-nowrap"
+                  :class="editForm.trialUnlimited
+                    ? 'border-amber-600/60 bg-amber-900/20 text-amber-300'
+                    : 'border-slate-700 text-slate-400 hover:border-slate-600'"
+                  @click="editForm.trialUnlimited = !editForm.trialUnlimited"
+                >
+                  <Infinity class="h-3.5 w-3.5" />
+                  Sin límite
+                </button>
+              </div>
+              <p class="mt-1 text-[10px] text-slate-500">Se aplica cuando el estado es "Trial". 0 = sin límite de tiempo.</p>
+            </div>
+
             <div>
               <label class="mb-1 block text-xs font-medium text-slate-400">Notas</label>
               <textarea v-model="editForm.notes" rows="3" class="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none resize-none"></textarea>

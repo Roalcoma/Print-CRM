@@ -11,6 +11,7 @@ interface AgencyClient {
   company: string | null;
   email: string;
   status: string;
+  type: 'own' | 'client';
   organization_id: string | null;
 }
 
