@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import {
   Search, Plus, X, Send, Phone, Check, CheckCheck, Clock, FileText, Mic,
   MessageCircle, RefreshCw, Mail, Tag, CalendarDays, Briefcase, UserCircle2,
@@ -236,7 +237,17 @@ function scrollToBottom(smooth = false) {
   });
 }
 
-onMounted(loadConversations);
+const route = useRoute();
+
+onMounted(async () => {
+  await loadConversations();
+  // Si llegamos desde una oportunidad con contact_id, auto-seleccionar esa conversación
+  const contactIdParam = route.query.contact_id as string | undefined;
+  if (contactIdParam) {
+    const conv = conversations.value.find(c => c.contact_id === contactIdParam);
+    if (conv) await selectConversation(conv.id);
+  }
+});
 watch(inboxTab, loadConversations);
 
 let searchTimer: ReturnType<typeof setTimeout>;

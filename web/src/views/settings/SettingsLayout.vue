@@ -58,7 +58,7 @@ const groups = [
     </aside>
 
     <!-- Contenido de la sección -->
-    <div class="flex-1 overflow-auto bg-slate-50/50">
+    <div class="flex flex-1 flex-col overflow-hidden bg-[#F1F5F9]">
       <RouterView />
     </div>
   </div>

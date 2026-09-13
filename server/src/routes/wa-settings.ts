@@ -88,11 +88,14 @@ waSettingsRouter.post('/connect', requireAdmin, async (req, res) => {
     const webhookUrl = `${env.publicUrl}/api/wa/webhook/${row.webhook_secret}`;
     await client.setWebhook(webhookUrl).catch(e => console.warn('Webhook register:', e));
 
+    // Disparar generación de QR en Evolution API (/instance/connect/:name)
+    await client.getQR().catch(e => console.warn('QR trigger:', e));
+
     await pool.query(
-      `UPDATE wa_settings SET session_status = 'connecting', updated_at = NOW() WHERE organization_id = $1`,
+      `UPDATE wa_settings SET session_status = 'qr', updated_at = NOW() WHERE organization_id = $1`,
       [orgId],
     );
-    broadcast(orgId, 'wa:status', { status: 'connecting' });
+    broadcast(orgId, 'wa:status', { status: 'qr' });
     res.json({ ok: true });
   } catch (e) {
     console.error(e);

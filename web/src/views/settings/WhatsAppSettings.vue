@@ -68,7 +68,10 @@ async function connect() {
   connecting.value = true;
   try {
     await api.post('/wa/connect', {});
-    await load();
+    // No llamamos load() porque el sync sobreescribiría el status 'qr' con el estado
+    // real de Evolution API ('connecting' → 'disconnected'). Actualizamos directo.
+    if (settings.value) settings.value.session_status = 'qr';
+    await fetchQr();
     startQrPolling();
   } catch (e: unknown) {
     alert(e instanceof Error ? e.message : 'Error al conectar');

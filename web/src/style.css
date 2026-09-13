@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
 @import 'tailwindcss';
 
 /* Tema del CRM: West Side #F69008 primario + Seagull #60D0FA acento. */
@@ -6,7 +6,7 @@
   --color-primary: #F69008;
   --color-primary-dark: #D97706;
   --color-cta: #60D0FA;
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Roboto', ui-sans-serif, system-ui, sans-serif;
 
   /* Sistema de elevación: sombras suaves multicapa (profundidad premium). */
   --shadow-card:     0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
