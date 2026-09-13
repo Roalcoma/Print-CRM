@@ -27,6 +27,7 @@ const rules = ref<AutomationRule[]>([]);
 const loading = ref(true);
 const toggling = ref<string | null>(null);
 const selectedId = ref<string | null>(null);
+const showDetail = ref(false);
 
 const selectedRule = computed(() => rules.value.find(r => r.id === selectedId.value) ?? null);
 
@@ -38,6 +39,11 @@ onMounted(async () => {
     loading.value = false;
   }
 });
+
+function selectRule(id: string) {
+  selectedId.value = id;
+  showDetail.value = true;
+}
 
 async function toggleRule(rule: AutomationRule) {
   if (!auth.isAdmin) return;
@@ -89,7 +95,7 @@ function formatDate(d: string | null) {
   <div v-else class="flex h-full flex-col overflow-hidden">
 
     <!-- Cabecera -->
-    <div class="flex flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-3.5">
+    <div class="flex flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-6 sm:py-3.5">
       <div>
         <h3 class="text-[15px] font-semibold text-slate-900">Automatizaciones</h3>
         <p class="text-[12px] text-slate-400">Flujos que se ejecutan automáticamente en tu CRM</p>
@@ -106,7 +112,10 @@ function formatDate(d: string | null) {
     <div class="flex flex-1 overflow-hidden">
 
       <!-- Lista lateral -->
-      <aside class="flex w-80 flex-shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white">
+      <aside
+        class="flex flex-col overflow-y-auto border-r border-slate-200 bg-white"
+        :class="showDetail ? 'hidden md:flex md:w-80 md:flex-shrink-0' : 'flex w-full md:w-80 md:flex-shrink-0'"
+      >
         <div class="p-3">
           <p class="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Flujos configurados</p>
 
@@ -117,7 +126,7 @@ function formatDate(d: string | null) {
             :class="selectedId === rule.id
               ? 'bg-primary/5 ring-1 ring-primary/20'
               : 'hover:bg-slate-50'"
-            @click="selectedId = rule.id"
+            @click="selectRule(rule.id)"
           >
             <div class="flex items-start gap-3">
               <!-- Icono del trigger -->
@@ -166,7 +175,19 @@ function formatDate(d: string | null) {
       </aside>
 
       <!-- Panel de detalle -->
-      <div class="flex flex-1 flex-col overflow-y-auto bg-[#F1F5F9]">
+      <div
+        class="flex flex-col overflow-y-auto bg-[#F1F5F9]"
+        :class="showDetail ? 'flex flex-1' : 'hidden md:flex md:flex-1'"
+      >
+        <!-- Botón volver (móvil) -->
+        <button
+          v-if="showDetail"
+          class="flex items-center gap-1 px-4 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-800 md:hidden"
+          @click="showDetail = false"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+          Volver a la lista
+        </button>
 
         <!-- Sin selección -->
         <div v-if="!selectedRule" class="flex flex-1 flex-col items-center justify-center py-20">
@@ -222,7 +243,7 @@ function formatDate(d: string | null) {
           <div class="flex-1 space-y-4 p-6">
 
             <!-- Estadísticas -->
-            <div class="grid grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
               <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
                 <div class="flex items-center gap-2 text-slate-400">
                   <Activity class="h-4 w-4" />

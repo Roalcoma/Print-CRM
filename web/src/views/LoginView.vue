@@ -79,8 +79,7 @@ async function submit() {
 
         <p v-if="error" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{{ error }}</p>
 
-        <button type="submit" :disabled="loading"
-          class="w-full cursor-pointer rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:bg-primary-dark disabled:opacity-60">
+        <button type="submit" :disabled="loading" class="btn btn-primary w-full justify-center">
           {{ loading ? 'Procesando…' : mode === 'login' ? 'Entrar' : 'Crear cuenta' }}
         </button>
       </form>

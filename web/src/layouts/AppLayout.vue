@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router';
 import {
   LayoutGrid, BookUser, TrendingUp, ListChecks,
   CalendarDays, MessagesSquare, LogOut, Search,
-  SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Zap,
+  SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Zap, Menu,
 } from 'lucide-vue-next';
 import { useAuthStore } from '../stores/auth';
 import NotificationsDropdown from '../components/NotificationsDropdown.vue';
@@ -54,6 +54,18 @@ function toggleSidebar() {
   auth.savePreferences({ sidebarCollapsed: !collapsed.value });
 }
 
+// ── Mobile drawer ─────────────────────────────────────────────────────────────
+const isMobile     = ref(false);
+const mobileOpen   = ref(false);
+
+function checkMobile() {
+  isMobile.value = window.innerWidth < 768;
+  if (!isMobile.value) mobileOpen.value = false;
+}
+
+// Cierra el drawer al navegar
+watch(() => route.path, () => { mobileOpen.value = false; });
+
 // ── User dropdown ─────────────────────────────────────────────────────────────
 const userMenuOpen = ref(false);
 const userMenuRef  = ref<HTMLElement | null>(null);
@@ -63,8 +75,15 @@ function handleDocClick(e: MouseEvent) {
     userMenuOpen.value = false;
   }
 }
-onMounted(()  => document.addEventListener('mousedown', handleDocClick));
-onUnmounted(() => document.removeEventListener('mousedown', handleDocClick));
+onMounted(() => {
+  document.addEventListener('mousedown', handleDocClick);
+  checkMobile();
+  window.addEventListener('resize', checkMobile);
+});
+onUnmounted(() => {
+  document.removeEventListener('mousedown', handleDocClick);
+  window.removeEventListener('resize', checkMobile);
+});
 
 function logout() {
   auth.logout();
@@ -107,13 +126,26 @@ const s = computed(() => isDark.value
 <template>
   <div class="flex h-screen bg-[#F1F5F9] text-slate-900">
 
-    <!-- ── Sidebar wrapper (relative so the floating toggle can overflow) ─── -->
-    <div class="relative z-10 flex-shrink-0">
+    <!-- ── Backdrop móvil ─────────────────────────────────────────────────── -->
+    <Transition name="backdrop">
+      <div
+        v-if="isMobile && mobileOpen"
+        class="mobile-backdrop"
+        @click="mobileOpen = false"
+      />
+    </Transition>
 
-      <aside
-        class="sidebar flex h-full flex-col overflow-hidden"
-        :class="[s.wrap, collapsed ? 'sidebar--collapsed' : 'sidebar--expanded']"
-      >
+    <!-- ── Sidebar wrapper (relative so the floating toggle can overflow) ─── -->
+    <div
+      class="relative z-10 flex-shrink-0"
+      :class="isMobile ? 'absolute inset-y-0 left-0 z-[60]' : ''"
+    >
+      <Transition name="mobile-drawer">
+        <aside
+          v-show="!isMobile || mobileOpen"
+          class="sidebar flex h-full flex-col overflow-hidden"
+          :class="[s.wrap, isMobile ? 'sidebar--expanded shadow-2xl' : collapsed ? 'sidebar--collapsed' : 'sidebar--expanded']"
+        >
         <!-- Logo -->
         <div class="flex h-16 flex-shrink-0 items-center gap-2.5 px-4">
           <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#F69008] to-[#D97706] text-sm font-bold text-white shadow-md">R</div>
@@ -190,9 +222,11 @@ const s = computed(() => isDark.value
           </RouterLink>
         </nav>
       </aside>
+      </Transition>
 
-      <!-- Floating toggle button (GHL style — círculo en el borde derecho, bajo) -->
+      <!-- Floating toggle button — solo en desktop -->
       <button
+        v-if="!isMobile"
         class="floating-toggle absolute right-0 z-20 flex cursor-pointer items-center justify-center rounded-full bg-[#F69008] text-white shadow-lg shadow-[#F69008]/30 ring-2 transition-all hover:bg-[#D97706] hover:shadow-[#D97706]/40 active:scale-95"
         :class="isDark ? 'ring-[#111827]' : 'ring-white'"
         style="top: 86%; transform: translate(50%, -50%)"
@@ -204,29 +238,39 @@ const s = computed(() => isDark.value
     </div>
 
     <!-- ── Right column ───────────────────────────────────────────────────── -->
-    <div class="flex flex-1 flex-col overflow-hidden">
+    <div class="flex flex-1 flex-col overflow-hidden min-w-0">
 
       <!-- Header -->
-      <header class="z-[5] flex h-16 flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 shadow-toolbar">
-        <!-- Page title / breadcrumb -->
-        <div>
-          <div v-if="breadcrumb.length" class="mb-0.5 flex items-center gap-1 text-xs text-slate-400">
-            <RouterLink v-if="breadcrumb[0].to" :to="breadcrumb[0].to" class="transition-colors hover:text-primary">{{ breadcrumb[0].label }}</RouterLink>
-            <span v-else>{{ breadcrumb[0].label }}</span>
-            <span>/</span>
-            <span class="font-medium text-slate-600">{{ breadcrumb[1]?.label }}</span>
+      <header class="z-[5] flex h-16 flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 shadow-toolbar sm:px-6">
+        <!-- Hamburguesa (solo móvil) + Page title / breadcrumb -->
+        <div class="flex items-center gap-3">
+          <button
+            v-if="isMobile"
+            class="btn btn-ghost btn-sm rounded-lg p-1.5"
+            @click="mobileOpen = true"
+            aria-label="Abrir menú"
+          >
+            <Menu class="h-5 w-5" />
+          </button>
+          <div>
+            <div v-if="breadcrumb.length" class="mb-0.5 flex items-center gap-1 text-xs text-slate-400">
+              <RouterLink v-if="breadcrumb[0].to" :to="breadcrumb[0].to" class="transition-colors hover:text-primary">{{ breadcrumb[0].label }}</RouterLink>
+              <span v-else>{{ breadcrumb[0].label }}</span>
+              <span>/</span>
+              <span class="font-medium text-slate-600">{{ breadcrumb[1]?.label }}</span>
+            </div>
+            <h1 class="text-lg font-semibold leading-tight tracking-tight text-slate-900 sm:text-xl">{{ title }}</h1>
           </div>
-          <h1 class="text-xl font-semibold leading-tight tracking-tight text-slate-900">{{ title }}</h1>
         </div>
 
         <!-- Right controls -->
-        <div class="flex items-center gap-3">
-          <!-- Search bar -->
+        <div class="flex items-center gap-2 sm:gap-3">
+          <!-- Search bar (solo sm+) -->
           <div class="relative hidden sm:block">
             <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               placeholder="Buscar…"
-              class="w-52 rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm transition-all focus:border-primary focus:bg-white focus:shadow-sm focus:ring-2 focus:ring-primary/20 focus:outline-none"
+              class="w-44 rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm transition-all focus:border-primary focus:bg-white focus:shadow-sm focus:ring-2 focus:ring-primary/20 focus:outline-none lg:w-52"
             />
           </div>
 

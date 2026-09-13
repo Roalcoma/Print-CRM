@@ -227,11 +227,7 @@ function timeAgo(iso: string): string {
         class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#F69008] focus:ring-2 focus:ring-[#F69008]/20 focus:outline-none resize-none"
       ></textarea>
       <div class="mt-2 flex justify-end">
-        <button
-          :disabled="!noteBody.trim() || addingNote"
-          class="rounded-md bg-[#F69008] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#D97706] disabled:opacity-50 cursor-pointer"
-          @click="submitNote"
-        >
+        <button :disabled="!noteBody.trim() || addingNote" class="btn btn-primary btn-sm" @click="submitNote">
           {{ addingNote ? 'Guardando…' : 'Guardar nota' }}
         </button>
       </div>

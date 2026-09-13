@@ -101,35 +101,37 @@ const moneyFull = (n: number) => {
   <div v-else class="flex h-full flex-col overflow-y-auto">
 
     <!-- ── Banner de bienvenida ──────────────────────────────────────────────── -->
-    <div class="flex-shrink-0 border-b border-slate-200 bg-white px-6 py-4">
-      <div class="flex items-center justify-between">
+    <div class="flex-shrink-0 border-b border-slate-200 bg-white px-4 py-3 sm:px-6 sm:py-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p class="text-[11px] font-medium capitalize text-slate-400">{{ todayStr }}</p>
-          <h1 class="mt-0.5 text-[18px] font-bold text-slate-900">{{ greeting }}, {{ firstName }}</h1>
+          <h1 class="mt-0.5 text-base font-bold text-slate-900 sm:text-[18px]">{{ greeting }}, {{ firstName }}</h1>
         </div>
         <div class="flex items-center gap-2">
           <button
             v-if="auth.can('contacts')"
-            class="dash-quick-btn"
+            class="btn btn-secondary btn-sm"
             @click="router.push('/contacts')"
           >
             <Users class="h-3.5 w-3.5" />
-            Nuevo contacto
+            <span class="hidden sm:inline">Nuevo contacto</span>
+            <span class="sm:hidden">Contacto</span>
           </button>
           <button
             v-if="auth.can('opportunities')"
-            class="dash-quick-btn dash-quick-btn--primary"
+            class="btn btn-primary btn-sm"
             @click="router.push('/opportunities')"
           >
             <Plus class="h-3.5 w-3.5" />
-            Nueva oportunidad
+            <span class="hidden sm:inline">Nueva oportunidad</span>
+            <span class="sm:hidden">Oportunidad</span>
           </button>
         </div>
       </div>
     </div>
 
     <!-- ── Cuerpo ─────────────────────────────────────────────────────────────── -->
-    <div class="flex-1 space-y-5 p-6">
+    <div class="flex-1 space-y-4 p-4 sm:space-y-5 sm:p-6">
 
       <!-- KPI Cards -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -346,7 +348,7 @@ const moneyFull = (n: number) => {
               </span>
             </div>
             <button
-              class="flex cursor-pointer items-center gap-1 text-xs font-medium text-primary hover:text-primary-dark"
+              class="btn btn-ghost btn-sm text-primary hover:text-primary-dark"
               @click="router.push('/tasks')"
             >
               Ver todas <ChevronRight class="h-3.5 w-3.5" />
@@ -359,36 +361,3 @@ const moneyFull = (n: number) => {
   </div>
 </template>
 
-<style>
-.dash-quick-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.4375rem 0.875rem;
-  border-radius: 0.5rem;
-  border: 1.5px solid #E2E8F0;
-  background: #ffffff;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: #475569;
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
-}
-.dash-quick-btn:hover {
-  border-color: #F69008;
-  color: #D97706;
-  background: rgba(246, 144, 8, 0.05);
-}
-.dash-quick-btn--primary {
-  background: #F69008;
-  border-color: #F69008;
-  color: #ffffff;
-  font-weight: 600;
-  box-shadow: 0 1px 4px rgba(246, 144, 8, 0.35);
-}
-.dash-quick-btn--primary:hover {
-  background: #D97706;
-  border-color: #D97706;
-  color: #ffffff;
-}
-</style>

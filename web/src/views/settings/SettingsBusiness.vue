@@ -101,21 +101,21 @@ const initials = () => {
 <template>
   <div class="flex h-full flex-col overflow-hidden">
     <!-- Barra superior -->
-    <div class="flex flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-3.5">
+    <div class="flex flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-6 sm:py-3.5">
       <div>
         <h3 class="text-[15px] font-semibold text-slate-900">Perfil del negocio</h3>
-        <p class="text-[12px] text-slate-400">Información general de tu organización</p>
+        <p class="hidden text-[12px] text-slate-400 sm:block">Información general de tu organización</p>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2">
         <Transition name="fade">
-          <span v-if="saved" class="flex items-center gap-1.5 text-sm font-medium text-emerald-600">
+          <span v-if="saved" class="hidden items-center gap-1.5 text-sm font-medium text-emerald-600 sm:flex">
             <Check class="h-4 w-4" /> Guardado
           </span>
         </Transition>
-        <button :disabled="saving" class="btn btn-primary" @click="save">
+        <button :disabled="saving" class="btn btn-primary btn-sm" @click="save">
           <Loader2 v-if="saving" class="h-4 w-4 animate-spin" />
           <Check v-else class="h-4 w-4" />
-          Guardar cambios
+          <span class="hidden sm:inline">Guardar cambios</span>
         </button>
       </div>
     </div>
@@ -128,7 +128,7 @@ const initials = () => {
       <!-- Banner hero -->
       <div class="relative overflow-hidden border-b border-slate-200 bg-white">
         <div class="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#F69008] via-[#FBBF24] to-[#F69008]"></div>
-        <div class="px-8 py-7">
+        <div class="px-4 py-5 sm:px-8 sm:py-7">
           <div class="flex items-center gap-5">
             <div class="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#F69008] to-[#D97706] text-2xl font-bold text-white shadow-lg shadow-[#F69008]/25 ring-4 ring-white">
               {{ initials() }}
@@ -150,7 +150,7 @@ const initials = () => {
       <p v-if="error" class="mx-6 mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{{ error }}</p>
 
       <!-- Grid de cards -->
-      <div class="grid grid-cols-1 gap-4 p-6 lg:grid-cols-2">
+      <div class="grid grid-cols-1 gap-4 p-4 sm:p-6 lg:grid-cols-2">
 
         <!-- ── Identidad ─────────────────────────────────── -->
         <div class="rounded-xl border border-slate-200 bg-white shadow-card">

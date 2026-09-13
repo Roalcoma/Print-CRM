@@ -106,6 +106,7 @@ const conversations = ref<Conversation[]>([]);
 const timeline = ref<TimelineItem[]>([]);
 const activeId = ref<string | null>(null);
 const activeConv = computed(() => conversations.value.find(c => c.id === activeId.value) ?? null);
+const showMobileChat = ref(false);
 
 const loading = ref(true);
 const loadingMsgs = ref(false);
@@ -210,6 +211,7 @@ async function loadConversations() {
 async function selectConversation(id: string) {
   if (activeId.value === id) return;
   activeId.value = id;
+  showMobileChat.value = true;
   timeline.value = [];
   contactBundle.value = null;
   loadingMsgs.value = true;
@@ -572,7 +574,10 @@ async function syncNames() {
   <div class="flex h-full overflow-hidden bg-[#f0f2f5]">
 
     <!-- ── Lista de conversaciones ─────────────────────────────────────── -->
-    <aside class="flex w-[360px] flex-shrink-0 flex-col border-r border-slate-200 bg-white">
+    <aside
+      class="flex flex-col border-r border-slate-200 bg-white"
+      :class="showMobileChat ? 'hidden md:flex md:w-[360px] md:flex-shrink-0' : 'flex w-full md:w-[360px] md:flex-shrink-0'"
+    >
 
       <!-- Header -->
       <div class="border-b border-slate-100 px-4 pt-4 pb-0">
@@ -666,7 +671,10 @@ async function syncNames() {
     </aside>
 
     <!-- ── Hilo central ──────────────────────────────────────────────────── -->
-    <div class="flex flex-1 flex-col overflow-hidden">
+    <div
+      class="flex flex-col overflow-hidden"
+      :class="showMobileChat ? 'flex flex-1' : 'hidden md:flex md:flex-1'"
+    >
 
       <div v-if="!activeConv" class="flex flex-1 flex-col items-center justify-center gap-3 text-slate-400 bg-[#f0f2f5]">
         <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#25D366]/10">
@@ -679,7 +687,16 @@ async function syncNames() {
       <template v-else>
         <!-- Header -->
         <div class="flex items-center justify-between border-b border-slate-200/80 bg-white px-4 py-2.5 shadow-sm">
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2">
+            <!-- Botón volver (solo móvil) -->
+            <button
+              class="btn btn-ghost btn-sm rounded-lg p-1.5 md:hidden"
+              @click="showMobileChat = false"
+              aria-label="Volver"
+            >
+              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <div class="flex items-center gap-3">
             <div class="relative">
               <div class="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold shadow-sm" :class="avatarColor(activeConv.id)">
                 {{ initials(convName(activeConv)) }}
@@ -701,6 +718,7 @@ async function syncNames() {
                       : 'WhatsApp' }}
               </p>
             </div>
+            </div><!-- cierre del div flex items-center gap-3 del avatar+info -->
           </div>
           <div class="flex items-center gap-0.5">
             <a v-if="contactBundle?.contact?.phone || activeConv.phone"

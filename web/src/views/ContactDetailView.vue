@@ -228,7 +228,7 @@ const tabs = [
 
     <div v-else-if="error" class="mx-auto mt-16 flex max-w-sm flex-col items-center gap-4 text-slate-500">
       <p class="text-sm">{{ error }}</p>
-      <button class="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white cursor-pointer" @click="router.back()">Volver</button>
+      <button class="btn btn-primary" @click="router.back()">Volver</button>
     </div>
 
     <!-- Main layout -->
@@ -278,10 +278,7 @@ const tabs = [
             >
               <Mail class="h-3.5 w-3.5" /> Email
             </a>
-            <button
-              class="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-primary py-1.5 text-xs font-semibold text-white hover:bg-primary-dark transition-colors"
-              @click="openEdit"
-            >
+            <button class="btn btn-primary btn-sm flex-1 justify-center" @click="openEdit">
               <Edit2 class="h-3.5 w-3.5" /> Editar
             </button>
           </div>
@@ -455,13 +452,13 @@ const tabs = [
             </div>
 
             <!-- Quick stats -->
-            <div class="grid grid-cols-3 gap-3">
-              <div class="rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm">
-                <p class="text-2xl font-bold text-slate-900">{{ opps.length }}</p>
+            <div class="grid grid-cols-3 gap-2 sm:gap-3">
+              <div class="rounded-xl border border-slate-200 bg-white p-3 text-center shadow-sm sm:p-4">
+                <p class="text-xl font-bold text-slate-900 sm:text-2xl">{{ opps.length }}</p>
                 <p class="text-xs text-slate-500">Oportunidades</p>
               </div>
-              <div class="rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm">
-                <p class="text-2xl font-bold text-slate-900">{{ appointments.length }}</p>
+              <div class="rounded-xl border border-slate-200 bg-white p-3 text-center shadow-sm sm:p-4">
+                <p class="text-xl font-bold text-slate-900 sm:text-2xl">{{ appointments.length }}</p>
                 <p class="text-xs text-slate-500">Citas</p>
               </div>
               <div class="rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm">
@@ -505,10 +502,7 @@ const tabs = [
           <!-- CITAS -->
           <div v-else-if="activeTab === 'appointments'">
             <div class="mb-4 flex justify-end">
-              <button
-                class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-dark transition-colors"
-                @click="openNewAppt"
-              >
+              <button class="btn btn-primary btn-sm" @click="openNewAppt">
                 <CalendarDays class="h-4 w-4" /> + Nueva cita
               </button>
             </div>
@@ -745,15 +739,11 @@ const tabs = [
           </section>
 
           <div class="flex items-center gap-3 pb-2">
-            <button
-              type="submit"
-              :disabled="saving"
-              class="flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-dark disabled:opacity-60 transition-colors"
-            >
+            <button type="submit" :disabled="saving" class="btn btn-primary">
               <Spinner v-if="saving" :size="14" light />
               {{ saving ? 'Guardando…' : 'Guardar cambios' }}
             </button>
-            <button type="button" class="cursor-pointer rounded-lg px-4 py-2.5 text-sm text-slate-500 hover:bg-slate-100" @click="showEdit = false">Cancelar</button>
+            <button type="button" class="btn btn-ghost" @click="showEdit = false">Cancelar</button>
           </div>
         </form>
       </aside>

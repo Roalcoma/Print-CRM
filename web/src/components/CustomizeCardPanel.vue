@@ -155,14 +155,8 @@ const enabledCount = computed(() => rows.value.filter(r => r.enabled).length);
 
       <!-- Footer -->
       <div class="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-3.5">
-        <button
-          class="cursor-pointer rounded-lg px-4 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
-          @click="emit('close')"
-        >Cancelar</button>
-        <button
-          class="cursor-pointer rounded-lg bg-[#F69008] px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-[#F69008]/30 transition-all hover:bg-[#D97706] hover:shadow-md"
-          @click="emit('apply', previewConfig)"
-        >Aplicar</button>
+        <button class="btn btn-ghost" @click="emit('close')">Cancelar</button>
+        <button class="btn btn-primary" @click="emit('apply', previewConfig)">Aplicar</button>
       </div>
     </div>
   </div>

@@ -656,19 +656,8 @@ function close() { emit('update:modelValue', false); }
             <div v-else></div>
 
             <div class="flex items-center gap-2">
-              <button
-                type="button"
-                class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
-                @click="close"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                :disabled="saving || !form.title.trim()"
-                class="flex items-center gap-2 rounded-lg bg-[#F69008] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#D97706] transition-colors cursor-pointer disabled:opacity-60"
-                @click="save"
-              >
+              <button type="button" class="btn btn-ghost" @click="close">Cancelar</button>
+              <button type="button" :disabled="saving || !form.title.trim()" class="btn btn-primary" @click="save">
                 <Spinner v-if="saving" :size="14" light />
                 {{ saving ? 'Guardando…' : (isEdit ? 'Guardar cambios' : 'Crear cita') }}
               </button>

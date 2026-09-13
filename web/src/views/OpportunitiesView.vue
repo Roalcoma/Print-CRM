@@ -383,34 +383,144 @@ async function deleteNote(id: string) {
 
     <!-- Toolbar superior: tabs de vista + controles -->
     <div class="z-[4] border-b border-slate-200 bg-white shadow-toolbar">
-      <!-- Fila 1: tabs de vista + acciones -->
-      <div class="flex items-center gap-0 px-4 pt-1">
-        <!-- View tabs (Tablero / Lista / Archivadas) -->
-        <button
-          class="view-tab"
-          :class="viewMode === 'board' ? 'view-tab--active' : ''"
-          @click="viewMode = 'board'"
-        >
+
+      <!-- Fila 1 MÓVIL: view tabs a todo ancho | Fila 1 DESKTOP: tabs + pipeline + acciones -->
+      <div class="flex items-center gap-0 px-3 pt-1 sm:px-4">
+        <!-- View tabs (Tablero / Lista) -->
+        <button class="view-tab" :class="viewMode === 'board' ? 'view-tab--active' : ''" @click="viewMode = 'board'">
           <Kanban class="h-3.5 w-3.5" /> Tablero
         </button>
-        <button
-          class="view-tab"
-          :class="viewMode === 'list' ? 'view-tab--active' : ''"
-          @click="viewMode = 'list'"
-        >
+        <button class="view-tab" :class="viewMode === 'list' ? 'view-tab--active' : ''" @click="viewMode = 'list'">
           <SlidersHorizontal class="h-3.5 w-3.5" /> Lista
         </button>
 
-        <!-- Divider -->
-        <div class="mx-3 h-5 w-px bg-slate-200"></div>
+        <!-- Divider + pipeline + acciones (solo en ≥ sm, en móvil van en fila 2) -->
+        <div class="hidden items-center gap-0 sm:flex sm:flex-1">
+          <div class="mx-3 h-5 w-px flex-shrink-0 bg-slate-200"></div>
 
-        <!-- Pipeline selector -->
+          <!-- Pipeline selector -->
+          <Dropdown width="240px">
+            <template #trigger="{ open }">
+              <button class="flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all hover:border-slate-300 hover:shadow-sm" :class="open && 'border-primary ring-2 ring-primary/20'">
+                <span class="h-2 w-2 flex-shrink-0 rounded-full bg-primary"></span>
+                <span class="max-w-[200px] truncate">{{ current?.name ?? 'Pipeline' }}</span>
+                <ChevronDown class="h-3.5 w-3.5 flex-shrink-0 text-slate-400 transition-transform" :class="open && 'rotate-180'" />
+              </button>
+            </template>
+            <template #default="{ close }">
+              <button v-for="p in pipelines" :key="p.id"
+                class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-slate-100"
+                :class="p.id === currentId ? 'text-primary' : 'text-slate-700'"
+                @click="currentId = p.id; close()">
+                {{ p.name }}
+                <Check v-if="p.id === currentId" class="h-4 w-4" />
+              </button>
+            </template>
+          </Dropdown>
+
+          <span class="ml-2 flex-shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{{ totalLeads }}</span>
+
+          <!-- Right actions (desktop) -->
+          <div class="ml-auto flex flex-shrink-0 items-center gap-1.5 py-2">
+            <div class="relative hidden md:block">
+              <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input v-model="search" @input="onSearch" placeholder="Buscar oportunidades…" class="w-40 rounded-lg border border-slate-200 py-1.5 pl-9 pr-3 text-sm transition-all focus:border-primary focus:shadow-sm focus:ring-2 focus:ring-primary/20 focus:outline-none lg:w-52" />
+            </div>
+            <button class="btn btn-sm" :class="showFilters || activeQfCount ? 'btn-secondary btn-secondary--active' : 'btn-secondary'" @click="showFilters = true">
+              <Filter class="h-4 w-4" /> Filtros
+              <span v-if="activeQfCount" class="rounded-full bg-primary px-1.5 text-xs font-bold text-white">{{ activeQfCount }}</span>
+            </button>
+            <Dropdown align="right" width="260px">
+              <template #trigger="{ open }">
+                <button class="btn btn-sm" :class="hasSort || open ? 'btn-secondary btn-secondary--active' : 'btn-secondary'">
+                  <ArrowUpDown class="h-4 w-4" /> Ordenar
+                  <span v-if="hasSort" class="rounded-full bg-primary px-1.5 text-xs font-bold text-white">1</span>
+                </button>
+              </template>
+              <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+                <p class="text-[13px] font-semibold text-slate-800">Ordenar por</p>
+                <button v-if="hasSort" class="cursor-pointer text-[11px] font-medium text-primary hover:underline" @click="clearSort">Limpiar</button>
+              </div>
+              <div class="py-1.5">
+                <button v-for="opt in SORT_OPTIONS" :key="opt.key"
+                  class="flex w-full cursor-pointer items-center justify-between px-4 py-2 text-[13px] transition-colors"
+                  :class="sortBy === opt.key ? 'bg-primary/5 font-semibold text-primary' : 'text-slate-700 hover:bg-slate-50'"
+                  @click="sortBy === opt.key ? toggleSortDir() : (sortBy = opt.key, sortDir = 'desc', loadOpps())">
+                  <span>{{ opt.label }}</span>
+                  <span v-if="sortBy === opt.key" class="flex items-center gap-1 text-[11px] font-medium">
+                    <component :is="sortDir === 'asc' ? ArrowUp : ArrowDown" class="h-3.5 w-3.5" />
+                    {{ sortDir === 'asc' ? 'A → Z' : 'Z → A' }}
+                  </span>
+                </button>
+              </div>
+            </Dropdown>
+            <Dropdown align="right" width="180px">
+              <template #trigger="{ open }">
+                <button class="cursor-pointer rounded-lg border border-slate-200 p-2 text-slate-400 transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700" :class="open && 'border-primary text-primary'" aria-label="Más acciones">
+                  <MoreVertical class="h-4 w-4" />
+                </button>
+              </template>
+              <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="exportCsv">
+                <Download class="h-4 w-4 text-slate-400" /> Exportar CSV
+              </button>
+              <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="fileInput?.click()">
+                <Upload class="h-4 w-4 text-slate-400" /> Importar CSV
+              </button>
+              <div class="my-1 border-t border-slate-100"></div>
+              <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="showCustomize = true">
+                <SlidersHorizontal class="h-4 w-4 text-slate-400" /> Personalizar tarjetas
+              </button>
+            </Dropdown>
+            <input ref="fileInput" type="file" accept=".csv" class="hidden" @change="onImportFile" />
+            <button class="btn btn-primary btn-sm" @click="openCreate">
+              <Plus class="h-4 w-4" /> Crear
+            </button>
+          </div>
+        </div>
+
+        <!-- Acciones móviles (solo < sm, junto a los tabs) -->
+        <div class="ml-auto flex flex-shrink-0 items-center gap-1 py-1.5 sm:hidden">
+          <button class="btn btn-sm" :class="showFilters || activeQfCount ? 'btn-secondary btn-secondary--active' : 'btn-secondary'" @click="showFilters = true">
+            <Filter class="h-4 w-4" />
+            <span v-if="activeQfCount" class="rounded-full bg-primary px-1.5 text-xs font-bold text-white">{{ activeQfCount }}</span>
+          </button>
+          <Dropdown align="right" width="200px">
+            <template #trigger="{ open }">
+              <button class="cursor-pointer rounded-lg border border-slate-200 p-1.5 text-slate-400 transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700" :class="open && 'border-primary text-primary'" aria-label="Más">
+                <MoreVertical class="h-4 w-4" />
+              </button>
+            </template>
+            <p class="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">Ordenar por</p>
+            <button v-for="opt in SORT_OPTIONS" :key="opt.key"
+              class="flex w-full cursor-pointer items-center justify-between px-3 py-2 text-[13px] transition-colors"
+              :class="sortBy === opt.key ? 'font-semibold text-primary' : 'text-slate-700 hover:bg-slate-50'"
+              @click="sortBy === opt.key ? toggleSortDir() : (sortBy = opt.key, sortDir = 'desc', loadOpps())">
+              <span>{{ opt.label }}</span>
+              <component v-if="sortBy === opt.key" :is="sortDir === 'asc' ? ArrowUp : ArrowDown" class="h-3.5 w-3.5" />
+            </button>
+            <div class="my-1 border-t border-slate-100"></div>
+            <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="exportCsv">
+              <Download class="h-4 w-4 text-slate-400" /> Exportar CSV
+            </button>
+            <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="showCustomize = true">
+              <SlidersHorizontal class="h-4 w-4 text-slate-400" /> Personalizar tarjetas
+            </button>
+          </Dropdown>
+          <input ref="fileInput" type="file" accept=".csv" class="hidden" @change="onImportFile" />
+          <button class="btn btn-primary btn-sm" @click="openCreate">
+            <Plus class="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <!-- Fila 2 MÓVIL: pipeline selector + count (solo < sm) -->
+      <div class="flex items-center gap-2 border-t border-slate-100 px-3 py-2 sm:hidden">
         <Dropdown width="240px">
           <template #trigger="{ open }">
-            <button class="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all hover:border-slate-300 hover:shadow-sm" :class="open && 'border-primary ring-2 ring-primary/20'">
-              <span class="h-2 w-2 rounded-full bg-primary"></span>
-              {{ current?.name ?? 'Pipeline' }}
-              <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open && 'rotate-180'" />
+            <button class="flex min-w-0 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 transition-all hover:border-slate-300" :class="open && 'border-primary ring-2 ring-primary/20'">
+              <span class="h-2 w-2 flex-shrink-0 rounded-full bg-primary"></span>
+              <span class="max-w-[180px] truncate">{{ current?.name ?? 'Pipeline' }}</span>
+              <ChevronDown class="h-3.5 w-3.5 flex-shrink-0 text-slate-400 transition-transform" :class="open && 'rotate-180'" />
             </button>
           </template>
           <template #default="{ close }">
@@ -423,97 +533,7 @@ async function deleteNote(id: string) {
             </button>
           </template>
         </Dropdown>
-
-        <!-- Count badge -->
-        <span class="ml-2 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{{ totalLeads }}</span>
-
-        <!-- Right actions -->
-        <div class="ml-auto flex items-center gap-2 py-2">
-          <!-- Search -->
-          <div class="relative">
-            <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input v-model="search" @input="onSearch" placeholder="Buscar oportunidades…" class="w-52 rounded-lg border border-slate-200 py-1.5 pl-9 pr-3 text-sm transition-all focus:border-primary focus:shadow-sm focus:ring-2 focus:ring-primary/20 focus:outline-none" />
-          </div>
-
-          <!-- Filtros button -->
-          <button
-            class="flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-all"
-            :class="showFilters || activeQfCount ? 'border-primary bg-primary/5 text-primary shadow-sm' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'"
-            @click="showFilters = true"
-          >
-            <Filter class="h-4 w-4" />
-            Filtros
-            <span v-if="activeQfCount" class="rounded-full bg-primary px-1.5 text-xs font-bold text-white">{{ activeQfCount }}</span>
-          </button>
-
-          <!-- Sort button -->
-          <Dropdown align="right" width="260px">
-            <template #trigger="{ open }">
-              <button
-                class="flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-all"
-                :class="hasSort || open ? 'border-primary bg-primary/5 text-primary shadow-sm' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'"
-              >
-                <ArrowUpDown class="h-4 w-4" />
-                Ordenar
-                <span v-if="hasSort" class="rounded-full bg-primary px-1.5 text-xs font-bold text-white">1</span>
-              </button>
-            </template>
-
-            <!-- Cabecera -->
-            <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <p class="text-[13px] font-semibold text-slate-800">Ordenar por</p>
-              <button v-if="hasSort" class="cursor-pointer text-[11px] font-medium text-primary hover:underline" @click="clearSort">Limpiar</button>
-            </div>
-
-            <!-- Lista de opciones -->
-            <div class="py-1.5">
-              <button
-                v-for="opt in SORT_OPTIONS"
-                :key="opt.key"
-                class="flex w-full cursor-pointer items-center justify-between px-4 py-2 text-[13px] transition-colors"
-                :class="sortBy === opt.key
-                  ? 'bg-primary/5 font-semibold text-primary'
-                  : 'text-slate-700 hover:bg-slate-50'"
-                @click="sortBy === opt.key ? toggleSortDir() : (sortBy = opt.key, sortDir = 'desc', loadOpps())"
-              >
-                <span>{{ opt.label }}</span>
-                <span v-if="sortBy === opt.key" class="flex items-center gap-1 text-[11px] font-medium">
-                  <component :is="sortDir === 'asc' ? ArrowUp : ArrowDown" class="h-3.5 w-3.5" />
-                  {{ sortDir === 'asc' ? 'A → Z' : 'Z → A' }}
-                </span>
-                <Check v-else-if="false" class="h-3.5 w-3.5 opacity-0" />
-              </button>
-            </div>
-          </Dropdown>
-
-          <!-- More actions -->
-          <Dropdown align="right" width="180px">
-            <template #trigger="{ open }">
-              <button class="cursor-pointer rounded-lg border border-slate-200 p-2 text-slate-400 transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700" :class="open && 'border-primary text-primary'" aria-label="Más acciones">
-                <MoreVertical class="h-4 w-4" />
-              </button>
-            </template>
-            <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="exportCsv">
-              <Download class="h-4 w-4 text-slate-400" /> Exportar CSV
-            </button>
-            <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="fileInput?.click()">
-              <Upload class="h-4 w-4 text-slate-400" /> Importar CSV
-            </button>
-            <div class="my-1 border-t border-slate-100"></div>
-            <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="showCustomize = true">
-              <SlidersHorizontal class="h-4 w-4 text-slate-400" /> Personalizar tarjetas
-            </button>
-          </Dropdown>
-          <input ref="fileInput" type="file" accept=".csv" class="hidden" @change="onImportFile" />
-
-          <!-- CTA primario -->
-          <button
-            class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md hover:shadow-primary/40"
-            @click="openCreate"
-          >
-            <Plus class="h-4 w-4" /> Crear
-          </button>
-        </div>
+        <span class="flex-shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{{ totalLeads }} oportunidades</span>
       </div>
 
       <!-- Fila 2: filter chips activos -->
@@ -665,14 +685,8 @@ async function deleteNote(id: string) {
 
             <!-- Footer -->
             <div class="flex items-center gap-2 border-t border-slate-100 px-5 py-3.5">
-              <button
-                class="cursor-pointer rounded-lg px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                @click="clearQf"
-              >Limpiar</button>
-              <button
-                class="ml-auto cursor-pointer rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md"
-                @click="applyQf"
-              >Aplicar filtros</button>
+              <button class="btn btn-ghost" @click="clearQf">Limpiar</button>
+              <button class="btn btn-primary ml-auto" @click="applyQf">Aplicar filtros</button>
             </div>
           </div>
         </div>
@@ -681,11 +695,12 @@ async function deleteNote(id: string) {
 
     <!-- Tablero kanban -->
     <LoadingState v-if="loading" label="Cargando oportunidades…" />
-    <div v-else-if="viewMode === 'board'" class="flex flex-1 gap-4 overflow-x-auto bg-slate-100/60 p-6">
+    <div v-else-if="viewMode === 'board'" class="flex flex-1 gap-3 overflow-x-auto bg-slate-100/60 p-3 sm:gap-4 sm:p-6" style="scroll-snap-type: x mandatory;">
       <div
         v-for="stage in current?.stages ?? []"
         :key="stage.id"
-        class="flex w-80 flex-shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card"
+        class="flex w-[calc(100vw-3.5rem)] flex-shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card sm:w-80"
+        style="scroll-snap-align: start;"
         @dragover.prevent
         @drop="onDrop(stage.id)"
       >
@@ -955,7 +970,7 @@ async function deleteNote(id: string) {
           <div v-show="modalTab === 'notas'" class="space-y-4">
             <div>
               <textarea v-model="newNote" rows="3" placeholder="Escribe una nota…" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"></textarea>
-              <button class="mt-2 cursor-pointer rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-dark disabled:opacity-50" :disabled="!newNote.trim()" @click="addNote">Agregar nota</button>
+              <button class="btn btn-primary btn-sm mt-2" :disabled="!newNote.trim()" @click="addNote">Agregar nota</button>
             </div>
             <div class="space-y-2">
               <div v-for="n in notes" :key="n.id" class="group rounded-md border border-slate-200 bg-slate-50 p-3 shadow-sm transition-shadow hover:shadow-md">
@@ -993,7 +1008,7 @@ async function deleteNote(id: string) {
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <input v-model="newTask.due_at" type="datetime-local" class="rounded-md border border-slate-300 px-2 py-1.5 text-sm shadow-sm focus:outline-none" />
-                <button class="ml-auto cursor-pointer rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark disabled:opacity-50" :disabled="!newTask.title.trim()" @click="addOppTask">Añadir tarea</button>
+                <button class="btn btn-primary btn-sm ml-auto" :disabled="!newTask.title.trim()" @click="addOppTask">Añadir tarea</button>
               </div>
             </div>
             <div class="space-y-2">
@@ -1022,9 +1037,9 @@ async function deleteNote(id: string) {
         <div class="flex items-center justify-between gap-3 border-t border-slate-200 px-6 py-4">
           <p v-if="editing" class="text-xs text-slate-400">Creado el {{ dateTime(editing.created_at) }}</p>
           <div class="ml-auto flex items-center gap-2">
-            <button v-if="editing" type="button" class="cursor-pointer rounded-sm px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50" @click="deleteOpp">Eliminar</button>
-            <button type="button" class="cursor-pointer rounded-sm px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100" @click="showForm = false">Cancelar</button>
-            <button type="button" :disabled="saving" class="flex cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md disabled:opacity-60" @click="saveForm">
+            <button v-if="editing" type="button" class="btn btn-danger" @click="deleteOpp">Eliminar</button>
+            <button type="button" class="btn btn-ghost" @click="showForm = false">Cancelar</button>
+            <button type="button" :disabled="saving" class="btn btn-primary" @click="saveForm">
               <Spinner v-if="saving" :size="16" light /> {{ saving ? 'Guardando…' : editing ? 'Actualizar' : 'Crear' }}
             </button>
           </div>

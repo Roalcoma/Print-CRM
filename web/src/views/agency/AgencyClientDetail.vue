@@ -219,7 +219,7 @@ function roleBadge(role: string) {
 </script>
 
 <template>
-  <div class="p-6 space-y-5">
+  <div class="space-y-5 p-4 sm:p-6">
     <!-- Back -->
     <button
       class="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
@@ -426,7 +426,7 @@ function roleBadge(role: string) {
 
           <!-- Billing tab -->
           <div v-if="activeTab === 'billing'" class="p-5 space-y-5">
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div class="rounded-lg bg-slate-800/40 border border-slate-700/40 p-4">
                 <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold mb-2">Plan Actual</p>
                 <span class="inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold" :class="planBadge(client.plan)">
@@ -473,7 +473,7 @@ function roleBadge(role: string) {
             </button>
           </div>
           <form class="p-6 space-y-4 max-h-[70vh] overflow-y-auto" @submit.prevent="saveEdit">
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label class="mb-1 block text-xs font-medium text-slate-400">Nombre</label>
                 <input v-model="editForm.name" required class="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none" />

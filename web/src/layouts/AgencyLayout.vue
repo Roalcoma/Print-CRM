@@ -1,14 +1,26 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router';
-import { LayoutDashboard, Users, LogOut, Building2, ChevronRight } from 'lucide-vue-next';
+import { LayoutDashboard, Users, LogOut, Building2, ChevronRight, Menu } from 'lucide-vue-next';
 import { useAgencyStore } from '../stores/agency';
 
 const agency = useAgencyStore();
 const router = useRouter();
 const route = useRoute();
 
+const mobileOpen = ref(false);
+const isMobile = ref(false);
+
+function checkMobile() {
+  isMobile.value = window.innerWidth < 768;
+  if (!isMobile.value) mobileOpen.value = false;
+}
+
+watch(() => route.path, () => { mobileOpen.value = false; });
+
 onMounted(async () => {
+  checkMobile();
+  window.addEventListener('resize', checkMobile);
   await agency.init();
   if (!agency.isLoggedIn) {
     router.push('/agency/login');
@@ -31,12 +43,22 @@ function logout() {
   agency.logout();
   router.push('/agency/login');
 }
+
+onUnmounted(() => window.removeEventListener('resize', checkMobile));
 </script>
 
 <template>
   <div class="flex h-screen bg-slate-950 text-slate-100">
+    <!-- Backdrop móvil -->
+    <Transition name="backdrop">
+      <div v-if="mobileOpen" class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm md:hidden" @click="mobileOpen = false"></div>
+    </Transition>
+
     <!-- Sidebar -->
-    <aside class="flex w-[220px] flex-shrink-0 flex-col bg-[#0f172a] shadow-2xl">
+    <Transition name="mobile-drawer">
+      <aside v-show="!isMobile || mobileOpen"
+        class="flex w-[220px] flex-shrink-0 flex-col bg-[#0f172a] shadow-2xl"
+        :class="isMobile ? 'fixed inset-y-0 left-0 z-[60]' : ''">
       <!-- Logo -->
       <div class="flex h-16 items-center gap-3 border-b border-slate-800/60 px-5">
         <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-900/50">
@@ -85,16 +107,22 @@ function logout() {
           </button>
         </div>
       </div>
-    </aside>
+      </aside>
+    </Transition>
 
     <!-- Main content -->
     <div class="flex flex-1 flex-col overflow-hidden bg-slate-950">
       <!-- Header -->
-      <header class="flex h-16 flex-shrink-0 items-center justify-between border-b border-slate-800/60 bg-slate-900/50 px-6 backdrop-blur-sm">
-        <h1 class="text-lg font-semibold text-white tracking-tight">{{ title }}</h1>
+      <header class="flex h-16 flex-shrink-0 items-center justify-between border-b border-slate-800/60 bg-slate-900/50 px-4 backdrop-blur-sm sm:px-6">
+        <div class="flex items-center gap-3">
+          <button v-if="isMobile" class="cursor-pointer rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors" @click="mobileOpen = true">
+            <Menu class="h-5 w-5" />
+          </button>
+          <h1 class="text-base font-semibold text-white tracking-tight sm:text-lg">{{ title }}</h1>
+        </div>
         <div class="flex items-center gap-2 text-sm text-slate-400">
           <div class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
-          <span>{{ agency.admin?.email }}</span>
+          <span class="hidden sm:inline">{{ agency.admin?.email }}</span>
         </div>
       </header>
 

@@ -90,22 +90,22 @@ async function deletePipeline(p: Pipeline) {
     <OppTabs />
 
     <!-- Barra superior de pipelines -->
-    <div class="flex flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-3.5">
-      <div class="flex items-center gap-4">
+    <div class="page-toolbar justify-between">
+      <div class="flex items-center gap-3">
         <div>
           <h2 class="text-[15px] font-semibold text-slate-900">Pipelines</h2>
-          <p class="text-[12px] text-slate-400">Gestiona tus embudos de ventas y etapas</p>
+          <p class="hidden text-[12px] text-slate-400 sm:block">Gestiona tus embudos de ventas y etapas</p>
         </div>
         <span class="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{{ filtered.length }}</span>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2">
         <!-- Buscador -->
-        <div class="relative">
+        <div class="relative hidden sm:block">
           <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input v-model="q" placeholder="Buscar pipeline…" class="w-56 rounded-lg border border-slate-200 py-1.5 pl-9 pr-3 text-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+          <input v-model="q" placeholder="Buscar pipeline…" class="w-48 rounded-lg border border-slate-200 py-1.5 pl-9 pr-3 text-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
         </div>
-        <button class="flex flex-shrink-0 cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md" @click="newPipeline">
-          <Plus class="h-4 w-4" /> Crear pipeline
+        <button class="btn btn-primary btn-sm" @click="newPipeline">
+          <Plus class="h-4 w-4" /> <span class="hidden sm:inline">Crear pipeline</span>
         </button>
       </div>
     </div>
@@ -237,10 +237,10 @@ async function deletePipeline(p: Pipeline) {
         </div>
 
         <div class="flex items-center justify-between border-t border-slate-200 px-6 py-4">
-          <button class="flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50" @click="deletePipeline(editing)"><Trash2 class="h-4 w-4" /> Eliminar</button>
+          <button class="btn btn-danger" @click="deletePipeline(editing)"><Trash2 class="h-4 w-4" /> Eliminar</button>
           <div class="flex gap-2">
-            <button class="cursor-pointer rounded-md px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100" @click="closeEditor">Cancelar</button>
-            <button :disabled="saving" class="flex cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md disabled:opacity-60" @click="save"><Spinner v-if="saving" :size="16" light /> {{ saving ? 'Guardando…' : 'Guardar' }}</button>
+            <button class="btn btn-ghost" @click="closeEditor">Cancelar</button>
+            <button :disabled="saving" class="btn btn-primary" @click="save"><Spinner v-if="saving" :size="16" light /> {{ saving ? 'Guardando…' : 'Guardar' }}</button>
           </div>
         </div>
       </div>

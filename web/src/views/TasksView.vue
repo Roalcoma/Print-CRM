@@ -206,7 +206,7 @@ async function remove(t: Task) {
   <div class="flex h-full flex-col">
 
     <!-- Toolbar -->
-    <div class="flex flex-wrap items-center gap-2.5 border-b border-slate-200 bg-white px-5 py-2.5 shadow-toolbar">
+    <div class="page-toolbar">
       <!-- View tabs -->
       <button class="view-tab" :class="viewMode === 'board' ? 'view-tab--active' : ''" @click="viewMode = 'board'">
         <Kanban class="h-3.5 w-3.5" /> Tablero
@@ -220,12 +220,12 @@ async function remove(t: Task) {
       <!-- Assignee filter -->
       <Dropdown width="220px">
         <template #trigger="{ open }">
-          <button class="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-all hover:border-slate-300" :class="open && 'border-primary ring-2 ring-primary/20'">
+          <button class="btn btn-secondary btn-sm" :class="open && 'btn-secondary--active'">
             <template v-if="assigneeFilter">
               <span class="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-[#F69008] to-[#D97706] text-[9px] font-semibold text-white">{{ initials(userName(assigneeFilter)) }}</span>
-              {{ userName(assigneeFilter) }}
+              <span class="hidden sm:inline">{{ userName(assigneeFilter) }}</span>
             </template>
-            <span v-else class="text-slate-500">Todos los responsables</span>
+            <span v-else class="hidden sm:inline">Responsables</span>
             <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open && 'rotate-180'" />
           </button>
         </template>
@@ -243,17 +243,15 @@ async function remove(t: Task) {
       </Dropdown>
 
       <!-- Search -->
-      <div class="relative">
+      <div class="relative hidden sm:block">
         <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input v-model="search" placeholder="Buscar tarea…" class="w-52 rounded-lg border border-slate-200 py-1.5 pl-9 pr-3 text-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+        <input v-model="search" placeholder="Buscar tarea…" class="w-40 rounded-lg border border-slate-200 py-1.5 pl-9 pr-3 text-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none md:w-52" />
       </div>
 
       <div class="ml-auto flex items-center gap-2">
-        <button
-          class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md hover:shadow-primary/40"
-          @click="openCreate()"
-        >
-          <Plus class="h-4 w-4" /> Nueva tarea
+        <button class="btn btn-primary btn-sm" @click="openCreate()">
+          <Plus class="h-4 w-4" />
+          <span class="hidden sm:inline">Nueva tarea</span>
         </button>
       </div>
     </div>
@@ -261,8 +259,8 @@ async function remove(t: Task) {
     <LoadingState v-if="loading" label="Cargando tareas…" />
 
     <!-- ── Tablero kanban ───────────────────────────────────────────────────── -->
-    <div v-else-if="viewMode === 'board'" class="flex flex-1 gap-4 overflow-x-auto bg-slate-100/60 p-6">
-      <div v-for="col in TASK_STATUSES" :key="col.key" class="flex w-80 flex-shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card" @dragover.prevent @drop="onDrop(col.key)">
+    <div v-else-if="viewMode === 'board'" class="flex flex-1 gap-3 overflow-x-auto bg-slate-100/60 p-3 sm:gap-4 sm:p-6" style="scroll-snap-type: x mandatory;">
+      <div v-for="col in TASK_STATUSES" :key="col.key" class="flex w-[calc(100vw-3.5rem)] flex-shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card sm:w-80" style="scroll-snap-align: start;" @dragover.prevent @drop="onDrop(col.key)">
         <!-- Column header — Flowlu style -->
         <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3 bg-white">
           <div class="flex items-center gap-2">
@@ -318,7 +316,7 @@ async function remove(t: Task) {
     <div v-else class="flex flex-1 flex-col overflow-hidden bg-slate-100/40">
 
       <!-- Stat cards (estilo Uxerflow) -->
-      <div class="grid grid-cols-4 gap-4 px-6 pt-5 pb-2">
+      <div class="grid grid-cols-2 gap-3 px-4 pt-4 pb-2 sm:grid-cols-4 sm:gap-4 sm:px-6 sm:pt-5">
         <button
           class="group flex flex-col gap-1 rounded-xl border bg-white px-4 py-4 text-left shadow-card transition-all hover:shadow-elevated hover:-translate-y-0.5"
           :class="activeTab === 'today' ? 'border-amber-400 ring-2 ring-amber-100' : 'border-slate-200'"
@@ -383,7 +381,7 @@ async function remove(t: Task) {
       </div>
 
       <!-- Tabs -->
-      <div class="border-b border-slate-200 bg-white px-6 pt-3">
+      <div class="border-b border-slate-200 bg-white px-4 pt-3 sm:px-6">
         <div class="flex gap-1">
           <button v-for="tab in [
             { key: 'today',    label: 'Hoy',       count: tabTasks.today.length },
@@ -402,7 +400,7 @@ async function remove(t: Task) {
       </div>
 
       <!-- Listado -->
-      <div class="flex-1 overflow-auto px-6 py-4">
+      <div class="flex-1 overflow-auto px-4 py-4 sm:px-6">
         <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
           <div class="divide-y divide-slate-100">
             <div v-for="t in currentTab" :key="t.id"
@@ -543,10 +541,10 @@ async function remove(t: Task) {
         </form>
 
         <div class="flex items-center justify-between border-t border-slate-200 px-6 py-4">
-          <button v-if="editing" class="cursor-pointer rounded-md px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50" @click="remove(editing!)">Eliminar</button>
+          <button v-if="editing" class="btn btn-danger btn-sm" @click="remove(editing!)">Eliminar</button>
           <div class="ml-auto flex gap-2">
-            <button class="cursor-pointer rounded-md px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100" @click="showForm = false">Cancelar</button>
-            <button :disabled="saving || !form.title.trim()" class="flex cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md disabled:opacity-60" @click="save">
+            <button class="btn btn-ghost" @click="showForm = false">Cancelar</button>
+            <button :disabled="saving || !form.title.trim()" class="btn btn-primary" @click="save">
               <Spinner v-if="saving" :size="16" light /> {{ saving ? 'Guardando…' : editing ? 'Guardar' : 'Crear tarea' }}
             </button>
           </div>

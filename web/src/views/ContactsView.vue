@@ -235,50 +235,50 @@ const statusLabel: Record<string, string> = {
 <template>
   <div class="flex h-full flex-col overflow-hidden bg-slate-50">
 
-    <!-- ── Stat cards ──────────────────────────────────────────────────────── -->
-    <div class="grid grid-cols-2 gap-3 border-b border-slate-200 bg-white px-6 py-4 md:grid-cols-4">
-      <div class="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-        <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-[#F69008]/10">
-          <Users class="h-5 w-5 text-[#F69008]" />
+    <!-- ── Stat bar ──────────────────────────────────────────────────────────── -->
+    <div class="flex flex-shrink-0 items-center gap-0 overflow-x-auto border-b border-slate-200 bg-white px-4 sm:px-6">
+      <div class="flex flex-shrink-0 items-center gap-2.5 border-r border-slate-100 py-3 pr-5 sm:py-3.5">
+        <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-[#F69008]/10">
+          <Users class="h-4 w-4 text-[#F69008]" />
         </div>
         <div>
-          <p class="text-xl font-bold text-slate-900">{{ stats?.total ?? '—' }}</p>
-          <p class="text-xs text-slate-500">Total</p>
+          <p class="text-base font-bold leading-none text-slate-900">{{ stats?.total ?? '—' }}</p>
+          <p class="mt-0.5 text-[11px] text-slate-400">Total</p>
         </div>
       </div>
-      <div class="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-        <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50">
-          <UserCheck class="h-5 w-5 text-emerald-600" />
+      <div class="flex flex-shrink-0 items-center gap-2.5 border-r border-slate-100 py-3 px-5 sm:py-3.5">
+        <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50">
+          <UserCheck class="h-4 w-4 text-emerald-600" />
         </div>
         <div>
-          <p class="text-xl font-bold text-slate-900">{{ stats?.active ?? '—' }}</p>
-          <p class="text-xs text-slate-500">Activos</p>
+          <p class="text-base font-bold leading-none text-slate-900">{{ stats?.active ?? '—' }}</p>
+          <p class="mt-0.5 text-[11px] text-slate-400">Activos</p>
         </div>
       </div>
-      <div class="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-        <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50">
-          <TrendingUp class="h-5 w-5 text-blue-500" />
+      <div class="flex flex-shrink-0 items-center gap-2.5 border-r border-slate-100 py-3 px-5 sm:py-3.5">
+        <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50">
+          <TrendingUp class="h-4 w-4 text-blue-500" />
         </div>
         <div>
-          <p class="text-xl font-bold text-slate-900">{{ stats?.new_this_month ?? '—' }}</p>
-          <p class="text-xs text-slate-500">Este mes</p>
+          <p class="text-base font-bold leading-none text-slate-900">{{ stats?.new_this_month ?? '—' }}</p>
+          <p class="mt-0.5 text-[11px] text-slate-400">Este mes</p>
         </div>
       </div>
-      <div class="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-        <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-50">
-          <Building2 class="h-5 w-5 text-violet-500" />
+      <div class="flex flex-shrink-0 items-center gap-2.5 py-3 pl-5 sm:py-3.5">
+        <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-50">
+          <Building2 class="h-4 w-4 text-violet-500" />
         </div>
         <div>
-          <p class="text-xl font-bold text-slate-900">{{ stats?.companies ?? '—' }}</p>
-          <p class="text-xs text-slate-500">Compañías</p>
+          <p class="text-base font-bold leading-none text-slate-900">{{ stats?.companies ?? '—' }}</p>
+          <p class="mt-0.5 text-[11px] text-slate-400">Compañías</p>
         </div>
       </div>
     </div>
 
     <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
-    <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-6 py-3">
-      <!-- Search -->
-      <div class="relative min-w-[220px] flex-1">
+    <!-- Fila 1: búsqueda + nuevo -->
+    <div class="flex items-center gap-2 border-b border-slate-100 bg-white px-4 py-2.5 sm:px-6">
+      <div class="relative flex-1">
         <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
           v-model="q"
@@ -288,10 +288,26 @@ const statusLabel: Record<string, string> = {
         />
       </div>
 
+      <!-- Bulk delete (aparece al seleccionar) -->
+      <Transition name="fade">
+        <button v-if="selected.size > 0" class="btn btn-danger btn-sm flex-shrink-0" @click="bulkDelete">
+          <Trash2 class="h-4 w-4" />
+          <span class="hidden sm:inline">{{ selected.size }} Eliminar</span>
+        </button>
+      </Transition>
+
+      <button class="btn btn-primary btn-sm flex-shrink-0" @click="showForm = true">
+        <Plus class="h-4 w-4" />
+        <span class="hidden sm:inline">Nuevo contacto</span>
+      </button>
+    </div>
+
+    <!-- Fila 2: filtros (scroll horizontal en móvil) -->
+    <div class="flex items-center gap-2 overflow-x-auto border-b border-slate-200 bg-white px-4 py-2 sm:px-6">
       <!-- Status filter -->
       <Dropdown width="148">
         <template #trigger="{ open }">
-          <button class="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white py-2 pl-3 pr-2.5 text-sm text-slate-600 hover:border-primary/40 transition-colors">
+          <button class="btn btn-secondary btn-sm flex-shrink-0" :class="(open || filterStatus) && 'btn-secondary--active'">
             {{ statusFilterLabel }}
             <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''" />
           </button>
@@ -313,7 +329,7 @@ const statusLabel: Record<string, string> = {
       <!-- Source filter -->
       <Dropdown width="148">
         <template #trigger="{ open }">
-          <button class="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white py-2 pl-3 pr-2.5 text-sm text-slate-600 hover:border-primary/40 transition-colors">
+          <button class="btn btn-secondary btn-sm flex-shrink-0" :class="(open || filterSource) && 'btn-secondary--active'">
             {{ sourceFilterLabel }}
             <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''" />
           </button>
@@ -343,7 +359,7 @@ const statusLabel: Record<string, string> = {
       <!-- Sort -->
       <Dropdown width="156">
         <template #trigger="{ open }">
-          <button class="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white py-2 pl-3 pr-2.5 text-sm text-slate-600 hover:border-primary/40 transition-colors">
+          <button class="btn btn-secondary btn-sm flex-shrink-0" :class="(open || sortBy !== 'created_at') && 'btn-secondary--active'">
             {{ sortLabel }}
             <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''" />
           </button>
@@ -362,49 +378,25 @@ const statusLabel: Record<string, string> = {
         </div>
       </Dropdown>
 
-      <div class="ml-auto flex items-center gap-2">
-        <!-- Bulk delete -->
-        <Transition name="fade">
-          <div v-if="selected.size > 0" class="flex items-center gap-2">
-            <span class="text-xs text-slate-500">{{ selected.size }} seleccionado(s)</span>
-            <button
-              class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-              @click="bulkDelete"
-            >
-              <Trash2 class="h-4 w-4" /> Eliminar
-            </button>
-          </div>
-        </Transition>
-
-        <!-- Import/Export -->
-        <input ref="importInput" type="file" accept=".csv" class="hidden" @change="onImportFile" />
-
-        <Dropdown align="right" width="160">
-          <template #trigger>
-            <button class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
-              <span v-if="importing"><Spinner :size="14" /></span>
-              <Download v-else class="h-4 w-4" />
-              <span class="hidden sm:inline">Exportar / Importar</span>
-              <ChevronDown class="h-3.5 w-3.5 text-slate-400" />
-            </button>
-          </template>
-          <div class="py-0.5">
-            <button class="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors" @click="exportCsv">
-              <Download class="h-4 w-4 text-slate-400" /> Exportar CSV
-            </button>
-            <button class="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors" @click="triggerImport">
-              <Upload class="h-4 w-4 text-slate-400" /> Importar CSV
-            </button>
-          </div>
-        </Dropdown>
-
-        <button
-          class="flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all duration-200 hover:bg-primary-dark hover:shadow-md"
-          @click="showForm = true"
-        >
-          <Plus class="h-4 w-4" /> Nuevo contacto
-        </button>
-      </div>
+      <!-- Export/Import -->
+      <input ref="importInput" type="file" accept=".csv" class="hidden" @change="onImportFile" />
+      <Dropdown align="right" width="160">
+        <template #trigger>
+          <button class="btn btn-secondary btn-sm flex-shrink-0">
+            <span v-if="importing"><Spinner :size="14" /></span>
+            <Download v-else class="h-4 w-4" />
+            <ChevronDown class="h-3.5 w-3.5" />
+          </button>
+        </template>
+        <div class="py-0.5">
+          <button class="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50" @click="exportCsv">
+            <Download class="h-4 w-4 text-slate-400" /> Exportar CSV
+          </button>
+          <button class="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50" @click="triggerImport">
+            <Upload class="h-4 w-4 text-slate-400" /> Importar CSV
+          </button>
+        </div>
+      </Dropdown>
     </div>
 
     <!-- ── Table ───────────────────────────────────────────────────────────── -->
@@ -450,17 +442,33 @@ const statusLabel: Record<string, string> = {
               />
             </td>
 
-            <!-- Avatar + nombre + empresa -->
-            <td class="px-4 py-3">
+            <!-- Avatar + nombre + info -->
+            <td class="px-4 py-2.5">
               <div class="flex items-center gap-3">
                 <div
-                  class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-sm"
+                  class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-sm"
                   :style="{ backgroundColor: avatarBg(c) }"
                 >{{ initials(c) }}</div>
-                <div>
-                  <p class="font-medium text-slate-900">{{ c.first_name }} {{ c.last_name ?? '' }}</p>
-                  <p v-if="c.company" class="text-xs text-slate-400">{{ c.company }}<span v-if="c.position"> · {{ c.position }}</span></p>
-                  <p v-else class="text-xs text-slate-400 md:hidden">{{ c.email ?? c.phone ?? '' }}</p>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <p class="truncate font-medium text-slate-900">{{ c.first_name }} {{ c.last_name ?? '' }}</p>
+                    <span
+                      v-if="c.status && c.status !== 'active'"
+                      class="hidden flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium sm:inline-block"
+                      :class="statusBadge[c.status] ?? 'bg-slate-100 text-slate-500'"
+                    >{{ statusLabel[c.status] }}</span>
+                  </div>
+                  <div class="mt-0.5 flex items-center gap-2">
+                    <p v-if="c.company" class="truncate text-xs text-slate-400">{{ c.company }}<span v-if="c.position" class="hidden sm:inline"> · {{ c.position }}</span></p>
+                    <template v-else>
+                      <Phone v-if="c.phone" class="h-3 w-3 flex-shrink-0 text-slate-300" />
+                      <p v-if="c.phone" class="truncate text-xs text-slate-400">{{ c.phone }}</p>
+                      <template v-else-if="c.email">
+                        <Mail class="h-3 w-3 flex-shrink-0 text-slate-300" />
+                        <p class="truncate text-xs text-slate-400">{{ c.email }}</p>
+                      </template>
+                    </template>
+                  </div>
                 </div>
               </div>
             </td>
@@ -731,19 +739,11 @@ const statusLabel: Record<string, string> = {
 
           <!-- Footer buttons -->
           <div class="flex items-center gap-3 pb-2">
-            <button
-              type="submit"
-              :disabled="saving"
-              class="flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark disabled:opacity-60"
-            >
+            <button type="submit" :disabled="saving" class="btn btn-primary">
               <Spinner v-if="saving" :size="14" light />
               {{ saving ? 'Guardando…' : 'Crear contacto' }}
             </button>
-            <button
-              type="button"
-              class="cursor-pointer rounded-lg px-4 py-2.5 text-sm text-slate-500 hover:bg-slate-100"
-              @click="showForm = false"
-            >Cancelar</button>
+            <button type="button" class="btn btn-ghost" @click="showForm = false">Cancelar</button>
           </div>
 
         </form>
