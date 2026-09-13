@@ -37,7 +37,7 @@ const options = [
 </script>
 
 <template>
-  <div class="mx-auto max-w-2xl px-8 py-8">
+  <div class="mx-auto max-w-2xl px-4 py-6 sm:px-8 sm:py-8">
     <div class="mb-6">
       <h3 class="text-base font-semibold text-slate-900">Apariencia</h3>
       <p class="mt-1 text-sm text-slate-500">Elige el estilo visual de la barra lateral del CRM.</p>

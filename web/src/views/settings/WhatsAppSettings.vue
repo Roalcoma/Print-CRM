@@ -144,7 +144,7 @@ function statusInfo(s: string) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-xl space-y-6 p-6">
+  <div class="mx-auto max-w-xl space-y-6 p-4 sm:p-6">
     <div>
       <h1 class="text-lg font-semibold text-slate-900">Configuración de WhatsApp</h1>
       <p class="mt-1 text-sm text-slate-500">Conecta tu instancia de Evolution API para enviar y recibir mensajes de WhatsApp.</p>

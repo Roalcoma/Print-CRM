@@ -147,7 +147,7 @@ async function remove(u: User) {
           </div>
           <button class="btn btn-primary btn-sm" @click="openCreate">
             <Plus class="h-4 w-4" />
-            <span class="hidden sm:inline">Añadir usuario</span>
+            Añadir usuario
           </button>
         </div>
       </div>

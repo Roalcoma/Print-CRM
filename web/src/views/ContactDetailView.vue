@@ -215,7 +215,7 @@ const tabs = [
   <div class="flex h-full flex-col overflow-hidden">
 
     <!-- Top bar -->
-    <div class="flex items-center gap-3 border-b border-slate-200 bg-white px-6 py-3">
+    <div class="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
       <button
         class="flex cursor-pointer items-center gap-1.5 text-sm text-slate-500 hover:text-primary transition-colors"
         @click="router.push('/contacts')"
@@ -408,7 +408,7 @@ const tabs = [
       <div class="flex flex-1 flex-col overflow-hidden">
 
         <!-- Mobile header (shown on mobile where sidebar is hidden) -->
-        <div class="flex items-center gap-4 border-b border-slate-200 bg-white px-6 py-4 lg:hidden">
+        <div class="flex items-center gap-4 border-b border-slate-200 bg-white px-4 py-4 sm:px-6 lg:hidden">
           <div
             class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full text-lg font-bold text-white"
             :style="{ backgroundColor: avatarBg(contact) }"
@@ -423,8 +423,8 @@ const tabs = [
         </div>
 
         <!-- Tabs -->
-        <div class="border-b border-slate-200 bg-white px-6">
-          <nav class="flex gap-1">
+        <div class="border-b border-slate-200 bg-white px-4 sm:px-6">
+          <nav class="flex gap-1 overflow-x-auto">
             <button
               v-for="tab in tabs"
               :key="tab.key"
@@ -438,7 +438,7 @@ const tabs = [
         </div>
 
         <!-- Tab content -->
-        <div class="flex-1 overflow-y-auto p-6">
+        <div class="flex-1 overflow-y-auto p-4 sm:p-6">
 
           <!-- RESUMEN -->
           <div v-if="activeTab === 'summary'" class="space-y-4 max-w-2xl">

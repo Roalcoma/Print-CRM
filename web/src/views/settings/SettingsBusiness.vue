@@ -112,10 +112,10 @@ const initials = () => {
             <Check class="h-4 w-4" /> Guardado
           </span>
         </Transition>
-        <button :disabled="saving" class="btn btn-primary btn-sm" @click="save">
+        <button :disabled="saving" class="btn btn-primary" @click="save">
           <Loader2 v-if="saving" class="h-4 w-4 animate-spin" />
           <Check v-else class="h-4 w-4" />
-          <span class="hidden sm:inline">Guardar cambios</span>
+          Guardar cambios
         </button>
       </div>
     </div>
@@ -147,7 +147,7 @@ const initials = () => {
         </div>
       </div>
 
-      <p v-if="error" class="mx-6 mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{{ error }}</p>
+      <p v-if="error" class="mx-4 mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600 sm:mx-6">{{ error }}</p>
 
       <!-- Grid de cards -->
       <div class="grid grid-cols-1 gap-4 p-4 sm:p-6 lg:grid-cols-2">
@@ -222,7 +222,7 @@ const initials = () => {
               <label class="biz-label">Dirección</label>
               <textarea v-model="form.address" rows="2" class="biz-input resize-none" placeholder="Av. Principal, Edificio X, Piso 3"></textarea>
             </div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label class="biz-label">Ciudad</label>
                 <input v-model="form.city" class="biz-input" placeholder="Caracas" />
