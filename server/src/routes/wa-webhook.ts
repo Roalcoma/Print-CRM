@@ -53,7 +53,7 @@ waWebhookRouter.post('/:secret', async (req, res) => {
 
       const { msgType, body, mediaUrl, mediaMime, mediaFilename } = parseMessage(msg);
 
-      const convRes = await pool.query<{ id: string }>(
+      const convRes = await pool.query<{ id: string; is_new: boolean }>(
         `INSERT INTO conversations (organization_id, wa_chat_id, display_name, phone, last_message_at, last_message_preview, unread_count)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (organization_id, wa_chat_id) DO UPDATE SET
@@ -62,13 +62,36 @@ waWebhookRouter.post('/:secret', async (req, res) => {
            unread_count         = conversations.unread_count + EXCLUDED.unread_count,
            display_name         = COALESCE($8::text, conversations.display_name),
            updated_at           = NOW()
-         RETURNING id`,
+         RETURNING id, (xmax = 0) AS is_new`,
         [orgId, chatId, displayName, phone, timestamp, previewText(msgType, body),
          direction === 'inbound' ? 1 : 0, senderName ?? null],
       );
       const convId = convRes.rows[0].id;
+      const isNewConversation = convRes.rows[0].is_new === true;
 
-      if (senderName) await linkContact(orgId, convId, phone, senderName);
+      let contactId: string | null = null;
+      if (direction === 'inbound' && senderName) {
+        contactId = await linkContact(orgId, convId, phone, senderName);
+      }
+
+      // Flujo automático solo en mensajes entrantes de conversaciones nuevas
+      if (isNewConversation && direction === 'inbound') {
+        const ruleRes = await pool.query<{ enabled: boolean }>(
+          `SELECT enabled FROM automation_rules
+           WHERE organization_id = $1 AND trigger_type = 'whatsapp_new_message'
+           LIMIT 1`,
+          [orgId],
+        );
+        if (ruleRes.rows[0]?.enabled) {
+          // Actualizar contador de ejecuciones
+          pool.query(
+            `UPDATE automation_rules SET run_count = run_count + 1, last_run_at = NOW()
+             WHERE organization_id = $1 AND trigger_type = 'whatsapp_new_message'`,
+            [orgId],
+          ).catch(() => {});
+          createLeadFlow(orgId, contactId, displayName).catch(e => console.error('createLeadFlow:', e));
+        }
+      }
 
       // Para outbound: intentar hacer UPDATE de un mensaje pendiente sin wa_message_id
       let finalMsgId: string | undefined;
@@ -218,7 +241,7 @@ function previewText(msgType: string, body: string | null): string {
   return map[msgType] ?? '📎 Archivo adjunto';
 }
 
-async function linkContact(orgId: string, convId: string, phone: string, waName: string): Promise<void> {
+async function linkContact(orgId: string, convId: string, phone: string, waName: string): Promise<string | null> {
   try {
     const phoneRe = /^\+?[\d\s\-().]{7,20}$/;
     let effectivePhone = phone;
@@ -270,7 +293,82 @@ async function linkContact(orgId: string, convId: string, phone: string, waName:
       `UPDATE conversations SET contact_id = COALESCE(contact_id, $1), display_name = $2, updated_at = NOW() WHERE id = $3`,
       [contactId, waName, convId],
     );
+    return contactId;
   } catch (e) {
     console.error('linkContact error:', e);
+    return null;
+  }
+}
+
+// Crea oportunidad, tarea y notificaciones cuando llega un lead nuevo por WhatsApp.
+async function createLeadFlow(orgId: string, contactId: string | null, displayName: string): Promise<void> {
+  // Primer pipeline de la org
+  const pipeRes = await pool.query<{ id: string }>(
+    `SELECT id FROM pipelines WHERE organization_id = $1 ORDER BY created_at LIMIT 1`,
+    [orgId],
+  );
+  if (!pipeRes.rows[0]) return;
+  const pipelineId = pipeRes.rows[0].id;
+
+  // Primera etapa (por posición)
+  const stageRes = await pool.query<{ id: string }>(
+    `SELECT id FROM pipeline_stages WHERE pipeline_id = $1 ORDER BY position LIMIT 1`,
+    [pipelineId],
+  );
+  if (!stageRes.rows[0]) return;
+  const stageId = stageRes.rows[0].id;
+
+  // Crear oportunidad
+  const oppRes = await pool.query<{ id: string }>(
+    `INSERT INTO opportunities (organization_id, pipeline_id, stage_id, contact_id, title, source, tags)
+     VALUES ($1, $2, $3, $4, $5, 'whatsapp', ARRAY['whatsapp']::text[])
+     RETURNING id`,
+    [orgId, pipelineId, stageId, contactId, `Lead WhatsApp — ${displayName}`],
+  );
+  const oppId = oppRes.rows[0].id;
+
+  // Todos los usuarios de la org
+  const usersRes = await pool.query<{ id: string }>(
+    `SELECT id FROM users WHERE organization_id = $1`,
+    [orgId],
+  );
+  const userIds = usersRes.rows.map(u => u.id);
+  if (!userIds.length) return;
+
+  // Crear tarea (alta prioridad, vence mañana a las 9am)
+  const dueAt = new Date();
+  dueAt.setDate(dueAt.getDate() + 1);
+  dueAt.setHours(9, 0, 0, 0);
+
+  const taskRes = await pool.query<{ id: string }>(
+    `INSERT INTO tasks (organization_id, title, description, status, priority, opportunity_id, due_at)
+     VALUES ($1, $2, $3, 'pending', 'high', $4, $5)
+     RETURNING id`,
+    [orgId,
+     `Responder lead de WhatsApp — ${displayName}`,
+     `Nuevo lead entrante vía WhatsApp. Contactar a ${displayName} a la brevedad posible.`,
+     oppId, dueAt],
+  );
+  const taskId = taskRes.rows[0].id;
+
+  // Asignar tarea a todos los usuarios
+  for (const uid of userIds) {
+    await pool.query(
+      `INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [taskId, uid],
+    );
+  }
+
+  // Notificación para cada usuario + broadcast WS
+  for (const uid of userIds) {
+    await pool.query(
+      `INSERT INTO notifications (organization_id, user_id, type, title, body, entity_type, entity_id)
+       VALUES ($1, $2, 'new_lead', $3, $4, 'opportunity', $5)`,
+      [orgId, uid,
+       `Nuevo lead de WhatsApp`,
+       `${displayName} inició una conversación por WhatsApp.`,
+       oppId],
+    );
+    broadcast(orgId, 'notification:new', { userId: uid });
   }
 }

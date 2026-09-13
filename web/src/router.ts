@@ -32,6 +32,7 @@ const routes = [
       { path: 'tasks', component: () => import('./views/TasksView.vue'), meta: { title: 'Tareas', module: 'tasks' } },
       { path: 'calendar', component: () => import('./views/CalendarView.vue'), meta: { title: 'Calendario' } },
       { path: 'conversations', component: () => import('./views/ConversationsView.vue'), meta: { title: 'Conversaciones' } },
+      { path: 'automations', component: () => import('./views/AutomationsView.vue'), meta: { title: 'Automatizaciones' } },
       { path: 'settings/calendar', component: () => import('./views/settings/CalendarSettings.vue'), meta: { title: 'Configuración > Calendario' } },
       { path: 'settings/calendars', component: () => import('./views/settings/CalendarsSettings.vue'), meta: { title: 'Mis calendarios' } },
       {

@@ -24,6 +24,7 @@ import { conversationsRouter } from './routes/conversations.ts';
 import { waSettingsRouter } from './routes/wa-settings.ts';
 import { waWebhookRouter } from './routes/wa-webhook.ts';
 import { agencyRouter } from './routes/agency.ts';
+import { automationsRouter } from './routes/automations.ts';
 import { initWS } from './services/ws-manager.ts';
 import { verifyToken } from './auth/tokens.ts';
 import { pool } from './db.ts';
@@ -147,6 +148,7 @@ app.use('/api/calendar', requireAuth, calendarSettingsRouter);
 app.use('/api/calendars', requireAuth, calendarsRouter);
 app.use('/api/conversations', requireAuth, conversationsRouter);
 app.use('/api/wa', requireAuth, waSettingsRouter);
+app.use('/api/automations', requireAuth, automationsRouter);
 
 // Manejador de errores central: cualquier throw async cae aquí sin tumbar el server.
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
