@@ -123,33 +123,31 @@ async function remove(u: User) {
     ════════════════════════════════════════════ -->
     <template v-if="view === 'list'">
       <!-- Barra superior -->
-      <div class="flex flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-3.5">
-        <div class="flex items-center gap-3">
+      <div class="flex flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-6 sm:py-3.5">
+        <div class="flex items-center gap-2.5">
           <div>
             <h3 class="text-[15px] font-semibold text-slate-900">Mi equipo</h3>
-            <p class="text-[12px] text-slate-400">Gestiona usuarios y sus permisos por módulo</p>
+            <p class="hidden text-[12px] text-slate-400 sm:block">Gestiona usuarios y sus permisos por módulo</p>
           </div>
           <span class="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{{ filtered.length }}</span>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2">
           <select
             v-model="roleFilter"
-            class="cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 focus:border-primary focus:outline-none"
+            class="hidden cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 focus:border-primary focus:outline-none sm:block"
           >
             <option value="">Todos los roles</option>
             <option value="owner">Owner</option>
             <option value="admin">Administrador</option>
             <option value="member">Miembro</option>
           </select>
-          <div class="relative">
+          <div class="relative hidden sm:block">
             <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input v-model="search" placeholder="Nombre o email…" class="w-52 rounded-lg border border-slate-200 py-1.5 pl-9 pr-3 text-sm focus:border-primary focus:outline-none" />
           </div>
-          <button
-            class="flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark"
-            @click="openCreate"
-          >
-            <Plus class="h-4 w-4" /> Añadir usuario
+          <button class="btn btn-primary btn-sm" @click="openCreate">
+            <Plus class="h-4 w-4" />
+            <span class="hidden sm:inline">Añadir usuario</span>
           </button>
         </div>
       </div>
@@ -161,11 +159,11 @@ async function remove(u: User) {
           <table class="w-full text-sm">
             <thead class="sticky top-0 z-10">
               <tr class="border-b border-slate-200 bg-slate-50/95 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 backdrop-blur">
-                <th class="px-6 py-3.5">Nombre</th>
-                <th class="px-3 py-3.5">Email</th>
+                <th class="px-4 py-3.5 sm:px-6">Nombre</th>
+                <th class="hidden px-3 py-3.5 sm:table-cell">Email</th>
                 <th class="px-3 py-3.5">Rol</th>
-                <th class="px-3 py-3.5">Módulos</th>
-                <th class="w-24 px-6 py-3.5 text-right">Acciones</th>
+                <th class="hidden px-3 py-3.5 lg:table-cell">Módulos</th>
+                <th class="w-20 px-4 py-3.5 text-right sm:px-6">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -175,20 +173,21 @@ async function remove(u: User) {
                 :class="canManage(u) ? 'cursor-pointer' : ''"
                 @click="openEdit(u)"
               >
-                <td class="px-6 py-4">
+                <td class="px-4 py-3.5 sm:px-6">
                   <div class="flex items-center gap-3">
                     <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-xs font-bold text-white shadow-sm" :class="avatarColor(u.name)">
                       {{ initials(u.name) }}
                     </div>
-                    <div>
-                      <p class="font-semibold text-slate-900">
+                    <div class="min-w-0">
+                      <p class="truncate font-semibold text-slate-900">
                         {{ u.name }}
                         <span v-if="isSelf(u)" class="ml-1 text-xs font-normal text-slate-400">(tú)</span>
                       </p>
+                      <p class="truncate text-xs text-slate-400 sm:hidden">{{ u.email }}</p>
                     </div>
                   </div>
                 </td>
-                <td class="px-3 py-4" @click.stop>
+                <td class="hidden px-3 py-3.5 sm:table-cell" @click.stop>
                   <div class="flex items-center gap-1.5 text-slate-500">
                     {{ u.email }}
                     <button class="cursor-pointer rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-primary" @click="copyEmail(u.email)">
@@ -197,10 +196,10 @@ async function remove(u: User) {
                     </button>
                   </div>
                 </td>
-                <td class="px-3 py-4">
+                <td class="px-3 py-3.5">
                   <span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="roleBadge[u.role]">{{ roleLabel[u.role] }}</span>
                 </td>
-                <td class="px-3 py-4">
+                <td class="hidden px-3 py-3.5 lg:table-cell">
                   <span v-if="u.role === 'owner' || u.role === 'admin'" class="flex items-center gap-1 text-xs text-slate-400">
                     <Shield class="h-3.5 w-3.5" /> Acceso total
                   </span>
@@ -209,7 +208,7 @@ async function remove(u: User) {
                   </div>
                   <span v-else class="text-xs text-slate-300">Sin acceso</span>
                 </td>
-                <td class="px-6 py-4" @click.stop>
+                <td class="px-4 py-3.5 sm:px-6" @click.stop>
                   <div class="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                     <button v-if="canManage(u) && !isSelf(u)" class="cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600" @click="remove(u)">
                       <Trash2 class="h-4 w-4" />
@@ -225,7 +224,7 @@ async function remove(u: User) {
             </tbody>
           </table>
         </div>
-        <div class="flex flex-shrink-0 items-center justify-between border-t border-slate-100 bg-slate-50/60 px-6 py-2.5 text-xs text-slate-400">
+        <div class="flex flex-shrink-0 items-center justify-between border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 text-xs text-slate-400 sm:px-6">
           <span>{{ filtered.length }} usuario{{ filtered.length === 1 ? '' : 's' }}</span>
           <span>Página 1 de 1</span>
         </div>
@@ -237,7 +236,7 @@ async function remove(u: User) {
     ════════════════════════════════════════════ -->
     <template v-else>
       <!-- Barra de navegación / breadcrumb -->
-      <div class="flex flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-3.5">
+      <div class="flex flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-6 sm:py-3.5">
         <div class="flex items-center gap-3">
           <button
             class="flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
@@ -250,20 +249,9 @@ async function remove(u: User) {
           <span class="text-sm font-medium text-slate-900">{{ editing ? editing.name : 'Nuevo usuario' }}</span>
         </div>
         <div class="flex items-center gap-2">
-          <button
-            v-if="editing && canManage(editing) && !isSelf(editing)"
-            class="cursor-pointer rounded-lg px-3 py-2 text-sm font-medium text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
-            @click="remove(editing)"
-          >Eliminar usuario</button>
-          <button
-            class="cursor-pointer rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100"
-            @click="goBack"
-          >Cancelar</button>
-          <button
-            :disabled="saving"
-            class="flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark disabled:opacity-60"
-            @click="save"
-          >
+          <button v-if="editing && canManage(editing) && !isSelf(editing)" class="btn btn-danger" @click="remove(editing)">Eliminar usuario</button>
+          <button class="btn btn-ghost" @click="goBack">Cancelar</button>
+          <button :disabled="saving" class="btn btn-primary" @click="save">
             <Spinner v-if="saving" :size="15" light />
             {{ saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear usuario' }}
           </button>
@@ -272,12 +260,12 @@ async function remove(u: User) {
 
       <!-- Cuerpo del formulario -->
       <div class="flex-1 overflow-y-auto bg-[#F1F5F9]">
-        <div class="mx-auto max-w-4xl px-6 py-8">
+        <div class="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
 
           <p v-if="error" class="mb-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 border border-red-100">{{ error }}</p>
 
           <!-- Grid principal 2 columnas -->
-          <div class="grid grid-cols-3 gap-6">
+          <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
 
             <!-- Columna izquierda: Avatar + resumen -->
             <div class="col-span-1 space-y-4">
@@ -322,8 +310,8 @@ async function remove(u: User) {
                   <UserRound class="h-4 w-4 text-primary" />
                   <h4 class="text-[13px] font-semibold text-slate-700">Información personal</h4>
                 </div>
-                <div class="grid grid-cols-2 gap-4">
-                  <div class="col-span-2">
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div class="sm:col-span-2">
                     <label class="uf-label">Nombre completo</label>
                     <input v-model="form.name" class="uf-input" placeholder="Ej. María González" />
                   </div>
@@ -350,7 +338,7 @@ async function remove(u: User) {
                   <Shield class="h-4 w-4 text-primary" />
                   <h4 class="text-[13px] font-semibold text-slate-700">Rol del usuario</h4>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <label
                     class="flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4 transition-all"
                     :class="form.role === 'member' ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-slate-300'"

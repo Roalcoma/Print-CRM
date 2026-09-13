@@ -35,6 +35,7 @@ const routes = [
       { path: 'automations', component: () => import('./views/AutomationsView.vue'), meta: { title: 'Automatizaciones' } },
       { path: 'settings/calendar', component: () => import('./views/settings/CalendarSettings.vue'), meta: { title: 'Configuración > Calendario' } },
       { path: 'settings/calendars', component: () => import('./views/settings/CalendarsSettings.vue'), meta: { title: 'Mis calendarios' } },
+      { path: 'settings/calendars/:id', component: () => import('./views/settings/CalendarEditView.vue'), meta: { title: 'Editar calendario' } },
       {
         path: 'settings',
         component: () => import('./views/settings/SettingsLayout.vue'),

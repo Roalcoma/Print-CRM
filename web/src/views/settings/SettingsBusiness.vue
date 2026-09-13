@@ -112,11 +112,7 @@ const initials = () => {
             <Check class="h-4 w-4" /> Guardado
           </span>
         </Transition>
-        <button
-          :disabled="saving"
-          class="flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 transition-all hover:bg-primary-dark hover:shadow-md disabled:opacity-60"
-          @click="save"
-        >
+        <button :disabled="saving" class="btn btn-primary" @click="save">
           <Loader2 v-if="saving" class="h-4 w-4 animate-spin" />
           <Check v-else class="h-4 w-4" />
           Guardar cambios

@@ -293,11 +293,7 @@ function statusInfo(s: string) {
           </div>
 
           <div class="pt-1">
-            <button
-              type="submit"
-              :disabled="saving"
-              class="flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/30 disabled:opacity-60 hover:bg-primary-dark"
-            >
+            <button type="submit" :disabled="saving" class="btn btn-primary">
               <Spinner v-if="saving" :size="14" light />
               {{ saving ? 'Guardando…' : 'Guardar configuración' }}
             </button>

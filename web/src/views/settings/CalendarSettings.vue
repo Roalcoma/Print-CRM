@@ -217,7 +217,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="min-h-full bg-slate-50 p-8">
+  <div class="min-h-full bg-slate-50 p-4 sm:p-6 lg:p-8">
     <div class="mx-auto max-w-2xl space-y-8">
 
       <div>
@@ -245,11 +245,7 @@ onMounted(async () => {
                 {{ TIMEZONE_LABELS[tz] ?? tz }}
               </option>
             </select>
-            <button
-              :disabled="savingTz"
-              class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#F69008] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#D97706] disabled:opacity-60"
-              @click="saveTz"
-            >
+            <button :disabled="savingTz" class="btn btn-primary" @click="saveTz">
               <Spinner v-if="savingTz" :size="14" light />
               {{ savingTz ? 'Guardando…' : 'Guardar' }}
             </button>
@@ -292,11 +288,7 @@ onMounted(async () => {
             </div>
           </div>
 
-          <button
-            :disabled="savingWH"
-            class="mt-5 flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#F69008] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#D97706] disabled:opacity-60"
-            @click="saveWH"
-          >
+          <button :disabled="savingWH" class="btn btn-primary mt-5" @click="saveWH">
             <Spinner v-if="savingWH" :size="14" light />
             {{ savingWH ? 'Guardando…' : 'Guardar horario' }}
           </button>

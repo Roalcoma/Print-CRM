@@ -167,6 +167,7 @@ export interface Calendar {
   min_notice_hours: number;
   max_advance_days: number;
   custom_message: string | null;
+  logo_url: string | null;
   availability: CalendarAvailability[];
   created_at: string;
 }

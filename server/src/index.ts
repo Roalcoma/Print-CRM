@@ -31,7 +31,7 @@ import { pool } from './db.ts';
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '4mb' }));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 

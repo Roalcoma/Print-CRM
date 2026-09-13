@@ -70,6 +70,7 @@ const calendarSchema = z.object({
   min_notice_hours: z.number().int().min(0).max(168).optional(),
   max_advance_days: z.number().int().min(1).max(365).optional(),
   custom_message:   z.string().optional().nullable(),
+  logo_url:         z.string().optional().nullable(),
   availability:     availabilitySchema.optional(),
 });
 
@@ -105,14 +106,15 @@ calendarsRouter.post('/', async (req, res) => {
   const [cal] = await query<{ id: string }>(
     `INSERT INTO calendars
        (organization_id, user_id, name, color, slug, timezone, description,
-        booking_enabled, duration_minutes, buffer_minutes, min_notice_hours, max_advance_days, custom_message)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        booking_enabled, duration_minutes, buffer_minutes, min_notice_hours, max_advance_days, custom_message, logo_url)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
      RETURNING *`,
     [
       orgId, userId, d.name, d.color ?? '#F69008', slug,
       d.timezone ?? 'America/Caracas', d.description ?? null,
       d.booking_enabled ?? false, d.duration_minutes ?? 30, d.buffer_minutes ?? 0,
       d.min_notice_hours ?? 2, d.max_advance_days ?? 60, d.custom_message ?? null,
+      d.logo_url ?? null,
     ],
   );
 
@@ -134,6 +136,24 @@ calendarsRouter.post('/', async (req, res) => {
   }
 
   res.status(201).json(cal);
+});
+
+// ── GET /api/calendars/:id  ──────────────────────────────────────────────────
+calendarsRouter.get('/:id', async (req, res) => {
+  const orgId = req.auth!.organizationId;
+  const cal = await queryOne(
+    `SELECT c.*, u.name AS owner_name FROM calendars c
+     JOIN users u ON u.id = c.user_id
+     WHERE c.id = $1 AND c.organization_id = $2`,
+    [req.params.id, orgId],
+  );
+  if (!cal) return res.status(404).json({ error: 'Calendario no encontrado' });
+  const avail = await query(
+    `SELECT day_of_week, start_time, end_time, is_active FROM calendar_availability
+     WHERE calendar_id = $1 ORDER BY day_of_week`,
+    [req.params.id],
+  );
+  res.json({ ...cal, availability: avail });
 });
 
 // ── PATCH /api/calendars/:id  ────────────────────────────────────────────────
@@ -158,7 +178,7 @@ calendarsRouter.patch('/:id', async (req, res) => {
 
   const COLS = ['name','color','slug','timezone','description','is_active',
                 'booking_enabled','duration_minutes','buffer_minutes',
-                'min_notice_hours','max_advance_days','custom_message'] as const;
+                'min_notice_hours','max_advance_days','custom_message','logo_url'] as const;
   const sets: string[] = [];
   const vals: unknown[] = [];
   for (const col of COLS) {
