@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router';
-import { LayoutDashboard, Users, LogOut, Building2, ChevronRight, Menu, ChevronDown, CreditCard } from 'lucide-vue-next';
+import { LayoutDashboard, Users, LogOut, Building2, ChevronRight, Menu, CreditCard } from 'lucide-vue-next';
 import { useAgencyStore } from '../stores/agency';
-import AccountSwitcher from '../components/AccountSwitcher.vue';
-import Dropdown from '../components/Dropdown.vue';
 
 const agency = useAgencyStore();
 const router = useRouter();
@@ -51,7 +49,7 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile));
 </script>
 
 <template>
-  <div class="flex h-screen bg-slate-950 text-slate-100">
+  <div class="flex h-screen bg-[#F1F5F9] text-slate-900">
     <!-- Backdrop móvil -->
     <Transition name="backdrop">
       <div v-if="mobileOpen" class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm md:hidden" @click="mobileOpen = false"></div>
@@ -60,24 +58,18 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile));
     <!-- Sidebar -->
     <Transition name="mobile-drawer">
       <aside v-show="!isMobile || mobileOpen"
-        class="flex w-[220px] flex-shrink-0 flex-col bg-[#0f172a] shadow-2xl"
+        class="flex w-[220px] flex-shrink-0 flex-col bg-[#111827] shadow-2xl"
         :class="isMobile ? 'fixed inset-y-0 left-0 z-[60]' : ''">
-      <!-- Logo + Account Switcher -->
-      <Dropdown width="300" triggerClass="block w-full">
-        <template #trigger="{ open }">
-          <div class="flex h-16 cursor-pointer items-center gap-3 border-b border-slate-800/60 px-5 hover:bg-slate-800/30 transition-colors">
-            <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-900/50">
-              <Building2 class="h-5 w-5 text-white" />
-            </div>
-            <div class="min-w-0 flex-1 leading-tight">
-              <p class="text-[13px] font-bold tracking-wide text-white">AGENCY</p>
-              <p class="text-[10px] text-slate-500 uppercase tracking-widest">Backoffice</p>
-            </div>
-            <ChevronDown class="h-4 w-4 flex-shrink-0 text-slate-600 transition-transform" :class="open ? 'rotate-180' : ''" />
-          </div>
-        </template>
-        <AccountSwitcher @close="() => {}" />
-      </Dropdown>
+      <!-- Logo -->
+      <div class="flex h-16 items-center gap-3 border-b border-slate-800/60 px-5">
+        <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#F69008] to-[#D97706] shadow-lg shadow-orange-900/50">
+          <Building2 class="h-5 w-5 text-white" />
+        </div>
+        <div class="leading-tight">
+          <p class="text-[13px] font-bold tracking-wide text-white">AGENCY</p>
+          <p class="text-[10px] text-slate-500 uppercase tracking-widest">Backoffice</p>
+        </div>
+      </div>
 
       <!-- Navigation -->
       <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-1">
@@ -86,21 +78,22 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile));
           v-for="item in nav"
           :key="item.to"
           :to="item.to"
-          class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-all duration-150"
+          class="relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-all duration-150 overflow-hidden"
           :class="isActive(item.match)
-            ? 'bg-violet-600/20 text-violet-300 border border-violet-600/30'
-            : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'"
+            ? 'bg-[#F69008]/10 text-white font-semibold'
+            : 'text-slate-400 hover:bg-slate-800/60 hover:text-white'"
         >
+          <span v-if="isActive(item.match)" class="absolute left-0 top-0 h-full w-1 bg-[#F69008] rounded-r"></span>
           <component :is="item.icon" class="h-4 w-4 flex-shrink-0" />
           <span>{{ item.label }}</span>
-          <ChevronRight v-if="isActive(item.match)" class="ml-auto h-3 w-3 text-violet-400" />
+          <ChevronRight v-if="isActive(item.match)" class="ml-auto h-3 w-3 text-[#F69008]" />
         </RouterLink>
       </nav>
 
       <!-- Footer -->
       <div class="border-t border-slate-800/60 p-3">
         <div class="flex items-center gap-2.5 rounded-lg px-2 py-2">
-          <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-xs font-bold text-white shadow-sm">
+          <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#F69008] to-[#D97706] text-xs font-bold text-white shadow-sm">
             {{ initials }}
           </div>
           <div class="min-w-0 flex-1">
@@ -120,16 +113,16 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile));
     </Transition>
 
     <!-- Main content -->
-    <div class="flex flex-1 flex-col overflow-hidden bg-slate-950">
+    <div class="flex flex-1 flex-col overflow-hidden bg-[#F1F5F9]">
       <!-- Header -->
-      <header class="flex h-16 flex-shrink-0 items-center justify-between border-b border-slate-800/60 bg-slate-900/50 px-4 backdrop-blur-sm sm:px-6">
+      <header class="flex h-16 flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 shadow-sm sm:px-6">
         <div class="flex items-center gap-3">
-          <button v-if="isMobile" class="cursor-pointer rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors" @click="mobileOpen = true">
+          <button v-if="isMobile" class="cursor-pointer rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors" @click="mobileOpen = true">
             <Menu class="h-5 w-5" />
           </button>
-          <h1 class="text-base font-semibold text-white tracking-tight sm:text-lg">{{ title }}</h1>
+          <h1 class="text-base font-semibold text-slate-900 tracking-tight sm:text-lg">{{ title }}</h1>
         </div>
-        <div class="flex items-center gap-2 text-sm text-slate-400">
+        <div class="flex items-center gap-2 text-sm text-slate-500">
           <div class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
           <span class="hidden sm:inline">{{ agency.admin?.email }}</span>
         </div>

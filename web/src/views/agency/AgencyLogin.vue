@@ -28,15 +28,15 @@ async function submit() {
 </script>
 
 <template>
-  <div class="flex min-h-screen bg-slate-950">
+  <div class="flex min-h-screen bg-white">
     <!-- Left panel: branding -->
-    <div class="hidden lg:flex lg:w-1/2 flex-col items-center justify-center bg-gradient-to-br from-violet-900 via-indigo-900 to-slate-900 p-12 relative overflow-hidden">
-      <!-- Decorative circles -->
-      <div class="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-violet-600/10 blur-3xl"></div>
-      <div class="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-indigo-600/10 blur-3xl"></div>
+    <div class="hidden lg:flex lg:w-1/2 flex-col items-center justify-center bg-gradient-to-br from-[#111827] via-[#1c2333] to-[#111827] p-12 relative overflow-hidden">
+      <!-- Decorative blobs -->
+      <div class="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-[#F69008]/10 blur-3xl"></div>
+      <div class="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-[#D97706]/10 blur-3xl"></div>
 
       <div class="relative z-10 text-center">
-        <div class="mx-auto mb-8 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-2xl shadow-violet-900/60">
+        <div class="mx-auto mb-8 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[#F69008] to-[#D97706] shadow-2xl shadow-orange-900/60">
           <Building2 class="h-10 w-10 text-white" />
         </div>
         <h2 class="mb-3 text-4xl font-bold text-white tracking-tight">Agency Panel</h2>
@@ -46,7 +46,7 @@ async function submit() {
 
         <div class="mt-12 grid grid-cols-3 gap-4 text-center">
           <div class="rounded-xl bg-white/5 border border-white/10 p-4">
-            <p class="text-2xl font-bold text-violet-300">∞</p>
+            <p class="text-2xl font-bold text-[#F69008]">∞</p>
             <p class="text-xs text-slate-500 mt-1">Clientes</p>
           </div>
           <div class="rounded-xl bg-white/5 border border-white/10 p-4">
@@ -54,7 +54,7 @@ async function submit() {
             <p class="text-xs text-slate-500 mt-1">Disponible</p>
           </div>
           <div class="rounded-xl bg-white/5 border border-white/10 p-4">
-            <p class="text-2xl font-bold text-indigo-300">100%</p>
+            <p class="text-2xl font-bold text-amber-300">100%</p>
             <p class="text-xs text-slate-500 mt-1">Privado</p>
           </div>
         </div>
@@ -62,50 +62,50 @@ async function submit() {
     </div>
 
     <!-- Right panel: form -->
-    <div class="flex w-full lg:w-1/2 flex-col items-center justify-center px-6 py-12">
+    <div class="flex w-full lg:w-1/2 flex-col items-center justify-center bg-white px-6 py-12">
       <div class="w-full max-w-sm">
         <!-- Mobile logo -->
         <div class="mb-8 flex items-center gap-3 lg:hidden">
-          <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600">
+          <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#F69008] to-[#D97706]">
             <Building2 class="h-5 w-5 text-white" />
           </div>
-          <span class="text-xl font-bold text-white">Agency Panel</span>
+          <span class="text-xl font-bold text-slate-900">Agency Panel</span>
         </div>
 
-        <h1 class="mb-1 text-2xl font-bold text-white">Iniciar sesión</h1>
-        <p class="mb-8 text-slate-400 text-sm">Accede al backoffice de agencia</p>
+        <h1 class="mb-1 text-2xl font-bold text-slate-900">Iniciar sesión</h1>
+        <p class="mb-8 text-slate-500 text-sm">Accede al backoffice de agencia</p>
 
         <form class="space-y-5" @submit.prevent="submit">
           <div>
-            <label class="mb-1.5 block text-sm font-medium text-slate-300">Email</label>
+            <label class="mb-1.5 block text-sm font-medium text-slate-700">Email</label>
             <div class="relative">
-              <Mail class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <Mail class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 v-model="email"
                 type="email"
                 required
                 autocomplete="email"
-                class="w-full rounded-lg border border-slate-700 bg-slate-800/60 py-2.5 pl-10 pr-4 text-sm text-slate-100 placeholder-slate-500 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 focus:outline-none transition-all"
+                class="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-[#F69008] focus:ring-2 focus:ring-[#F69008]/20 focus:outline-none transition-all"
                 placeholder="admin@agencia.com"
               />
             </div>
           </div>
 
           <div>
-            <label class="mb-1.5 block text-sm font-medium text-slate-300">Contraseña</label>
+            <label class="mb-1.5 block text-sm font-medium text-slate-700">Contraseña</label>
             <div class="relative">
-              <Lock class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <Lock class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 v-model="password"
                 :type="showPass ? 'text' : 'password'"
                 required
                 autocomplete="current-password"
-                class="w-full rounded-lg border border-slate-700 bg-slate-800/60 py-2.5 pl-10 pr-10 text-sm text-slate-100 placeholder-slate-500 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 focus:outline-none transition-all"
+                class="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-900 placeholder-slate-400 focus:border-[#F69008] focus:ring-2 focus:ring-[#F69008]/20 focus:outline-none transition-all"
                 placeholder="••••••••"
               />
               <button
                 type="button"
-                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                 @click="showPass = !showPass"
               >
                 <Eye v-if="!showPass" class="h-4 w-4" />
@@ -124,13 +124,13 @@ async function submit() {
           <button
             type="submit"
             :disabled="loading"
-            class="w-full cursor-pointer rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-900/40 transition-all duration-200 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed"
+            class="w-full cursor-pointer rounded-lg bg-[#F69008] hover:bg-[#D97706] py-2.5 text-sm font-semibold text-white shadow-lg shadow-orange-900/20 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {{ loading ? 'Verificando…' : 'Iniciar sesión' }}
           </button>
         </form>
 
-        <p class="mt-8 text-center text-xs text-slate-600">
+        <p class="mt-8 text-center text-xs text-slate-400">
           Acceso exclusivo para administradores de la agencia
         </p>
       </div>
