@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { Building2, Lock, Mail, Eye, EyeOff } from 'lucide-vue-next';
+import { Lock, Mail, Eye, EyeOff } from 'lucide-vue-next';
 import { useAgencyStore } from '../../stores/agency';
 
 const agency = useAgencyStore();
@@ -36,10 +36,8 @@ async function submit() {
       <div class="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-[#D97706]/10 blur-3xl"></div>
 
       <div class="relative z-10 text-center">
-        <div class="mx-auto mb-8 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[#F69008] to-[#D97706] shadow-2xl shadow-orange-900/60">
-          <Building2 class="h-10 w-10 text-white" />
-        </div>
-        <h2 class="mb-3 text-4xl font-bold text-white tracking-tight">Agency Panel</h2>
+        <img src="/isotipo.png" alt="Rocco" class="mx-auto mb-6 h-24 w-24 object-contain drop-shadow-2xl" />
+        <h2 class="mb-3 text-4xl font-bold text-white tracking-tight">Rocco</h2>
         <p class="text-slate-400 text-lg max-w-xs mx-auto leading-relaxed">
           Gestiona todos tus clientes de CRM desde un solo lugar.
         </p>
@@ -66,10 +64,8 @@ async function submit() {
       <div class="w-full max-w-sm">
         <!-- Mobile logo -->
         <div class="mb-8 flex items-center gap-3 lg:hidden">
-          <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#F69008] to-[#D97706]">
-            <Building2 class="h-5 w-5 text-white" />
-          </div>
-          <span class="text-xl font-bold text-slate-900">Agency Panel</span>
+          <img src="/isotipo.png" alt="Rocco" class="h-10 w-10 object-contain" />
+          <img src="/logo.png" alt="Rocco" class="h-7 object-contain" />
         </div>
 
         <h1 class="mb-1 text-2xl font-bold text-slate-900">Iniciar sesión</h1>

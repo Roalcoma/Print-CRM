@@ -166,9 +166,10 @@ const s = computed(() => isDark.value
           :class="[s.wrap, isMobile ? 'sidebar--expanded shadow-2xl' : collapsed ? 'sidebar--collapsed' : 'sidebar--expanded']"
         >
         <!-- Logo -->
-        <div class="flex h-16 flex-shrink-0 items-center gap-2.5 px-4">
-          <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#F69008] to-[#D97706] text-sm font-bold text-white shadow-md">R</div>
-          <span class="sidebar-label text-base font-semibold tracking-tight" :class="isDark ? 'text-white' : 'text-slate-900'">Rocco</span>
+        <div class="flex h-16 flex-shrink-0 items-center gap-3 px-4">
+          <img src="/isotipo.png" alt="Rocco" class="h-9 w-9 flex-shrink-0 object-contain" />
+          <span class="sidebar-label text-[17px] font-bold tracking-tight leading-none"
+            :class="isDark ? 'text-white' : 'text-slate-900'">Rocco</span>
         </div>
 
         <!-- Search -->

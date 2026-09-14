@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router';
-import { LayoutDashboard, Users, LogOut, Building2, ChevronRight, Menu, CreditCard } from 'lucide-vue-next';
+import { LayoutDashboard, Users, LogOut, ChevronRight, Menu, CreditCard } from 'lucide-vue-next';
 import { useAgencyStore } from '../stores/agency';
 
 const agency = useAgencyStore();
@@ -62,11 +62,9 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile));
         :class="isMobile ? 'fixed inset-y-0 left-0 z-[60]' : ''">
       <!-- Logo -->
       <div class="flex h-16 items-center gap-3 border-b border-slate-800/60 px-5">
-        <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#F69008] to-[#D97706] shadow-lg shadow-orange-900/50">
-          <Building2 class="h-5 w-5 text-white" />
-        </div>
+        <img src="/isotipo.png" alt="Rocco" class="h-9 w-9 flex-shrink-0 object-contain" />
         <div class="leading-tight">
-          <p class="text-[13px] font-bold tracking-wide text-white">AGENCY</p>
+          <p class="text-[15px] font-bold tracking-wide text-white">Rocco</p>
           <p class="text-[10px] text-slate-500 uppercase tracking-widest">Backoffice</p>
         </div>
       </div>

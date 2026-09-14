@@ -40,9 +40,8 @@ async function submit() {
 <template>
   <div class="flex min-h-screen items-center justify-center bg-slate-50 px-4">
     <div class="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-      <div class="mb-6 flex items-center gap-2">
-        <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary font-bold text-white">R</div>
-        <span class="text-xl font-semibold text-slate-900">Rocco</span>
+      <div class="mb-8 flex justify-center">
+        <img src="/logo.png" alt="Rocco" class="h-20 object-contain" />
       </div>
 
       <h1 class="mb-1 text-lg font-semibold text-slate-900">
