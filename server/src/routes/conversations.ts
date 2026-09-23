@@ -317,19 +317,23 @@ conversationsRouter.get('/:id/contact', async (req, res) => {
 conversationsRouter.post('/', async (req, res) => {
   try {
     const orgId = req.auth!.organizationId;
-    const { phone, display_name } = req.body as { phone: string; display_name?: string };
+    const { phone, display_name, contact_id } = req.body as { phone: string; display_name?: string; contact_id?: string };
     if (!phone) return res.status(400).json({ error: 'Falta el número de teléfono' });
 
-    // Formato chatId de WA: código de país + número + @c.us (sin +)
+    // Formato chatId de WA: código de país + número + @s.whatsapp.net (sin +)
+    // Evolution API siempre entrega JIDs con @s.whatsapp.net; usar @c.us causaría duplicados.
     const waPhone = phone.replace(/\D/g, '');
-    const chatId = `${waPhone}@c.us`;
+    const chatId = `${waPhone}@s.whatsapp.net`;
 
+    // Si ya existe, vincular el contacto solo si no tenía uno asignado
     const result = await pool.query<{ id: string }>(
-      `INSERT INTO conversations (organization_id, wa_chat_id, display_name, phone)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (organization_id, wa_chat_id) DO UPDATE SET updated_at = NOW()
+      `INSERT INTO conversations (organization_id, wa_chat_id, display_name, phone, contact_id)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (organization_id, wa_chat_id) DO UPDATE
+         SET updated_at = NOW(),
+             contact_id = COALESCE(conversations.contact_id, EXCLUDED.contact_id)
        RETURNING id`,
-      [orgId, chatId, display_name ?? phone, waPhone],
+      [orgId, chatId, display_name ?? phone, waPhone, contact_id ?? null],
     );
     res.status(201).json({ id: result.rows[0].id });
   } catch (e) {
