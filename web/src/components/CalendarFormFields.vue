@@ -1,20 +1,9 @@
 <script setup lang="ts">
 import type { CalendarAvailability } from '../types';
+import { TIMEZONES } from '../utils/timezones';
 
 const DAYS   = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const COLORS = ['#F69008','#60D0FA','#10B981','#8B5CF6','#EF4444','#F59E0B','#3B82F6','#EC4899','#6366F1'];
-
-const TIMEZONES = [
-  { value: 'America/Caracas',     label: 'Venezuela (UTC-4)' },
-  { value: 'America/Bogota',      label: 'Colombia (UTC-5)' },
-  { value: 'America/Lima',        label: 'Perú (UTC-5)' },
-  { value: 'America/Santiago',    label: 'Chile (UTC-3/4)' },
-  { value: 'America/Mexico_City', label: 'México (UTC-6)' },
-  { value: 'America/New_York',    label: 'EE.UU. Este (UTC-5)' },
-  { value: 'America/Los_Angeles', label: 'EE.UU. Pacífico (UTC-8)' },
-  { value: 'Europe/Madrid',       label: 'España (UTC+1)' },
-  { value: 'UTC',                 label: 'UTC' },
-];
 
 interface FormData {
   name: string; color: string; slug: string; timezone: string;

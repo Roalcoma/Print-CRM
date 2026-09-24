@@ -137,6 +137,27 @@ agencyRouter.get('/auth/me', requireAgencyAuth, async (req, res) => {
   res.json(publicAdmin(admin));
 });
 
+const updateMeSchema = z.object({
+  name: z.string().min(1).optional(),
+  password: z.string().min(8).optional(),
+});
+
+agencyRouter.patch('/auth/me', requireAgencyAuth, async (req, res) => {
+  const parsed = updateMeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+  const { name, password } = parsed.data;
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  if (name) { sets.push(`name = $${sets.length + 1}`); values.push(name); }
+  if (password) { sets.push(`password_hash = $${sets.length + 1}`); values.push(await hashPassword(password)); }
+  if (sets.length === 0) return res.status(400).json({ error: 'Nada que actualizar' });
+  const [admin] = await query<AgencyAdminRow>(
+    `UPDATE agency_admins SET ${sets.join(', ')} WHERE id = $${values.length + 1} RETURNING *`,
+    [...values, req.agencyAuth!.adminId],
+  );
+  res.json(publicAdmin(admin));
+});
+
 // Intercambia un CRM token válido por un agency token, si el email del usuario
 // está registrado como agency admin.
 agencyRouter.post('/auth/exchange', async (req, res) => {

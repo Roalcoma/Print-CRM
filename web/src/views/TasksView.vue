@@ -5,6 +5,7 @@ import {
   UserPlus, ChevronDown, Check, Calendar, Clock,
 } from 'lucide-vue-next';
 import { api } from '../api';
+import { useDialog } from '../composables/useDialog';
 import type { Task, TaskStatus, User } from '../types';
 import { TASK_STATUSES } from '../taskStatus';
 import { useAuthStore } from '../stores/auth';
@@ -15,6 +16,7 @@ import ViewToggle from '../components/ViewToggle.vue';
 import StatusSelect from '../components/StatusSelect.vue';
 
 const auth  = useAuthStore();
+const { confirm } = useDialog();
 const tasks = ref<Task[]>([]);
 const users = ref<User[]>([]);
 const opps  = ref<{ id: string; title: string }[]>([]);
@@ -194,7 +196,7 @@ async function save() {
 }
 
 async function remove(t: Task) {
-  if (!confirm('¿Eliminar esta tarea?')) return;
+  if (!await confirm('¿Eliminar esta tarea?', 'Eliminar tarea')) return;
   await api.del(`/tasks/${t.id}`);
   tasks.value = tasks.value.filter(x => x.id !== t.id);
   showForm.value = false;

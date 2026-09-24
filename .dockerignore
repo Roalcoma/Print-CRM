@@ -1,0 +1,11 @@
+**/node_modules
+**/.env
+**/.env.*
+!**/.env.prod.example
+**/dist
+**/*.log
+.git
+.gitignore
+README.md
+deploy.sh
+docker-compose.yml

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
-import { ChevronLeft, ChevronRight, Clock, Calendar, CheckCircle, AlertCircle, Globe, ChevronDown, Search, Check } from 'lucide-vue-next';
+import { ChevronLeft, ChevronRight, Clock, Calendar, CheckCircle, AlertCircle, Globe, ChevronDown, Search, Check, MapPin } from 'lucide-vue-next';
 
 const route = useRoute();
 const slug  = route.params.slug as string;
@@ -14,7 +14,7 @@ const calendar = ref<{
   name: string; color: string; slug: string; timezone: string;
   description: string | null; duration_minutes: number;
   custom_message: string | null; owner_name: string;
-  logo_url: string | null;
+  logo_url: string | null; location: string | null; location_type: string | null;
 } | null>(null);
 
 // times[] son instantes UTC ISO (e.g. "2026-09-14T13:00:00.000Z")
@@ -22,8 +22,11 @@ const allSlots   = ref<{ date: string; times: string[] }[]>([]);
 const selDate    = ref('');
 const selTime    = ref(''); // UTC ISO string del slot seleccionado
 const form       = ref({ name: '', email: '', phone: '', notes: '' });
-const saving     = ref(false);
-const successMsg = ref('');
+const saving          = ref(false);
+const successMsg      = ref('');
+const bookingLocation = ref<string | null>(null);
+const cancelToken     = ref<string | null>(null);
+const appointmentId   = ref<string | null>(null);
 
 // ── Zona horaria del visitante ────────────────────────────────────────────────
 const systemTz   = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -59,47 +62,6 @@ const TZ_LIST = [
 ];
 
 const systemTzInList = TZ_LIST.flatMap(g => g.zones).some(z => z.id === systemTz);
-
-// ── Dropdown de zona horaria custom ──────────────────────────────────────────
-const tzOpen   = ref(false);
-const tzSearch = ref('');
-const tzDropEl = ref<HTMLElement | null>(null);
-
-const currentTzLabel = computed(() => {
-  if (!systemTzInList && visitorTz.value === systemTz) return `${systemCity} (auto)`;
-  const found = TZ_LIST.flatMap(g => g.zones).find(z => z.id === visitorTz.value);
-  return found?.label ?? visitorTz.value.split('/').pop()?.replace(/_/g, ' ') ?? visitorTz.value;
-});
-
-const filteredTzList = computed(() => {
-  const q = tzSearch.value.trim().toLowerCase();
-  if (!q) {
-    if (!systemTzInList) {
-      return [
-        { group: 'Detectada', zones: [{ id: systemTz, label: `${systemCity} (auto)` }] },
-        ...TZ_LIST,
-      ];
-    }
-    return TZ_LIST;
-  }
-  return TZ_LIST.map(g => ({
-    group: g.group,
-    zones: g.zones.filter(z => z.label.toLowerCase().includes(q) || z.id.toLowerCase().includes(q)),
-  })).filter(g => g.zones.length > 0);
-});
-
-function selectTz(id: string) {
-  visitorTz.value = id;
-  tzOpen.value = false;
-  tzSearch.value = '';
-}
-
-function onTzOutsideClick(e: MouseEvent) {
-  if (tzDropEl.value && !tzDropEl.value.contains(e.target as Node)) {
-    tzOpen.value = false;
-    tzSearch.value = '';
-  }
-}
 
 // Label legible para la TZ del calendario (para mostrar al visitante)
 const calTzLabel = computed(() => {
@@ -143,7 +105,6 @@ watch(visitorTz, () => {
 });
 
 onMounted(async () => {
-  document.addEventListener('click', onTzOutsideClick, true);
   try {
     const res = await fetch(`/api/public/book/${slug}`);
     if (res.status === 403) { step.value = 'disabled'; return; }
@@ -248,14 +209,13 @@ async function submit() {
     });
     const data = await res.json();
     if (!res.ok) { errMsg.value = data.error ?? 'Error al agendar.'; step.value = 'error'; return; }
+    bookingLocation.value = data.location ?? null;
+    cancelToken.value     = data.cancel_token ?? null;
+    appointmentId.value   = data.appointment?.id ?? null;
     successMsg.value = data.message;
     step.value = 'success';
   } finally { saving.value = false; }
 }
-
-onUnmounted(() => {
-  document.removeEventListener('click', onTzOutsideClick, true);
-});
 </script>
 
 <template>
@@ -301,8 +261,28 @@ onUnmounted(() => {
           <Globe class="h-3.5 w-3.5" />
           <span>{{ visitorTz }}</span>
         </div>
+        <!-- Enlace / ubicación -->
+        <div v-if="bookingLocation" class="flex items-start gap-2 pt-1 border-t border-slate-200">
+          <MapPin class="h-4 w-4 shrink-0 text-slate-400 mt-0.5" />
+          <a v-if="bookingLocation.startsWith('http')" :href="bookingLocation" target="_blank" rel="noopener"
+            class="text-sm font-medium break-all" :style="`color:${calendar?.color}`">
+            Unirse a la reunión →
+          </a>
+          <span v-else class="text-sm text-slate-700 break-words">{{ bookingLocation }}</span>
+        </div>
       </div>
       <p class="mt-4 text-xs text-slate-400">Recibirás un correo de confirmación en {{ form.email }}.</p>
+
+      <!-- Gestionar cita -->
+      <div v-if="cancelToken && slug" class="mt-5 border-t border-slate-100 pt-4">
+        <p class="text-xs text-slate-400 mb-2">¿Necesitas cambiar tu cita?</p>
+        <a
+          :href="`/book/${slug}/manage/${cancelToken}`"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:border-slate-300 hover:bg-slate-50 transition-colors"
+        >
+          Cancelar o reagendar →
+        </a>
+      </div>
     </div>
 
     <!-- Panel principal de booking -->
@@ -339,73 +319,18 @@ onUnmounted(() => {
           <!-- Zona horaria del visitante -->
           <div class="rounded-xl border border-slate-100 bg-slate-50 p-3 space-y-2">
             <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Tu zona horaria</p>
-
-            <!-- Dropdown custom -->
-            <div ref="tzDropEl" class="relative">
-              <!-- Trigger -->
-              <button
-                type="button"
-                class="flex w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 hover:border-slate-300 transition-colors cursor-pointer"
-                @click.stop="tzOpen = !tzOpen; if (tzOpen) $nextTick(() => ($refs.tzSearchInput as HTMLInputElement)?.focus())"
+            <div class="flex items-center gap-1.5">
+              <Globe class="h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <select
+                v-model="visitorTz"
+                class="flex-1 min-w-0 bg-transparent text-xs text-slate-700 outline-none cursor-pointer"
               >
-                <Globe class="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                <span class="flex-1 min-w-0 truncate text-left">{{ currentTzLabel }}</span>
-                <ChevronDown class="h-3 w-3 shrink-0 text-slate-400 transition-transform" :class="tzOpen ? 'rotate-180' : ''" />
-              </button>
-
-              <!-- Panel flotante -->
-              <div
-                v-if="tzOpen"
-                class="absolute left-0 top-full z-50 mt-1 w-56 rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden"
-              >
-                <!-- Búsqueda -->
-                <div class="border-b border-slate-100 p-2">
-                  <div class="flex items-center gap-1.5 rounded-lg bg-slate-50 border border-slate-200 px-2 py-1">
-                    <Search class="h-3 w-3 shrink-0 text-slate-400" />
-                    <input
-                      ref="tzSearchInput"
-                      v-model="tzSearch"
-                      type="text"
-                      placeholder="Buscar zona…"
-                      class="flex-1 min-w-0 bg-transparent text-xs text-slate-700 outline-none placeholder:text-slate-400"
-                      @click.stop
-                    />
-                  </div>
-                </div>
-
-                <!-- Lista de opciones -->
-                <div class="max-h-52 overflow-y-auto">
-                  <template v-for="group in filteredTzList" :key="group.group">
-                    <!-- Header de grupo -->
-                    <p class="sticky top-0 bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100">
-                      {{ group.group }}
-                    </p>
-                    <!-- Opciones -->
-                    <button
-                      v-for="z in group.zones"
-                      :key="z.id"
-                      type="button"
-                      class="flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors cursor-pointer"
-                      :class="visitorTz === z.id
-                        ? 'bg-[#F69008]/8 text-[#F69008] font-semibold'
-                        : 'text-slate-700 hover:bg-slate-50'"
-                      @click.stop="selectTz(z.id)"
-                    >
-                      <Check
-                        class="h-3 w-3 shrink-0"
-                        :class="visitorTz === z.id ? 'text-[#F69008]' : 'text-transparent'"
-                      />
-                      {{ z.label }}
-                    </button>
-                  </template>
-
-                  <p v-if="filteredTzList.length === 0" class="px-3 py-4 text-center text-xs text-slate-400">
-                    Sin resultados
-                  </p>
-                </div>
-              </div>
+                <option v-if="!systemTzInList" :value="systemTz">{{ systemCity }} (auto)</option>
+                <optgroup v-for="group in TZ_LIST" :key="group.group" :label="group.group">
+                  <option v-for="z in group.zones" :key="z.id" :value="z.id">{{ z.label }}</option>
+                </optgroup>
+              </select>
             </div>
-
             <p v-if="calendar?.timezone !== visitorTz"
               class="text-[10px] text-slate-400 leading-tight">
               Agenda en {{ calTzLabel || calendar?.timezone }}

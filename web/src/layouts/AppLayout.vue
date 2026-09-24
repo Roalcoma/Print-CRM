@@ -4,14 +4,12 @@ import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router';
 import {
   LayoutGrid, BookUser, TrendingUp, ListChecks,
   CalendarDays, MessagesSquare, LogOut, Search,
-  SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Zap, Menu, Building2,
+  SlidersHorizontal, ChevronLeft, ChevronRight, ChevronDown, Zap, Menu, UserCog, ChevronsUpDown,
 } from 'lucide-vue-next';
 import { useAuthStore } from '../stores/auth';
 import { api } from '../api';
-import { getAgencyToken, setAgencyToken } from '../agencyApi';
 import NotificationsDropdown from '../components/NotificationsDropdown.vue';
 import AccountSwitcher from '../components/AccountSwitcher.vue';
-import Dropdown from '../components/Dropdown.vue';
 
 const auth   = useAuthStore();
 const router = useRouter();
@@ -90,24 +88,24 @@ onUnmounted(() => {
 });
 
 function logout() {
-  auth.logout();
-  router.push('/login');
+  auth.logout(); // internamente hace window.location.replace('/login')
 }
 
-const hasAgencyAccess = computed(() => !!getAgencyToken());
+// ── Account switcher modal ─────────────────────────────────────────────────────
+const switcherOpen = ref(false);
 
-async function goToAgency() {
-  if (!hasAgencyAccess.value) {
-    try {
-      const res = await api.post<{ token: string }>('/agency/auth/exchange');
-      setAgencyToken(res.token);
-    } catch {
-      window.location.href = '/agency/login';
-      return;
-    }
-  }
-  window.location.href = '/agency/dashboard';
-}
+const currentAccountName = computed(() => {
+  if (auth.isImpersonated) return auth.impersonatedClient?.company || auth.impersonatedClient?.name || 'Cliente';
+  return auth.user?.orgName || auth.user?.name || 'Mi cuenta';
+});
+const currentAccountSub = computed(() => {
+  if (auth.isImpersonated) return auth.impersonatedClient?.name || auth.user?.email || '';
+  return auth.user?.email || '';
+});
+const currentAccountInitial = computed(() => {
+  const n = currentAccountName.value;
+  return n.split(' ').filter(Boolean).map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
+});
 
 // ── Theme tokens ──────────────────────────────────────────────────────────────
 const s = computed(() => isDark.value
@@ -172,13 +170,55 @@ const s = computed(() => isDark.value
             :class="isDark ? 'text-white' : 'text-slate-900'">Rocco</span>
         </div>
 
+        <!-- Account switcher trigger -->
+        <div class="mx-3 mb-2 flex-shrink-0">
+          <!-- Expanded -->
+          <button
+            v-if="!collapsed"
+            class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors cursor-pointer"
+            :class="isDark ? 'hover:bg-white/8 border border-white/10' : 'hover:bg-slate-100 border border-slate-200'"
+            @click="switcherOpen = true"
+          >
+            <div
+              class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
+              :class="auth.isImpersonated ? 'bg-violet-200 text-violet-700' : (isDark ? 'bg-[#F69008]/20 text-[#F69008]' : 'bg-[#F69008]/15 text-[#D97706]')"
+            >
+              {{ currentAccountInitial }}
+            </div>
+            <div class="min-w-0 flex-1 text-left">
+              <p class="truncate text-[13px] font-semibold leading-tight" :class="isDark ? 'text-white' : 'text-slate-900'">
+                {{ currentAccountName }}
+              </p>
+              <p class="truncate text-[11px] leading-tight" :class="isDark ? 'text-slate-400' : 'text-slate-400'">
+                {{ currentAccountSub }}
+              </p>
+            </div>
+            <ChevronsUpDown class="h-3.5 w-3.5 flex-shrink-0" :class="isDark ? 'text-slate-500' : 'text-slate-400'" />
+          </button>
+
+          <!-- Collapsed: solo avatar -->
+          <button
+            v-else
+            class="flex w-full justify-center py-1 transition-colors cursor-pointer"
+            :title="currentAccountName"
+            @click="switcherOpen = true"
+          >
+            <div
+              class="flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-bold"
+              :class="auth.isImpersonated ? 'bg-violet-200 text-violet-700' : (isDark ? 'bg-[#F69008]/20 text-[#F69008]' : 'bg-[#F69008]/15 text-[#D97706]')"
+            >
+              {{ currentAccountInitial }}
+            </div>
+          </button>
+        </div>
+
         <!-- Search -->
         <div class="sidebar-search flex-shrink-0 px-3 pb-3">
           <div class="relative">
             <Search class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2" :class="s.searchIcon" />
             <input
               placeholder="Buscar… ⌘K"
-              class="w-full rounded-lg border py-1.5 pl-8 pr-3 text-xs transition-all focus:outline-none focus:ring-1 focus:ring-[#F69008]/30"
+              class="w-full rounded-lg border py-1.5 pl-8 pr-3 text-[13px] transition-all focus:outline-none focus:ring-1 focus:ring-[#F69008]/30"
               :class="s.searchBg"
             />
           </div>
@@ -191,7 +231,7 @@ const s = computed(() => isDark.value
         <nav class="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-2 py-1">
 
           <!-- Menú Principal -->
-          <p class="sidebar-label mb-1 px-2 text-[10px] font-bold uppercase tracking-widest" :class="s.groupLabel">Menú</p>
+          <p class="sidebar-label mb-1 px-2 text-[11px] font-bold uppercase tracking-widest" :class="s.groupLabel">Menú</p>
           <div class="space-y-0.5">
             <RouterLink
               v-for="item in visibleMain" :key="item.to"
@@ -201,7 +241,7 @@ const s = computed(() => isDark.value
               :class="isActive(item.match) ? s.activeItem : s.inactiveItem"
             >
               <span v-if="isActive(item.match)" class="active-accent" :class="s.accent"></span>
-              <component :is="item.icon" class="nav-icon h-[18px] w-[18px] flex-shrink-0" />
+              <component :is="item.icon" class="nav-icon h-[19px] w-[19px] flex-shrink-0" />
               <span class="nav-label">{{ item.label }}</span>
             </RouterLink>
           </div>
@@ -210,7 +250,7 @@ const s = computed(() => isDark.value
           <div class="nav-separator mx-auto h-px" :class="s.navDivider"></div>
 
           <!-- Herramientas -->
-          <p class="sidebar-label mt-0.5 mb-1 px-2 text-[10px] font-bold uppercase tracking-widest" :class="s.groupLabel">Tools</p>
+          <p class="sidebar-label mt-0.5 mb-1 px-2 text-[11px] font-bold uppercase tracking-widest" :class="s.groupLabel">Tools</p>
           <div class="space-y-0.5">
             <RouterLink
               v-for="item in visibleTools" :key="item.to"
@@ -220,26 +260,13 @@ const s = computed(() => isDark.value
               :class="isActive(item.match) ? s.activeItem : s.inactiveItem"
             >
               <span v-if="isActive(item.match)" class="active-accent" :class="s.accent"></span>
-              <component :is="item.icon" class="nav-icon h-[18px] w-[18px] flex-shrink-0" />
+              <component :is="item.icon" class="nav-icon h-[19px] w-[19px] flex-shrink-0" />
               <span class="nav-label">{{ item.label }}</span>
             </RouterLink>
           </div>
 
           <!-- Spacer: empuja Settings al fondo -->
           <div class="flex-1"></div>
-
-          <!-- Agency panel link -->
-          <div v-if="auth.isAdmin" class="mb-1 h-px" :class="s.navDivider"></div>
-          <button
-            v-if="auth.isAdmin"
-            :title="collapsed ? 'Agencia' : undefined"
-            class="nav-item mb-1 flex w-full items-center rounded-md transition-all duration-150 cursor-pointer text-left"
-            :class="s.settingsInactive"
-            @click="goToAgency"
-          >
-            <Building2 class="nav-icon h-[18px] w-[18px] flex-shrink-0" />
-            <span class="nav-label">Agencia</span>
-          </button>
 
           <!-- Settings -->
           <div class="mb-1 h-px" :class="s.navDivider"></div>
@@ -250,10 +277,17 @@ const s = computed(() => isDark.value
             class="nav-item mb-1 flex items-center rounded-md transition-all duration-150"
             :class="route.path.startsWith('/settings') ? s.settingsActive : s.settingsInactive"
           >
-            <SlidersHorizontal class="nav-icon h-[18px] w-[18px] flex-shrink-0" />
+            <SlidersHorizontal class="nav-icon h-[19px] w-[19px] flex-shrink-0" />
             <span class="nav-label">Ajustes</span>
           </RouterLink>
         </nav>
+
+        <!-- Copyright -->
+        <div v-if="!collapsed" class="px-4 pb-4 pt-2">
+          <p class="text-center text-[11px] leading-tight" :class="isDark ? 'text-slate-600' : 'text-slate-400'">
+            © {{ new Date().getFullYear() }} Árbol Áureo
+          </p>
+        </div>
       </aside>
       </Transition>
 
@@ -307,17 +341,14 @@ const s = computed(() => isDark.value
             />
           </div>
 
-          <!-- Account switcher (solo cuando es sesión de agencia) -->
-          <Dropdown v-if="auth.isImpersonated" width="300" align="right">
-            <template #trigger>
-              <button class="flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 transition-colors cursor-pointer">
-                <span class="h-2 w-2 rounded-full bg-violet-500 animate-pulse"></span>
-                {{ auth.impersonatedClient?.company || auth.impersonatedClient?.name || 'Cliente' }}
-                <ChevronDown class="h-3.5 w-3.5 text-violet-400" />
-              </button>
-            </template>
-            <AccountSwitcher :current-client-id="auth.impersonatedClient?.id" @close="() => {}" />
-          </Dropdown>
+          <!-- Badge de sesión impersonada (en header, solo informativo) -->
+          <div
+            v-if="auth.isImpersonated"
+            class="hidden sm:flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] font-semibold text-violet-600"
+          >
+            <span class="h-1.5 w-1.5 rounded-full bg-violet-500 animate-pulse"></span>
+            Sesión de agencia
+          </div>
 
           <!-- Notifications -->
           <NotificationsDropdown />
@@ -359,6 +390,15 @@ const s = computed(() => isDark.value
                     </div>
                   </div>
                 </div>
+                <!-- Mi perfil -->
+                <RouterLink
+                  to="/settings/profile"
+                  class="flex w-full items-center gap-2 px-3.5 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50"
+                  @click="userMenuOpen = false"
+                >
+                  <UserCog class="h-4 w-4 text-slate-400" />
+                  Mi Perfil
+                </RouterLink>
                 <!-- Logout -->
                 <button
                   class="flex w-full cursor-pointer items-center gap-2 px-3.5 py-2.5 text-sm text-red-500 transition-colors hover:bg-red-50"
@@ -383,6 +423,31 @@ const s = computed(() => isDark.value
       </main>
     </div>
   </div>
+
+  <!-- Account switcher modal -->
+  <Teleport to="body">
+    <Transition name="switcher-fade">
+      <div
+        v-if="switcherOpen"
+        class="fixed inset-0 z-[200] flex items-start justify-start"
+        @click.self="switcherOpen = false"
+      >
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/20 backdrop-blur-[2px]" @click="switcherOpen = false" />
+
+        <!-- Panel — posicionado debajo del trigger del sidebar -->
+        <div
+          class="relative ml-4 mt-[72px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15"
+          style="z-index: 1;"
+        >
+          <AccountSwitcher
+            :current-client-id="auth.impersonatedClient?.id"
+            @close="switcherOpen = false"
+          />
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -390,7 +455,7 @@ const s = computed(() => isDark.value
 .sidebar {
   transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.sidebar--expanded  { width: 220px; }
+.sidebar--expanded  { width: 232px; }
 .sidebar--collapsed { width: 64px; }
 
 /* ── Floating toggle ──────────────────────────────────────────────────────── */
@@ -404,13 +469,13 @@ const s = computed(() => isDark.value
   display: flex;
   flex-direction: row;
   align-items: center;
-  padding: 0.45rem 0.75rem;
-  gap: 0.625rem;
+  padding: 0.5rem 0.875rem;
+  gap: 0.75rem;
 }
 
 .sidebar--collapsed .nav-item {
   flex-direction: column;
-  padding: 0.45rem 0.25rem;
+  padding: 0.5rem 0.25rem;
   gap: 0.2rem;
   justify-content: center;
   align-items: center;
@@ -420,7 +485,7 @@ const s = computed(() => isDark.value
 
 /* ── Nav label (shows in both modes — repositioned when collapsed) ─────────── */
 .nav-label {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
@@ -430,7 +495,7 @@ const s = computed(() => isDark.value
   transition: font-size 0.18s ease, max-width 0.22s ease;
 }
 .sidebar--collapsed .nav-label {
-  font-size: 9px;
+  font-size: 10px;
   max-width: 56px;
   text-align: center;
   line-height: 1.1;
@@ -500,6 +565,14 @@ const s = computed(() => isDark.value
   transform: translateX(-50%);
   border-radius: 3px 3px 0 0;
 }
+
+/* ── Account switcher modal transition ───────────────────────────────────── */
+.switcher-fade-enter-active { transition: opacity 0.15s ease, transform 0.15s ease; }
+.switcher-fade-leave-active { transition: opacity 0.1s ease, transform 0.1s ease; }
+.switcher-fade-enter-from,
+.switcher-fade-leave-to    { opacity: 0; }
+.switcher-fade-enter-from .relative,
+.switcher-fade-leave-to .relative { transform: translateY(-8px) scale(0.97); }
 
 /* ── User dropdown transition ─────────────────────────────────────────────── */
 .dropdown-enter-active { transition: opacity 0.15s ease, transform 0.15s ease; }

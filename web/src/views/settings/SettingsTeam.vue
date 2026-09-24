@@ -5,12 +5,14 @@ import {
   UserRound, Shield, Mail, Lock, Users, Trash2,
 } from 'lucide-vue-next';
 import { api } from '../../api';
+import { useDialog } from '../../composables/useDialog';
 import type { User } from '../../types';
 import { MODULES } from '../../modules';
 import { useAuthStore } from '../../stores/auth';
 import Spinner from '../../components/Spinner.vue';
 import LoadingState from '../../components/LoadingState.vue';
 
+const { alert, confirm } = useDialog();
 const auth = useAuthStore();
 const users = ref<User[]>([]);
 const loading = ref(true);
@@ -55,7 +57,7 @@ function copyEmail(email: string) {
 }
 
 const isSelf    = (u: User) => u.id === auth.user?.id;
-const canManage = (u: User) => u.role !== 'owner';
+const canManage = (u: User) => u.role !== 'owner' || isSelf(u) || auth.isImpersonated;
 
 // ── Vista: lista | formulario ─────────────────────────────────────────────────
 type View = 'list' | 'form';
@@ -92,7 +94,8 @@ async function save() {
   try {
     const perms = form.value.role === 'admin' ? [] : form.value.permissions;
     if (editing.value) {
-      const patch: Record<string, unknown> = { name: form.value.name, role: form.value.role, permissions: perms };
+      const patch: Record<string, unknown> = { name: form.value.name };
+      if (editing.value.role !== 'owner') { patch.role = form.value.role; patch.permissions = perms; }
       if (form.value.password) patch.password = form.value.password;
       await api.patch(`/users/${editing.value.id}`, patch);
     } else {
@@ -109,9 +112,9 @@ async function save() {
 }
 
 async function remove(u: User) {
-  if (!confirm(`¿Eliminar a "${u.name}"?`)) return;
+  if (!await confirm(`¿Eliminar a "${u.name}"?`, 'Eliminar usuario')) return;
   try { await api.del(`/users/${u.id}`); await load(); view.value = 'list'; }
-  catch (e) { alert(e instanceof Error ? e.message : 'No se pudo eliminar'); }
+  catch (e) { await alert(e instanceof Error ? e.message : 'No se pudo eliminar'); }
 }
 </script>
 
@@ -332,8 +335,8 @@ async function remove(u: User) {
                 </div>
               </div>
 
-              <!-- Sección: Rol -->
-              <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <!-- Sección: Rol (oculto al editar el owner) -->
+              <div v-if="!editing || editing.role !== 'owner'" class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div class="mb-5 flex items-center gap-2.5 border-b border-slate-100 pb-4">
                   <Shield class="h-4 w-4 text-primary" />
                   <h4 class="text-[13px] font-semibold text-slate-700">Rol del usuario</h4>
@@ -368,8 +371,8 @@ async function remove(u: User) {
                 </div>
               </div>
 
-              <!-- Sección: Permisos (solo miembro) -->
-              <div v-if="form.role === 'member'" class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <!-- Sección: Permisos (solo miembro, oculto al editar el owner) -->
+              <div v-if="(!editing || editing.role !== 'owner') && form.role === 'member'" class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div class="mb-1 flex items-center gap-2.5 border-b border-slate-100 pb-4">
                   <Users class="h-4 w-4 text-primary" />
                   <h4 class="text-[13px] font-semibold text-slate-700">Módulos permitidos</h4>
@@ -398,7 +401,7 @@ async function remove(u: User) {
                 </div>
               </div>
 
-              <div v-else class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+              <div v-else-if="!editing || editing.role !== 'owner'" class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
                 <Shield class="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
                 <p class="text-sm text-amber-700 leading-relaxed">Los administradores tienen acceso completo a todos los módulos sin necesidad de asignar permisos individuales.</p>
               </div>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
+import { useDialog } from '../composables/useDialog';
 import { Plus, Search, Filter, Download, Upload, X, Trash2, MoreVertical, ChevronDown, Check, UserRound, Briefcase, Kanban, StickyNote, UserPlus, Link2, SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-vue-next';
 import { api, getToken } from '../api';
 import type { Pipeline, Opportunity, FilterCondition, FilterOp, Note, User, Task, TaskStatus } from '../types';
@@ -23,6 +24,7 @@ const users = ref<User[]>([]);
 const currentId = ref<string>('');
 const opps = ref<Opportunity[]>([]);
 const dragId = ref<string | null>(null);
+const { alert, confirm } = useDialog();
 const loading = ref(true);
 const reloading = ref(false);
 
@@ -380,7 +382,7 @@ async function saveForm() {
   } finally { saving.value = false; }
 }
 async function deleteOpp() {
-  if (!editing.value || !confirm('¿Eliminar esta oportunidad?')) return;
+  if (!editing.value || !await confirm('¿Eliminar esta oportunidad?', 'Eliminar oportunidad')) return;
   await api.del(`/opportunities/${editing.value.id}`);
   showForm.value = false;
   await loadOpps();

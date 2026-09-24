@@ -1,0 +1,64 @@
+services:
+
+  # ── CRM App ─────────────────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rocco-crm:latest
+    container_name: crm_app
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    environment:
+      DATABASE_URL:              postgresql://crm:${POSTGRES_PASSWORD}@db:5432/crm
+      JWT_SECRET:                ${JWT_SECRET}
+      AGENCY_JWT_SECRET:         ${AGENCY_JWT_SECRET:-}
+      PORT:                      3100
+      PUBLIC_URL:                ${PUBLIC_URL}
+      FRONTEND_URL:              ${PUBLIC_URL}
+      META_APP_ID:               ${META_APP_ID:-}
+      META_APP_SECRET:           ${META_APP_SECRET:-}
+      META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-}
+      INSTAGRAM_APP_ID:          ${INSTAGRAM_APP_ID:-}
+      INSTAGRAM_APP_SECRET:      ${INSTAGRAM_APP_SECRET:-}
+      APP_URL:                   ${APP_URL:-${PUBLIC_URL}}
+      GOOGLE_CLIENT_ID:          ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET:      ${GOOGLE_CLIENT_SECRET:-}
+      ZOOM_CLIENT_ID:            ${ZOOM_CLIENT_ID:-}
+      ZOOM_CLIENT_SECRET:        ${ZOOM_CLIENT_SECRET:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - crm_net
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  db:
+    image: postgres:17-alpine
+    container_name: crm_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     crm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB:       crm
+    volumes:
+      - crm_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    networks:
+      - crm_net
+
+  # Nota: Evolution API ya corre en el servidor (contenedor 'evolution-api', puerto 8080).
+  # No se levanta uno nuevo para evitar conflicto de puertos.
+  # Configura la instancia WA en el CRM apuntando a http://100.101.243.74:8080
+
+networks:
+  crm_net:
+    name: crm_net
+
+volumes:
+  crm_pgdata:

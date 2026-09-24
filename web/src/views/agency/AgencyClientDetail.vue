@@ -8,6 +8,8 @@ import {
   ShieldCheck, Clock, User, Infinity,
 } from 'lucide-vue-next';
 import { agencyApi } from '../../agencyApi';
+import { useDialog } from '../../composables/useDialog';
+
 
 interface AgencyClient {
   id: string;
@@ -85,6 +87,7 @@ interface Credentials {
 }
 
 const route = useRoute();
+const { alert, confirm } = useDialog();
 const router = useRouter();
 const id = route.params.id as string;
 
@@ -237,14 +240,14 @@ async function addPayment() {
     showPaymentModal.value = false;
     paymentForm.value = { amountUsd: 0, status: 'paid', method: '', periodStart: '', periodEnd: '', notes: '' };
   } catch (e) {
-    alert(e instanceof Error ? e.message : 'Error al registrar pago');
+    await alert(e instanceof Error ? e.message : 'Error al registrar pago');
   } finally {
     savingPayment.value = false;
   }
 }
 
 async function deletePayment(pid: string) {
-  if (!confirm('¿Eliminar este pago?')) return;
+  if (!await confirm('¿Eliminar este pago?', 'Eliminar pago')) return;
   await agencyApi.del(`/clients/${id}/payments/${pid}`);
   payments.value = payments.value.filter(p => p.id !== pid);
 }
@@ -263,7 +266,7 @@ async function saveCourtesy() {
     const updated = await agencyApi.patch<AgencyClient>(`/clients/${id}/courtesy`, courtesyForm.value);
     client.value = { ...client.value!, ...updated };
   } catch (e) {
-    alert(e instanceof Error ? e.message : 'Error al guardar regalía');
+    await alert(e instanceof Error ? e.message : 'Error al guardar regalía');
   } finally {
     savingCourtesy.value = false;
   }
@@ -277,7 +280,7 @@ async function provision() {
     showProvisionModal.value = true;
     await load();
   } catch (e) {
-    alert(e instanceof Error ? e.message : 'Error al provisionar');
+    await alert(e instanceof Error ? e.message : 'Error al provisionar');
   } finally {
     provisioning.value = false;
   }
@@ -292,7 +295,7 @@ async function copyProvPass() {
 
 async function openCRM() {
   if (!client.value?.organization_id) {
-    alert('Este cliente no tiene CRM provisionado. Usa "Provisionar CRM" primero.');
+    await alert('Este cliente no tiene CRM provisionado. Usa "Provisionar CRM" primero.');
     return;
   }
   try {
@@ -305,7 +308,7 @@ async function openCRM() {
     localStorage.setItem('crm_impersonated_client', JSON.stringify(res.client));
     window.location.href = '/dashboard';
   } catch (e) {
-    alert(e instanceof Error ? e.message : 'Error al acceder al CRM');
+    await alert(e instanceof Error ? e.message : 'Error al acceder al CRM');
   }
 }
 

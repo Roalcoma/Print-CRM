@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { api, setToken, getToken } from '../api';
+import { setAgencyToken } from '../agencyApi';
 import type { User } from '../types';
 
 function decodeJwt(token: string): Record<string, unknown> {
@@ -39,8 +40,9 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function login(email: string, password: string) {
-    const res = await api.post<{ token: string; user: User }>('/auth/login', { email, password });
+    const res = await api.post<{ token: string; agencyToken?: string | null; user: User }>('/auth/login', { email, password });
     setToken(res.token);
+    setAgencyToken(res.agencyToken ?? null); // siempre actualizar: limpia token previo si no aplica
     setSession(res.user);
   }
 
@@ -73,9 +75,12 @@ export const useAuthStore = defineStore('auth', () => {
 
   function logout() {
     setToken(null);
+    setAgencyToken(null);
     user.value = null;
     preferences.value = {};
     isAuthenticated.value = false;
+    initPromise = null; // permite re-init en el próximo login
+    window.location.replace('/login');
   }
 
   return { user, preferences, isAuthenticated, isAdmin, isImpersonated, impersonatedClient, can, login, register, init, savePreferences, logout };

@@ -3,6 +3,63 @@ import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
 import { logActivity } from '../activity.ts';
 import { audit } from '../audit.ts';
+import { createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from '../integrations/google-calendar.ts';
+
+async function getGoogleSettings(userId: string, orgId: string) {
+  return queryOne<{ google_refresh_token: string | null; google_calendar_id: string | null }>(
+    'SELECT google_refresh_token, google_calendar_id FROM calendar_settings WHERE user_id = $1 AND organization_id = $2',
+    [userId, orgId],
+  );
+}
+
+async function syncTaskToGoogle(opts: {
+  actorId: string;
+  orgId: string;
+  taskId: string;
+  title: string;
+  description: string | null | undefined;
+  dueAt: string | null | undefined;
+  googleEventId: string | null | undefined;
+  cancelled?: boolean;
+}): Promise<string | null> {
+  const gs = await getGoogleSettings(opts.actorId, opts.orgId);
+  if (!gs?.google_refresh_token) return opts.googleEventId ?? null;
+
+  const refreshToken = gs.google_refresh_token;
+  const calendarId  = gs.google_calendar_id ?? 'primary';
+
+  if (opts.cancelled && opts.googleEventId) {
+    deleteGoogleEvent({ refreshToken, calendarId, eventId: opts.googleEventId }).catch(console.error);
+    return null;
+  }
+
+  if (!opts.dueAt) return opts.googleEventId ?? null;
+
+  const startAt = new Date(opts.dueAt);
+  const endAt   = new Date(startAt.getTime() + 60 * 60 * 1000); // 1 hora
+
+  if (opts.googleEventId) {
+    updateGoogleEvent({
+      refreshToken, calendarId, eventId: opts.googleEventId,
+      title: `✅ ${opts.title}`, description: opts.description ?? undefined,
+      startAt, endAt, timezone: 'America/Caracas',
+    }).catch(console.error);
+    return opts.googleEventId;
+  } else {
+    try {
+      const result = await createGoogleEvent({
+        refreshToken, calendarId,
+        title: `✅ ${opts.title}`, description: opts.description ?? undefined,
+        startAt, endAt, timezone: 'America/Caracas',
+        createMeet: false,
+      });
+      return result.eventId;
+    } catch (err) {
+      console.error('Google task sync error:', err);
+      return null;
+    }
+  }
+}
 
 export const tasksRouter = Router();
 
@@ -105,6 +162,16 @@ tasksRouter.post('/', async (req, res) => {
      t.priority ?? 'medium', t.reminder ?? null, actorId],
   );
   if (t.assignee_ids) await syncAssignees(row.id, t.assignee_ids, orgId);
+
+  // Sincronizar con Google Calendar si hay fecha límite
+  if (t.due_at) {
+    syncTaskToGoogle({ actorId, orgId, taskId: row.id, title: t.title, description: t.description, dueAt: t.due_at, googleEventId: null })
+      .then(gEventId => {
+        if (gEventId) query('UPDATE tasks SET google_event_id=$1 WHERE id=$2', [gEventId, row.id]).catch(console.error);
+      })
+      .catch(console.error);
+  }
+
   const actor = await queryOne<{ name: string }>('SELECT name FROM users WHERE id=$1', [actorId]);
   logActivity({
     orgId, entityType: 'task', entityId: row.id, actorId, actorName: actor?.name ?? null,
@@ -124,7 +191,10 @@ tasksRouter.patch('/:id', async (req, res) => {
   const orgId = req.auth!.organizationId;
   const actorId = req.auth!.userId;
 
-  const existing = await queryOne<{ id: string; title: string; status: string }>('SELECT id, title, status FROM tasks WHERE id=$1 AND organization_id=$2', [req.params.id, orgId]);
+  const existing = await queryOne<{ id: string; title: string; status: string; due_at: string | null; google_event_id: string | null; description: string | null }>(
+    'SELECT id, title, status, due_at, google_event_id, description FROM tasks WHERE id=$1 AND organization_id=$2',
+    [req.params.id, orgId],
+  );
   if (!existing) return res.status(404).json({ error: 'Tarea no encontrada' });
 
   if ('assignee_ids' in data) await syncAssignees(req.params.id, data.assignee_ids as string[], orgId);
@@ -140,6 +210,23 @@ tasksRouter.patch('/:id', async (req, res) => {
       [...values, req.params.id, orgId],
     );
   }
+
+  // Sincronizar con Google Calendar
+  const isCancelledNow = data.status === 'cancelled' || data.status === 'done';
+  const newDueAt   = 'due_at'      in data ? (data.due_at as string | null) : existing.due_at;
+  const newTitle   = 'title'       in data ? (data.title as string)          : existing.title;
+  const newDesc    = 'description' in data ? (data.description as string | null) : existing.description;
+  syncTaskToGoogle({
+    actorId, orgId, taskId: req.params.id,
+    title: newTitle, description: newDesc, dueAt: newDueAt,
+    googleEventId: existing.google_event_id,
+    cancelled: isCancelledNow,
+  }).then(gEventId => {
+    const newId = isCancelledNow ? null : gEventId;
+    if (newId !== existing.google_event_id) {
+      query('UPDATE tasks SET google_event_id=$1 WHERE id=$2', [newId, req.params.id]).catch(console.error);
+    }
+  }).catch(console.error);
 
   // Registrar actividad si cambió el status
   if ('status' in data && data.status !== existing.status) {
@@ -166,8 +253,26 @@ tasksRouter.patch('/:id', async (req, res) => {
 });
 
 tasksRouter.delete('/:id', async (req, res) => {
-  const row = await queryOne<{ id: string; title: string }>('DELETE FROM tasks WHERE id=$1 AND organization_id=$2 RETURNING id, title', [req.params.id, req.auth!.organizationId]);
-  if (!row) return res.status(404).json({ error: 'Tarea no encontrada' });
-  audit({ req, action: 'task.deleted', entityType: 'task', entityId: req.params.id, entityName: row.title });
+  const actorId = req.auth!.userId;
+  const orgId   = req.auth!.organizationId;
+  const existing = await queryOne<{ id: string; title: string; google_event_id: string | null }>(
+    'SELECT id, title, google_event_id FROM tasks WHERE id=$1 AND organization_id=$2',
+    [req.params.id, orgId],
+  );
+  if (!existing) return res.status(404).json({ error: 'Tarea no encontrada' });
+
+  if (existing.google_event_id) {
+    const gs = await getGoogleSettings(actorId, orgId);
+    if (gs?.google_refresh_token) {
+      deleteGoogleEvent({
+        refreshToken: gs.google_refresh_token,
+        calendarId:   gs.google_calendar_id ?? 'primary',
+        eventId:      existing.google_event_id,
+      }).catch(console.error);
+    }
+  }
+
+  await query('DELETE FROM tasks WHERE id=$1 AND organization_id=$2', [req.params.id, orgId]);
+  audit({ req, action: 'task.deleted', entityType: 'task', entityId: req.params.id, entityName: existing.title });
   res.status(204).end();
 });

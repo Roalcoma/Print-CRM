@@ -3,8 +3,15 @@ import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
 import { logActivity } from '../activity.ts';
 import { audit } from '../audit.ts';
+import { fireTagTrigger } from '../services/automation-engine.ts';
 
 export const contactsRouter = Router();
+
+// Normaliza un número de teléfono: quita el + inicial y espacios para comparación consistente.
+function normalizePhone(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  return phone.trim().replace(/^\+/, '');
+}
 
 const contactSchema = z.object({
   first_name:      z.string().min(1),
@@ -91,7 +98,7 @@ contactsRouter.post('/import/csv', async (req, res) => {
           firstName,
           (r['Apellido'] ?? r['last_name'] ?? '') || null,
           (r['Email']    ?? r['email']     ?? '') || null,
-          (r['Teléfono'] ?? r['phone']     ?? '') || null,
+          normalizePhone((r['Teléfono'] ?? r['phone'] ?? '') || null),
           (r['Empresa']  ?? r['company']   ?? '') || null,
           (r['Cargo']    ?? r['position']  ?? '') || null,
           (r['Ciudad']   ?? r['city']      ?? '') || null,
@@ -215,13 +222,38 @@ contactsRouter.get('/', async (req, res) => {
   res.json({ data: rows, total, page, limit, pages: Math.ceil(total / limit) });
 });
 
-// POST /contacts — crear
+// POST /contacts — crear (upsert por teléfono normalizado para evitar duplicados)
 contactsRouter.post('/', async (req, res) => {
   const parsed = contactSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   const c      = parsed.data;
   const orgId  = req.auth!.organizationId;
   const actorId = req.auth!.userId;
+
+  const normalizedPhone = normalizePhone(c.phone);
+
+  // Si hay teléfono, buscar contacto existente con el mismo número (ignorando +)
+  if (normalizedPhone) {
+    const existing = await queryOne<{ id: string }>(
+      `SELECT id FROM contacts WHERE organization_id=$1 AND regexp_replace(phone, '^\\+', '') = $2 LIMIT 1`,
+      [orgId, normalizedPhone],
+    );
+    if (existing) {
+      // Actualizar el contacto existente con los datos nuevos en vez de crear duplicado
+      const [updated] = await query(
+        `UPDATE contacts SET
+           first_name     = COALESCE(NULLIF($2,''), first_name),
+           last_name      = COALESCE($3, last_name),
+           email          = COALESCE(NULLIF($4,''), email),
+           phone          = $5,
+           company        = COALESCE(NULLIF($6,''), company),
+           updated_at     = now()
+         WHERE id=$1 RETURNING *`,
+        [existing.id, c.first_name, c.last_name ?? null, c.email || null, normalizedPhone, c.company ?? null],
+      );
+      return res.status(200).json(updated);
+    }
+  }
 
   const [row] = await query(
     `INSERT INTO contacts (
@@ -240,7 +272,7 @@ contactsRouter.post('/', async (req, res) => {
       c.first_name,
       c.last_name       ?? null,
       c.email           || null,
-      c.phone           ?? null,
+      normalizedPhone   ?? null,
       c.email_secondary || null,
       c.phone_secondary ?? null,
       c.company         ?? null,
@@ -371,26 +403,26 @@ contactsRouter.put('/:id', async (req, res) => {
      WHERE id=$22 AND organization_id=$23 RETURNING *`,
     [
       c.first_name,
-      c.last_name       ?? null,
-      c.email           || null,
-      c.phone           ?? null,
-      c.email_secondary || null,
-      c.phone_secondary ?? null,
-      c.company         ?? null,
-      c.position        ?? null,
-      c.address         ?? null,
-      c.city            ?? null,
-      c.country         ?? null,
-      c.birthday        ?? null,
-      c.linkedin        ?? null,
-      c.twitter         ?? null,
-      c.instagram       ?? null,
-      c.website         ?? null,
-      c.source          ?? null,
-      c.status          ?? 'active',
-      c.avatar_color    ?? null,
-      c.tags            ?? [],
-      c.notes           ?? null,
+      c.last_name                ?? null,
+      c.email                    || null,
+      normalizePhone(c.phone)    ?? null,
+      c.email_secondary          || null,
+      normalizePhone(c.phone_secondary) ?? null,
+      c.company                  ?? null,
+      c.position                 ?? null,
+      c.address                  ?? null,
+      c.city                     ?? null,
+      c.country                  ?? null,
+      c.birthday                 ?? null,
+      c.linkedin                 ?? null,
+      c.twitter                  ?? null,
+      c.instagram                ?? null,
+      c.website                  ?? null,
+      c.source                   ?? null,
+      c.status                   ?? 'active',
+      c.avatar_color             ?? null,
+      c.tags                     ?? [],
+      c.notes                    ?? null,
       req.params.id,
       orgId,
     ],
@@ -408,6 +440,18 @@ contactsRouter.put('/:id', async (req, res) => {
 contactsRouter.patch('/:id', async (req, res) => {
   const orgId  = req.auth!.organizationId;
   const actorId = req.auth!.userId;
+  const contactId = req.params.id;
+
+  // Capturar tags actuales antes del update (para detectar tags nuevas)
+  let oldTags: string[] = [];
+  if ('tags' in req.body && Array.isArray(req.body.tags)) {
+    const existing = await queryOne<{ tags: string[] }>(
+      'SELECT tags FROM contacts WHERE id=$1 AND organization_id=$2',
+      [contactId, orgId],
+    );
+    oldTags = existing?.tags ?? [];
+  }
+
   const allowed = [
     'first_name','last_name','email','phone','email_secondary','phone_secondary',
     'company','position','address','city','country','birthday','linkedin','twitter',
@@ -420,7 +464,8 @@ contactsRouter.patch('/:id', async (req, res) => {
   for (const key of allowed) {
     if (key in req.body) {
       fields.push(`${key}=$${idx}`);
-      values.push(req.body[key] ?? null);
+      const val = req.body[key] ?? null;
+      values.push(key === 'phone' || key === 'phone_secondary' ? normalizePhone(val) : val);
       idx++;
     }
   }
@@ -428,7 +473,7 @@ contactsRouter.patch('/:id', async (req, res) => {
   if (fields.length === 0) return res.status(400).json({ error: 'No fields to update' });
 
   fields.push(`updated_at=now()`);
-  values.push(req.params.id, orgId);
+  values.push(contactId, orgId);
 
   const [row] = await query(
     `UPDATE contacts SET ${fields.join(', ')} WHERE id=$${idx} AND organization_id=$${idx + 1} RETURNING *`,
@@ -436,9 +481,17 @@ contactsRouter.patch('/:id', async (req, res) => {
   );
   if (!row) return res.status(404).json({ error: 'Contacto no encontrado' });
 
+  // Disparar trigger por tags nuevas
+  if ('tags' in req.body && Array.isArray(req.body.tags)) {
+    const newTags = (req.body.tags as string[]).filter(t => !oldTags.includes(t));
+    if (newTags.length > 0) {
+      fireTagTrigger(orgId, contactId, newTags).catch(console.error);
+    }
+  }
+
   const actor = await queryOne<{ name: string }>('SELECT name FROM users WHERE id=$1', [actorId]);
-  logActivity({ orgId, entityType: 'contact', entityId: req.params.id, actorId, actorName: actor?.name ?? null, eventType: 'contact_updated', meta: { name: row.first_name } }).catch(console.error);
-  audit({ req, action: 'contact.updated', entityType: 'contact', entityId: req.params.id, entityName: `${row.first_name} ${row.last_name ?? ''}`.trim() });
+  logActivity({ orgId, entityType: 'contact', entityId: contactId, actorId, actorName: actor?.name ?? null, eventType: 'contact_updated', meta: { name: row.first_name } }).catch(console.error);
+  audit({ req, action: 'contact.updated', entityType: 'contact', entityId: contactId, entityName: `${row.first_name} ${row.last_name ?? ''}`.trim() });
   res.json(row);
 });
 

@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import jwt from 'jsonwebtoken';
 import { query, queryOne } from '../db.ts';
 import { hashPassword, verifyPassword } from '../auth/password.ts';
 import { signToken } from '../auth/tokens.ts';
 import { audit } from '../audit.ts';
+import { env } from '../env.ts';
 
 export const authRouter = Router();
 
@@ -65,10 +67,19 @@ authRouter.post('/login', async (req, res) => {
   }
 
   const token = signToken({ userId: user.id, organizationId: user.organization_id, role: user.role });
-  // req.auth no existe aún en login, lo poblamos manualmente para el audit
+
+  // Si el email también existe en agency_admins, emitir agency_token automáticamente
+  const agencyAdmin = await queryOne<{ id: string; role: string }>(
+    'SELECT id, role FROM agency_admins WHERE email = $1 AND is_active = true',
+    [email],
+  );
+  const agencyToken = agencyAdmin
+    ? jwt.sign({ type: 'agency', adminId: agencyAdmin.id, role: agencyAdmin.role }, env.jwtSecret, { expiresIn: '30d' })
+    : null;
+
   req.auth = { userId: user.id, organizationId: user.organization_id, role: user.role };
   audit({ req, action: 'login', entityType: 'user', entityId: user.id, entityName: user.name });
-  res.json({ token, user: publicUser(user) });
+  res.json({ token, agencyToken, user: publicUser(user) });
 });
 
 function publicUser(u: UserRow) {

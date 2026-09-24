@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router';
-import { LayoutDashboard, Users, LogOut, ChevronRight, Menu, CreditCard } from 'lucide-vue-next';
+import { LayoutDashboard, Users, LogOut, ChevronRight, Menu, CreditCard, ChevronsUpDown, UserCog } from 'lucide-vue-next';
 import { useAgencyStore } from '../stores/agency';
+import AccountSwitcher from '../components/AccountSwitcher.vue';
 
 const agency = useAgencyStore();
 const router = useRouter();
@@ -10,6 +11,7 @@ const route = useRoute();
 
 const mobileOpen = ref(false);
 const isMobile = ref(false);
+const switcherOpen = ref(false);
 
 function checkMobile() {
   isMobile.value = window.innerWidth < 768;
@@ -31,6 +33,7 @@ const nav = [
   { to: '/agency/dashboard', label: 'Dashboard',   icon: LayoutDashboard, match: '/agency/dashboard' },
   { to: '/agency/clients',   label: 'Cuentas CRM', icon: Users,           match: '/agency/clients' },
   { to: '/agency/plans',     label: 'Planes',       icon: CreditCard,      match: '/agency/plans' },
+  { to: '/agency/profile',   label: 'Mi perfil',    icon: UserCog,         match: '/agency/profile' },
 ];
 
 const isActive = (path: string) => route.path.startsWith(path);
@@ -67,6 +70,25 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile));
           <p class="text-[15px] font-bold tracking-wide text-white">Rocco</p>
           <p class="text-[10px] text-slate-500 uppercase tracking-widest">Backoffice</p>
         </div>
+      </div>
+
+      <!-- Account switcher trigger -->
+      <div class="mx-3 mt-3 mb-1">
+        <button
+          class="flex w-full items-center gap-2.5 rounded-lg border border-white/10 px-2.5 py-2 transition-colors cursor-pointer hover:bg-white/8"
+          @click="switcherOpen = true"
+        >
+          <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#F69008]/20 text-[11px] font-bold text-[#F69008]">
+            {{ initials }}
+          </div>
+          <div class="min-w-0 flex-1 text-left">
+            <p class="truncate text-[12px] font-semibold leading-tight text-white">
+              {{ agency.admin?.name ?? 'Admin' }}
+            </p>
+            <p class="truncate text-[10px] leading-tight text-slate-500">Agencia</p>
+          </div>
+          <ChevronsUpDown class="h-3.5 w-3.5 flex-shrink-0 text-slate-500" />
+        </button>
       </div>
 
       <!-- Navigation -->
@@ -131,4 +153,31 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile));
       </main>
     </div>
   </div>
+
+  <!-- Account switcher modal -->
+  <Teleport to="body">
+    <Transition name="switcher-fade">
+      <div
+        v-if="switcherOpen"
+        class="fixed inset-0 z-[200] flex items-start justify-start"
+        @click.self="switcherOpen = false"
+      >
+        <div class="absolute inset-0 bg-black/20 backdrop-blur-[2px]" @click="switcherOpen = false" />
+        <div
+          class="relative ml-4 mt-[88px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15"
+          style="z-index: 1;"
+        >
+          <AccountSwitcher hide-agency-switch @close="switcherOpen = false" />
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
+
+<style scoped>
+.switcher-fade-enter-active { transition: opacity 0.15s ease; }
+.switcher-fade-leave-active { transition: opacity 0.1s ease; }
+.switcher-fade-enter-from,
+.switcher-fade-leave-to    { opacity: 0; }
+</style>
+

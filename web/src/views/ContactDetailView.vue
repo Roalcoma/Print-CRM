@@ -7,6 +7,7 @@ import {
   Tag, StickyNote, Cake, Trash2, ExternalLink, ChevronRight, ChevronDown,
 } from 'lucide-vue-next';
 import { api } from '../api';
+import { useDialog } from '../composables/useDialog';
 import type { Contact, Appointment } from '../types';
 import LoadingState from '../components/LoadingState.vue';
 import ActivityFeed from '../components/ActivityFeed.vue';
@@ -14,6 +15,7 @@ import AppointmentModal from '../components/AppointmentModal.vue';
 import Spinner from '../components/Spinner.vue';
 import Dropdown from '../components/Dropdown.vue';
 
+const { confirm } = useDialog();
 const route  = useRoute();
 const router = useRouter();
 
@@ -162,7 +164,7 @@ async function saveEdit() {
 
 async function deleteContact() {
   if (!contact.value) return;
-  if (!confirm(`¿Eliminar a ${fullName(contact.value)}?`)) return;
+  if (!await confirm(`¿Eliminar a ${fullName(contact.value)}?`, 'Eliminar contacto')) return;
   await api.del(`/contacts/${contact.value.id}`);
   router.push('/contacts');
 }

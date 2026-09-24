@@ -7,11 +7,13 @@ import {
   Linkedin, Twitter, Instagram, Globe, Phone, Mail,
 } from 'lucide-vue-next';
 import { api } from '../api';
+import { useDialog } from '../composables/useDialog';
 import type { Contact, ContactStats } from '../types';
 import Spinner from '../components/Spinner.vue';
 import LoadingState from '../components/LoadingState.vue';
 import Dropdown from '../components/Dropdown.vue';
 
+const { alert, confirm } = useDialog();
 const router = useRouter();
 
 // ── state ─────────────────────────────────────────────────────────────────────
@@ -153,7 +155,7 @@ async function create() {
 // ── delete ────────────────────────────────────────────────────────────────────
 async function remove(id: string, e: Event) {
   e.stopPropagation();
-  if (!confirm('¿Eliminar este contacto?')) return;
+  if (!await confirm('¿Eliminar este contacto?', 'Eliminar contacto')) return;
   await api.del(`/contacts/${id}`);
   selected.value.delete(id);
   await Promise.all([load(), loadStats()]);
@@ -161,7 +163,7 @@ async function remove(id: string, e: Event) {
 
 async function bulkDelete() {
   if (!selected.value.size) return;
-  if (!confirm(`¿Eliminar ${selected.value.size} contacto(s)?`)) return;
+  if (!await confirm(`¿Eliminar ${selected.value.size} contacto(s)?`, 'Eliminar contactos')) return;
   await Promise.all([...selected.value].map(id => api.del(`/contacts/${id}`)));
   selected.value.clear();
   await Promise.all([load(), loadStats()]);
@@ -201,7 +203,7 @@ async function onImportFile(e: Event) {
   try {
     const text = await file.text();
     const lines = text.split(/\r?\n/).filter(Boolean);
-    if (lines.length < 2) { alert('El archivo no tiene datos.'); return; }
+    if (lines.length < 2) { await alert('El archivo no tiene datos.'); return; }
 
     const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
     const rows = lines.slice(1).map(line => {
@@ -210,7 +212,7 @@ async function onImportFile(e: Event) {
     });
 
     const result = await api.post<{ created: number; skipped: number }>('/contacts/import/csv', { rows });
-    alert(`Importados: ${result.created} contactos. Omitidos: ${result.skipped}.`);
+    await alert(`Importados: ${result.created} contactos. Omitidos: ${result.skipped}.`);
     await Promise.all([load(), loadStats()]);
   } finally {
     importing.value = false;
@@ -333,133 +335,135 @@ const statusLabel: Record<string, string> = {
     </div>
 
     <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
-    <div class="border-b border-slate-200 bg-white">
+    <div class="z-[4] border-b border-slate-200 bg-white shadow-toolbar">
 
-      <!-- Móvil fila 1: búsqueda + CTA (solo visible en <md) -->
-      <div class="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5 md:hidden">
-        <div class="relative flex-1">
-          <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input v-model="q" @input="onSearch" placeholder="Buscar contactos…"
-            class="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm transition-all focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 focus:outline-none" />
-        </div>
-        <Transition name="fade">
-          <button v-if="selected.size > 0" class="btn btn-danger btn-sm flex-shrink-0" @click="bulkDelete">
-            <Trash2 class="h-4 w-4" />
-          </button>
-        </Transition>
-        <button class="btn btn-primary btn-sm flex-shrink-0" @click="showForm = true">
-          <Plus class="h-4 w-4" />
-        </button>
-      </div>
+      <!-- Fila principal: título + controles -->
+      <div class="flex items-center gap-3 px-6 py-3.5">
 
-      <!-- Móvil fila 2 / Desktop fila única -->
-      <div class="flex items-center gap-2 overflow-x-auto px-4 py-2 sm:px-6 md:py-3">
-
-        <!-- Desktop only: búsqueda con ancho fijo -->
-        <div class="relative mr-1 hidden w-56 flex-shrink-0 lg:w-72 md:block">
-          <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input v-model="q" @input="onSearch" placeholder="Buscar contactos…"
-            class="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-9 pr-3 text-sm transition-all focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+        <!-- Título (desktop) -->
+        <div class="hidden flex-shrink-0 md:block">
+          <h1 class="font-semibold leading-tight text-slate-900">Contactos</h1>
+          <p class="text-xs text-slate-400">{{ total > 0 ? `${total} contacto${total !== 1 ? 's' : ''}` : 'Sin contactos' }}</p>
         </div>
         <div class="hidden h-5 w-px flex-shrink-0 bg-slate-200 md:block"></div>
 
-        <!-- Filtros (siempre visibles, scroll en móvil) -->
-        <Dropdown width="148">
-          <template #trigger="{ open }">
-            <button class="btn btn-secondary btn-sm flex-shrink-0" :class="(open || filterStatus) && 'btn-secondary--active'">
-              {{ statusFilterLabel }}
-              <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''" />
-            </button>
-          </template>
-          <div class="py-0.5">
-            <button v-for="opt in [{ v:'', l:'Todo estado' }, { v:'active', l:'Activo' }, { v:'inactive', l:'Inactivo' }, { v:'blocked', l:'Bloqueado' }]"
-              :key="opt.v"
-              class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50"
-              :class="filterStatus === opt.v ? 'text-primary font-medium' : 'text-slate-700'"
-              @click="setStatus(opt.v)"
-            >
-              <Check v-if="filterStatus === opt.v" class="h-3.5 w-3.5 flex-shrink-0" />
-              <span v-else class="h-3.5 w-3.5 flex-shrink-0" />
-              {{ opt.l }}
-            </button>
-          </div>
-        </Dropdown>
+        <!-- Búsqueda (desktop) -->
+        <div class="relative hidden w-56 flex-shrink-0 lg:w-72 md:block">
+          <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input v-model="q" @input="onSearch" placeholder="Buscar contactos…"
+            class="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-9 pr-3 text-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+        </div>
 
-        <Dropdown width="148">
-          <template #trigger="{ open }">
-            <button class="btn btn-secondary btn-sm flex-shrink-0" :class="(open || filterSource) && 'btn-secondary--active'">
-              {{ sourceFilterLabel }}
-              <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''" />
-            </button>
-          </template>
-          <div class="py-0.5">
-            <button class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50"
-              :class="filterSource === '' ? 'text-primary font-medium' : 'text-slate-700'" @click="setSource('')">
-              <Check v-if="filterSource === ''" class="h-3.5 w-3.5 flex-shrink-0" />
-              <span v-else class="h-3.5 w-3.5 flex-shrink-0" />
-              Todo origen
-            </button>
-            <button v-for="s in sourceOptions" :key="s"
-              class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50"
-              :class="filterSource === s ? 'text-primary font-medium' : 'text-slate-700'"
-              @click="setSource(s)"
-            >
-              <Check v-if="filterSource === s" class="h-3.5 w-3.5 flex-shrink-0" />
-              <span v-else class="h-3.5 w-3.5 flex-shrink-0" />
-              {{ sourceLabel[s] }}
-            </button>
-          </div>
-        </Dropdown>
+        <!-- Búsqueda (móvil) -->
+        <div class="relative flex-1 md:hidden">
+          <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input v-model="q" @input="onSearch" placeholder="Buscar contactos…"
+            class="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
+        </div>
 
-        <Dropdown width="156">
-          <template #trigger="{ open }">
-            <button class="btn btn-secondary btn-sm flex-shrink-0" :class="(open || sortBy !== 'created_at') && 'btn-secondary--active'">
-              {{ sortLabel }}
-              <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''" />
-            </button>
-          </template>
-          <div class="py-0.5">
-            <button v-for="opt in [{ v:'created_at', l:'Más reciente' }, { v:'name', l:'Nombre A-Z' }, { v:'company', l:'Empresa A-Z' }]"
-              :key="opt.v"
-              class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50"
-              :class="sortBy === opt.v ? 'text-primary font-medium' : 'text-slate-700'"
-              @click="setSort(opt.v)"
-            >
-              <Check v-if="sortBy === opt.v" class="h-3.5 w-3.5 flex-shrink-0" />
-              <span v-else class="h-3.5 w-3.5 flex-shrink-0" />
-              {{ opt.l }}
-            </button>
-          </div>
-        </Dropdown>
+        <div class="hidden h-5 w-px flex-shrink-0 bg-slate-200 md:block"></div>
 
-        <input ref="importInput" type="file" accept=".csv" class="hidden" @change="onImportFile" />
-        <Dropdown align="right" width="160">
-          <template #trigger>
-            <button class="btn btn-secondary btn-sm flex-shrink-0">
-              <span v-if="importing"><Spinner :size="14" /></span>
-              <Download v-else class="h-4 w-4" />
-              <ChevronDown class="h-3.5 w-3.5" />
-            </button>
-          </template>
-          <div class="py-0.5">
-            <button class="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50" @click="exportCsv">
-              <Download class="h-4 w-4 text-slate-400" /> Exportar CSV
-            </button>
-            <button class="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50" @click="triggerImport">
-              <Upload class="h-4 w-4 text-slate-400" /> Importar CSV
-            </button>
-          </div>
-        </Dropdown>
+        <!-- Filtros -->
+        <div class="flex items-center gap-1.5 overflow-x-auto">
+          <Dropdown width="148">
+            <template #trigger="{ open }">
+              <button class="btn btn-secondary btn-sm flex-shrink-0" :class="(open || filterStatus) && 'btn-secondary--active'">
+                {{ statusFilterLabel }}
+                <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''" />
+              </button>
+            </template>
+            <div class="py-0.5">
+              <button v-for="opt in [{ v:'', l:'Todo estado' }, { v:'active', l:'Activo' }, { v:'inactive', l:'Inactivo' }, { v:'blocked', l:'Bloqueado' }]"
+                :key="opt.v"
+                class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50"
+                :class="filterStatus === opt.v ? 'text-primary font-medium' : 'text-slate-700'"
+                @click="setStatus(opt.v)"
+              >
+                <Check v-if="filterStatus === opt.v" class="h-3.5 w-3.5 flex-shrink-0" />
+                <span v-else class="h-3.5 w-3.5 flex-shrink-0" />
+                {{ opt.l }}
+              </button>
+            </div>
+          </Dropdown>
 
-        <!-- Desktop only: bulk delete + CTA -->
-        <div class="ml-auto hidden flex-shrink-0 items-center gap-2 md:flex">
+          <Dropdown width="148">
+            <template #trigger="{ open }">
+              <button class="btn btn-secondary btn-sm flex-shrink-0" :class="(open || filterSource) && 'btn-secondary--active'">
+                {{ sourceFilterLabel }}
+                <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''" />
+              </button>
+            </template>
+            <div class="py-0.5">
+              <button class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50"
+                :class="filterSource === '' ? 'text-primary font-medium' : 'text-slate-700'" @click="setSource('')">
+                <Check v-if="filterSource === ''" class="h-3.5 w-3.5 flex-shrink-0" />
+                <span v-else class="h-3.5 w-3.5 flex-shrink-0" />
+                Todo origen
+              </button>
+              <button v-for="s in sourceOptions" :key="s"
+                class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50"
+                :class="filterSource === s ? 'text-primary font-medium' : 'text-slate-700'"
+                @click="setSource(s)"
+              >
+                <Check v-if="filterSource === s" class="h-3.5 w-3.5 flex-shrink-0" />
+                <span v-else class="h-3.5 w-3.5 flex-shrink-0" />
+                {{ sourceLabel[s] }}
+              </button>
+            </div>
+          </Dropdown>
+
+          <Dropdown width="156">
+            <template #trigger="{ open }">
+              <button class="btn btn-secondary btn-sm flex-shrink-0" :class="(open || sortBy !== 'created_at') && 'btn-secondary--active'">
+                {{ sortLabel }}
+                <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="open ? 'rotate-180' : ''" />
+              </button>
+            </template>
+            <div class="py-0.5">
+              <button v-for="opt in [{ v:'created_at', l:'Más reciente' }, { v:'name', l:'Nombre A-Z' }, { v:'company', l:'Empresa A-Z' }]"
+                :key="opt.v"
+                class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-slate-50"
+                :class="sortBy === opt.v ? 'text-primary font-medium' : 'text-slate-700'"
+                @click="setSort(opt.v)"
+              >
+                <Check v-if="sortBy === opt.v" class="h-3.5 w-3.5 flex-shrink-0" />
+                <span v-else class="h-3.5 w-3.5 flex-shrink-0" />
+                {{ opt.l }}
+              </button>
+            </div>
+          </Dropdown>
+
+          <input ref="importInput" type="file" accept=".csv" class="hidden" @change="onImportFile" />
+          <Dropdown align="right" width="160">
+            <template #trigger>
+              <button class="btn btn-secondary btn-sm flex-shrink-0">
+                <span v-if="importing"><Spinner :size="14" /></span>
+                <Download v-else class="h-4 w-4" />
+                <ChevronDown class="h-3.5 w-3.5" />
+              </button>
+            </template>
+            <div class="py-0.5">
+              <button class="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50" @click="exportCsv">
+                <Download class="h-4 w-4 text-slate-400" /> Exportar CSV
+              </button>
+              <button class="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50" @click="triggerImport">
+                <Upload class="h-4 w-4 text-slate-400" /> Importar CSV
+              </button>
+            </div>
+          </Dropdown>
+        </div>
+
+        <!-- Derecha: bulk delete + CTA -->
+        <div class="ml-auto flex flex-shrink-0 items-center gap-2">
           <Transition name="fade">
             <button v-if="selected.size > 0" class="btn btn-danger btn-sm" @click="bulkDelete">
-              <Trash2 class="h-4 w-4" /> {{ selected.size }} Eliminar
+              <Trash2 class="h-4 w-4" />
+              <span class="hidden sm:inline">{{ selected.size }} Eliminar</span>
             </button>
           </Transition>
           <button class="btn btn-primary btn-sm" @click="showForm = true">
-            <Plus class="h-4 w-4" /> Nuevo contacto
+            <Plus class="h-4 w-4" />
+            <span class="hidden sm:inline">Nuevo contacto</span>
           </button>
         </div>
 
@@ -469,148 +473,150 @@ const statusLabel: Record<string, string> = {
     <!-- ── Table ───────────────────────────────────────────────────────────── -->
     <LoadingState v-if="loading" label="Cargando contactos…" />
 
-    <div v-else class="flex-1 overflow-auto bg-slate-50/40">
-      <table class="w-full">
-        <!-- Header fijo -->
-        <thead class="sticky top-0 z-[1]">
-          <tr class="border-b-2 border-slate-200 bg-white">
-            <th class="w-10 pl-4 pr-2 py-3">
-              <input type="checkbox" :checked="allChecked" @change="toggleAll"
-                class="cursor-pointer rounded border-slate-300 accent-primary" />
-            </th>
-            <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Contacto</th>
-            <th class="hidden px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 md:table-cell">Email</th>
-            <th class="hidden px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 lg:table-cell">Teléfono</th>
-            <th class="hidden px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 xl:table-cell">Etiquetas</th>
-            <th class="hidden px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 xl:table-cell">Origen</th>
-            <th class="hidden px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 xl:table-cell">Estado</th>
-            <th class="hidden px-3 py-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400 xl:table-cell">Creado</th>
-            <th class="w-10 pr-4 py-3"></th>
-          </tr>
-        </thead>
+    <div v-else class="flex-1 overflow-auto bg-slate-100/40 p-4 sm:p-6">
+      <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
+        <table class="data-table w-full">
+          <!-- Header fijo -->
+          <thead>
+            <tr class="border-b border-slate-200 bg-slate-50 text-left">
+              <th class="w-10 pl-4 pr-2 py-3">
+                <input type="checkbox" :checked="allChecked" @change="toggleAll"
+                  class="cursor-pointer rounded border-slate-300 accent-primary" />
+              </th>
+              <th class="px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Contacto</th>
+              <th class="hidden px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 md:table-cell">Email</th>
+              <th class="hidden px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:table-cell">Teléfono</th>
+              <th class="hidden px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 xl:table-cell">Etiquetas</th>
+              <th class="hidden px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 xl:table-cell">Origen</th>
+              <th class="hidden px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 xl:table-cell">Estado</th>
+              <th class="hidden px-3 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 xl:table-cell">Creado</th>
+              <th class="w-10 pr-4 py-3"></th>
+            </tr>
+          </thead>
 
-        <tbody>
-          <tr
-            v-for="c in contacts"
-            :key="c.id"
-            class="group cursor-pointer border-b border-slate-100 bg-white transition-all duration-100 last:border-0 hover:bg-[#FFF8EE] hover:shadow-[inset_3px_0_0_#F69008]"
-            :class="selected.has(c.id) ? 'bg-[#FFF8EE] shadow-[inset_3px_0_0_#F69008]' : ''"
-            @click="router.push(`/contacts/${c.id}`)"
-          >
-            <!-- Checkbox -->
-            <td class="w-10 pl-4 pr-2 py-0" @click.stop>
-              <input type="checkbox" :checked="selected.has(c.id)" @change="toggleOne(c.id, $event)"
-                class="cursor-pointer rounded border-slate-300 accent-primary" />
-            </td>
+          <tbody class="divide-y divide-slate-100">
+            <tr
+              v-for="c in contacts"
+              :key="c.id"
+              class="group cursor-pointer bg-white transition-colors hover:bg-[#F69008]/5"
+              :class="selected.has(c.id) ? 'bg-[#FFF8EE]' : ''"
+              @click="router.push(`/contacts/${c.id}`)"
+            >
+              <!-- Checkbox -->
+              <td class="w-10 pl-4 pr-2 py-3.5" @click.stop>
+                <input type="checkbox" :checked="selected.has(c.id)" @change="toggleOne(c.id, $event)"
+                  class="cursor-pointer rounded border-slate-300 accent-primary" />
+              </td>
 
-            <!-- Avatar + nombre -->
-            <td class="px-3 py-2.5">
-              <div class="flex items-center gap-3">
-                <div
-                  class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-[11px] font-bold text-white shadow-sm"
-                  :style="{ backgroundColor: avatarBg(c) }"
-                >{{ initials(c) }}</div>
-                <div class="min-w-0">
-                  <p class="truncate text-[13px] font-semibold leading-tight text-slate-900">{{ c.first_name }} {{ c.last_name ?? '' }}</p>
-                  <div class="mt-0.5 flex items-center gap-1.5">
-                    <p v-if="c.company" class="truncate text-[11px] text-slate-400">{{ c.company }}<span v-if="c.position" class="text-slate-300"> · {{ c.position }}</span></p>
-                    <span v-if="c.status && c.status !== 'active'" class="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold md:hidden" :class="statusBadge[c.status]">{{ statusLabel[c.status] }}</span>
-                    <div v-if="!c.company" class="flex items-center gap-1 md:hidden">
-                      <Phone v-if="c.phone" class="h-3 w-3 flex-shrink-0 text-slate-300" />
-                      <p v-if="c.phone" class="truncate text-[11px] text-slate-400">{{ c.phone }}</p>
-                      <template v-else-if="c.email">
-                        <Mail class="h-3 w-3 flex-shrink-0 text-slate-300" />
-                        <p class="truncate text-[11px] text-slate-400">{{ c.email }}</p>
-                      </template>
+              <!-- Avatar + nombre -->
+              <td class="px-3 py-3.5">
+                <div class="flex items-center gap-3">
+                  <div
+                    class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white shadow-sm"
+                    :style="{ backgroundColor: avatarBg(c) }"
+                  >{{ initials(c) }}</div>
+                  <div class="min-w-0">
+                    <p class="truncate text-[13px] font-semibold leading-tight text-slate-900 transition-colors group-hover:text-primary">{{ c.first_name }} {{ c.last_name ?? '' }}</p>
+                    <div class="mt-0.5 flex items-center gap-1.5">
+                      <p v-if="c.company" class="truncate text-[11px] text-slate-400">{{ c.company }}<span v-if="c.position" class="text-slate-300"> · {{ c.position }}</span></p>
+                      <span v-if="c.status && c.status !== 'active'" class="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold md:hidden" :class="statusBadge[c.status]">{{ statusLabel[c.status] }}</span>
+                      <div v-if="!c.company" class="flex items-center gap-1 md:hidden">
+                        <Phone v-if="c.phone" class="h-3 w-3 flex-shrink-0 text-slate-300" />
+                        <p v-if="c.phone" class="truncate text-[11px] text-slate-400">{{ c.phone }}</p>
+                        <template v-else-if="c.email">
+                          <Mail class="h-3 w-3 flex-shrink-0 text-slate-300" />
+                          <p class="truncate text-[11px] text-slate-400">{{ c.email }}</p>
+                        </template>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </td>
+              </td>
 
-            <!-- Email -->
-            <td class="hidden px-3 py-2.5 md:table-cell">
-              <a v-if="c.email" :href="`mailto:${c.email}`" class="flex items-center gap-1.5 text-slate-500 transition-colors hover:text-primary" @click.stop>
-                <Mail class="h-3.5 w-3.5 flex-shrink-0 text-slate-300" />
-                <span class="truncate text-[12px]">{{ c.email }}</span>
-              </a>
-              <span v-else class="text-slate-200 select-none text-sm">—</span>
-            </td>
+              <!-- Email -->
+              <td class="hidden px-3 py-3.5 md:table-cell">
+                <a v-if="c.email" :href="`mailto:${c.email}`" class="flex items-center gap-1.5 text-slate-500 transition-colors hover:text-primary" @click.stop>
+                  <Mail class="h-3.5 w-3.5 flex-shrink-0 text-slate-300" />
+                  <span class="truncate text-[12px]">{{ c.email }}</span>
+                </a>
+                <span v-else class="select-none text-sm text-slate-200">—</span>
+              </td>
 
-            <!-- Phone -->
-            <td class="hidden px-3 py-2.5 lg:table-cell">
-              <a v-if="c.phone" :href="`tel:${c.phone}`" class="flex items-center gap-1.5 text-slate-500 transition-colors hover:text-primary" @click.stop>
-                <Phone class="h-3.5 w-3.5 flex-shrink-0 text-slate-300" />
-                <span class="text-[12px]">{{ c.phone }}</span>
-              </a>
-              <span v-else class="text-slate-200 select-none text-sm">—</span>
-            </td>
+              <!-- Phone -->
+              <td class="hidden px-3 py-3.5 lg:table-cell">
+                <a v-if="c.phone" :href="`tel:${c.phone}`" class="flex items-center gap-1.5 text-slate-500 transition-colors hover:text-primary" @click.stop>
+                  <Phone class="h-3.5 w-3.5 flex-shrink-0 text-slate-300" />
+                  <span class="text-[12px]">{{ c.phone }}</span>
+                </a>
+                <span v-else class="select-none text-sm text-slate-200">—</span>
+              </td>
 
-            <!-- Tags -->
-            <td class="hidden px-3 py-2.5 xl:table-cell">
-              <div v-if="c.tags?.length" class="flex flex-wrap gap-1">
-                <span v-for="t in c.tags.slice(0, 3)" :key="t"
-                  class="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                  :class="t === 'whatsapp' ? 'bg-[#25D366]/10 text-[#128C7E]' : 'bg-[#F69008]/10 text-[#D97706]'"
-                >{{ t }}</span>
-                <span v-if="c.tags.length > 3" class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-400">+{{ c.tags.length - 3 }}</span>
-              </div>
-              <span v-else class="text-slate-200 select-none text-sm">—</span>
-            </td>
-
-            <!-- Source -->
-            <td class="hidden px-3 py-2.5 xl:table-cell">
-              <span v-if="c.source"
-                class="rounded-full px-2.5 py-1 text-[10px] font-semibold"
-                :class="c.source === 'whatsapp' ? 'bg-[#25D366]/10 text-[#128C7E]' : 'bg-blue-50 text-blue-600'"
-              >{{ sourceLabel[c.source] ?? c.source }}</span>
-              <span v-else class="text-slate-200 select-none text-sm">—</span>
-            </td>
-
-            <!-- Status -->
-            <td class="hidden px-3 py-2.5 xl:table-cell">
-              <span class="rounded-full px-2.5 py-1 text-[10px] font-semibold"
-                :class="statusBadge[c.status] ?? 'bg-slate-100 text-slate-500'"
-              >{{ statusLabel[c.status] ?? c.status }}</span>
-            </td>
-
-            <!-- Created -->
-            <td class="hidden px-3 py-2.5 xl:table-cell">
-              <span class="text-[11px] text-slate-400">{{ shortDate(c.created_at) }}</span>
-            </td>
-
-            <!-- Actions -->
-            <td class="pr-4 pl-2 py-2.5 text-right" @click.stop>
-              <button
-                class="cursor-pointer rounded-lg p-1.5 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 text-slate-300"
-                @click="remove(c.id, $event)"
-                aria-label="Eliminar"
-              >
-                <Trash2 class="h-3.5 w-3.5" />
-              </button>
-            </td>
-          </tr>
-
-          <!-- Empty state -->
-          <tr v-if="contacts.length === 0">
-            <td colspan="9" class="px-4 py-20 text-center">
-              <div class="flex flex-col items-center gap-3">
-                <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
-                  <Users class="h-7 w-7 text-slate-300" />
+              <!-- Tags -->
+              <td class="hidden px-3 py-3.5 xl:table-cell">
+                <div v-if="c.tags?.length" class="flex flex-wrap gap-1">
+                  <span v-for="t in c.tags.slice(0, 3)" :key="t"
+                    class="rounded-full px-2.5 py-0.5 text-xs font-medium"
+                    :class="t === 'whatsapp' ? 'bg-[#25D366]/10 text-[#128C7E]' : 'bg-[#F69008]/10 text-[#D97706]'"
+                  >{{ t }}</span>
+                  <span v-if="c.tags.length > 3" class="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-400">+{{ c.tags.length - 3 }}</span>
                 </div>
-                <div>
-                  <p class="text-sm font-medium text-slate-500">Sin contactos</p>
-                  <p class="mt-0.5 text-xs text-slate-400">{{ q ? 'Ningún contacto coincide con tu búsqueda.' : 'Agrega tu primer contacto con el botón de arriba.' }}</p>
+                <span v-else class="select-none text-sm text-slate-200">—</span>
+              </td>
+
+              <!-- Source -->
+              <td class="hidden px-3 py-3.5 xl:table-cell">
+                <span v-if="c.source"
+                  class="rounded-full px-2.5 py-0.5 text-xs font-medium"
+                  :class="c.source === 'whatsapp' ? 'bg-[#25D366]/10 text-[#128C7E]' : 'bg-blue-50 text-blue-600'"
+                >{{ sourceLabel[c.source] ?? c.source }}</span>
+                <span v-else class="select-none text-sm text-slate-200">—</span>
+              </td>
+
+              <!-- Status -->
+              <td class="hidden px-3 py-3.5 xl:table-cell">
+                <span class="rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                  :class="statusBadge[c.status] ?? 'bg-slate-100 text-slate-500'"
+                >{{ statusLabel[c.status] ?? c.status }}</span>
+              </td>
+
+              <!-- Created -->
+              <td class="hidden px-3 py-3.5 xl:table-cell">
+                <span class="text-[11px] text-slate-400">{{ shortDate(c.created_at) }}</span>
+              </td>
+
+              <!-- Actions -->
+              <td class="pr-4 pl-2 py-3.5 text-right" @click.stop>
+                <button
+                  class="cursor-pointer rounded-lg p-1.5 text-slate-300 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-50 hover:text-red-500"
+                  @click="remove(c.id, $event)"
+                  aria-label="Eliminar"
+                >
+                  <Trash2 class="h-3.5 w-3.5" />
+                </button>
+              </td>
+            </tr>
+
+            <!-- Empty state -->
+            <tr v-if="contacts.length === 0">
+              <td colspan="9" class="px-4 py-20 text-center">
+                <div class="flex flex-col items-center gap-3">
+                  <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
+                    <Users class="h-7 w-7 text-slate-300" />
+                  </div>
+                  <div>
+                    <p class="text-sm font-medium text-slate-500">Sin contactos</p>
+                    <p class="mt-0.5 text-xs text-slate-400">{{ q ? 'Ningún contacto coincide con tu búsqueda.' : 'Agrega tu primer contacto con el botón de arriba.' }}</p>
+                  </div>
                 </div>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- ── Pagination ──────────────────────────────────────────────────────── -->
-    <div v-if="!loading && total > limit" class="flex items-center justify-between border-t border-slate-200 bg-white px-6 py-3">
+    <div v-if="!loading && total > limit" class="flex flex-shrink-0 items-center justify-between border-t border-slate-200 bg-white px-6 py-3">
       <span class="text-xs text-slate-500">{{ (page - 1) * limit + 1 }}–{{ Math.min(page * limit, total) }} de {{ total }}</span>
       <div class="flex items-center gap-1">
         <button
@@ -627,15 +633,23 @@ const statusLabel: Record<string, string> = {
     </div>
 
     <!-- ── Slide-over: Nuevo contacto ─────────────────────────────────────── -->
-    <Transition name="overlay">
+    <Transition name="contacts-overlay">
       <div v-if="showForm" class="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" @click="showForm = false" />
     </Transition>
 
-    <Transition name="slideover">
+    <Transition name="contacts-slideover">
       <aside v-if="showForm" class="fixed right-0 top-0 z-50 flex h-full w-full max-w-lg flex-col bg-white shadow-2xl">
         <!-- Header -->
-        <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <h2 class="text-base font-semibold text-slate-900">Nuevo contacto</h2>
+        <div class="flex items-start justify-between border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white px-6 py-4">
+          <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-[#F69008] to-[#D97706] text-white shadow-sm shadow-[#F69008]/30">
+              <Users class="h-5 w-5" />
+            </div>
+            <div>
+              <h2 class="text-base font-semibold text-slate-900">Nuevo contacto</h2>
+              <p class="text-xs text-slate-500">Completa los datos del nuevo contacto</p>
+            </div>
+          </div>
           <button class="cursor-pointer rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" @click="showForm = false">
             <X class="h-5 w-5" />
           </button>
@@ -826,22 +840,22 @@ const statusLabel: Record<string, string> = {
 
 <style scoped>
 /* Slide-over */
-.slideover-enter-active,
-.slideover-leave-active {
+.contacts-slideover-enter-active,
+.contacts-slideover-leave-active {
   transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.slideover-enter-from,
-.slideover-leave-to {
+.contacts-slideover-enter-from,
+.contacts-slideover-leave-to {
   transform: translateX(100%);
 }
 
 /* Overlay */
-.overlay-enter-active,
-.overlay-leave-active {
+.contacts-overlay-enter-active,
+.contacts-overlay-leave-active {
   transition: opacity 0.2s ease;
 }
-.overlay-enter-from,
-.overlay-leave-to {
+.contacts-overlay-enter-from,
+.contacts-overlay-leave-to {
   opacity: 0;
 }
 

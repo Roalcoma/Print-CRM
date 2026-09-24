@@ -100,6 +100,101 @@ export async function createGoogleEvent(opts: {
   return { eventId: data.id, htmlLink: data.htmlLink, meetLink };
 }
 
+export async function updateGoogleEvent(opts: {
+  refreshToken: string;
+  calendarId: string;
+  eventId: string;
+  title?: string;
+  description?: string;
+  startAt?: Date;
+  endAt?: Date;
+  timezone?: string;
+  isAllDay?: boolean;
+  cancelled?: boolean;
+}): Promise<void> {
+  const accessToken = await refreshGoogleToken(opts.refreshToken);
+  const calId = encodeURIComponent(opts.calendarId);
+  const body: Record<string, unknown> = {};
+  if (opts.title !== undefined) body.summary = opts.title;
+  if (opts.description !== undefined) body.description = opts.description;
+  if (opts.cancelled) body.status = 'cancelled';
+  if (opts.startAt && opts.endAt) {
+    if (opts.isAllDay) {
+      const fmt = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      body.start = { date: fmt(opts.startAt) };
+      body.end   = { date: fmt(opts.endAt) };
+    } else {
+      body.start = { dateTime: opts.startAt.toISOString(), timeZone: opts.timezone ?? 'UTC' };
+      body.end   = { dateTime: opts.endAt.toISOString(),   timeZone: opts.timezone ?? 'UTC' };
+    }
+  }
+  if (Object.keys(body).length === 0) return;
+  const res = await fetch(
+    `${GOOGLE_CALENDAR_URL}/calendars/${calId}/events/${opts.eventId}?sendUpdates=all`,
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok && res.status !== 404 && res.status !== 410) {
+    const err = await res.text();
+    throw new Error(`Google updateEvent failed: ${err}`);
+  }
+}
+
+export async function getGoogleEvents(opts: {
+  refreshToken: string;
+  calendarId: string;
+  timeMin: Date;
+  timeMax: Date;
+}): Promise<Array<{
+  id: string;
+  title: string;
+  startAt: string;
+  endAt: string;
+  isAllDay: boolean;
+  meetLink?: string;
+  htmlLink: string;
+}>> {
+  const accessToken = await refreshGoogleToken(opts.refreshToken);
+  const calId = encodeURIComponent(opts.calendarId);
+  const params = new URLSearchParams({
+    timeMin: opts.timeMin.toISOString(),
+    timeMax: opts.timeMax.toISOString(),
+    singleEvents: 'true',
+    orderBy: 'startTime',
+    maxResults: '500',
+  });
+  const res = await fetch(`${GOOGLE_CALENDAR_URL}/calendars/${calId}/events?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return [];
+  const data = await res.json() as {
+    items: Array<{
+      id: string;
+      summary?: string;
+      start: { dateTime?: string; date?: string };
+      end:   { dateTime?: string; date?: string };
+      htmlLink: string;
+      status?: string;
+      conferenceData?: { entryPoints?: Array<{ entryPointType: string; uri: string }> };
+    }>;
+  };
+  return (data.items ?? [])
+    .filter(e => e.status !== 'cancelled')
+    .map(e => ({
+      id:       e.id,
+      title:    e.summary ?? '(sin título)',
+      startAt:  e.start.dateTime ?? e.start.date ?? '',
+      endAt:    e.end.dateTime   ?? e.end.date   ?? '',
+      isAllDay: !e.start.dateTime,
+      meetLink: e.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri,
+      htmlLink: e.htmlLink,
+    }));
+}
+
 export async function deleteGoogleEvent(opts: {
   refreshToken: string;
   calendarId: string;
@@ -135,6 +230,32 @@ export function getGoogleAuthUrl(redirectUri: string, state: string): string {
     state,
   });
   return `https://accounts.google.com/o/oauth2/auth?${params.toString()}`;
+}
+
+export async function getGoogleFreebusy(opts: {
+  refreshToken: string;
+  calendarId: string;
+  timeMin: Date;
+  timeMax: Date;
+}): Promise<Array<{ start: string; end: string }>> {
+  const accessToken = await refreshGoogleToken(opts.refreshToken);
+  const res = await fetch(`${GOOGLE_CALENDAR_URL}/freeBusy`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      timeMin: opts.timeMin.toISOString(),
+      timeMax: opts.timeMax.toISOString(),
+      items: [{ id: opts.calendarId }],
+    }),
+  });
+  if (!res.ok) return [];
+  const data = await res.json() as {
+    calendars: Record<string, { busy: Array<{ start: string; end: string }> }>;
+  };
+  return data.calendars[opts.calendarId]?.busy ?? [];
 }
 
 export async function exchangeGoogleCode(

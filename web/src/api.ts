@@ -21,6 +21,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (res.status === 204) return undefined as T;
+  if (res.status === 401) {
+    localStorage.removeItem(TOKEN_KEY);
+    window.location.replace('/login');
+    throw new Error('Sesión expirada');
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data as any).error?.toString() ?? `Error ${res.status}`);
   return data as T;

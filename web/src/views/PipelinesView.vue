@@ -5,12 +5,14 @@ import {
   Layers, CalendarClock, Hash, Workflow, GripVertical,
 } from 'lucide-vue-next';
 import { api } from '../api';
+import { useDialog } from '../composables/useDialog';
 import type { Pipeline } from '../types';
 import OppTabs from '../components/OppTabs.vue';
 import Spinner from '../components/Spinner.vue';
 import LoadingState from '../components/LoadingState.vue';
 import Dropdown from '../components/Dropdown.vue';
 
+const { alert, confirm } = useDialog();
 const pipelines = ref<Pipeline[]>([]);
 const loading = ref(true);
 const q = ref('');
@@ -77,8 +79,8 @@ async function newPipeline() {
 }
 
 async function deletePipeline(p: Pipeline) {
-  if (pipelines.value.length <= 1) return alert('Debe existir al menos un pipeline.');
-  if (!confirm(`¿Eliminar "${p.name}" y todas sus oportunidades?`)) return;
+  if (pipelines.value.length <= 1) { await alert('Debe existir al menos un pipeline.'); return; }
+  if (!await confirm(`¿Eliminar "${p.name}" y todas sus oportunidades?`, 'Eliminar pipeline')) return;
   await api.del(`/pipelines/${p.id}`);
   await load();
   if (editing.value?.id === p.id) closeEditor();

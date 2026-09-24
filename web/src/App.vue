@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { useAuthStore } from './stores/auth';
+import AppDialog from './components/AppDialog.vue';
 
-// Al abrir/recargar la app, rehidrata la sesión desde la cuenta.
 useAuthStore().init();
 </script>
 
 <template>
   <RouterView />
+  <AppDialog />
 </template>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { RouterLink, RouterView, useRoute } from 'vue-router';
-import { Building2, Users, GitBranch, Palette, Calendar, MessageCircle, ChevronDown } from 'lucide-vue-next';
+import { Building2, Users, GitBranch, Palette, Calendar, MessageCircle, Share2, ChevronDown } from 'lucide-vue-next';
 
 const route = useRoute();
 const mobileNavOpen = ref(false);
@@ -26,6 +26,7 @@ const groups = [
     title: 'Integraciones',
     items: [
       { to: '/settings/whatsapp', label: 'WhatsApp', icon: MessageCircle },
+      { to: '/settings/social', label: 'Redes Sociales', icon: Share2 },
     ],
   },
 ];

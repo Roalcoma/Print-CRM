@@ -4,7 +4,9 @@ import { query, queryOne } from '../db.ts';
 import { logActivity } from '../activity.ts';
 import {
   createGoogleEvent,
+  updateGoogleEvent,
   deleteGoogleEvent,
+  getGoogleEvents,
 } from '../integrations/google-calendar.ts';
 import { createZoomMeeting, deleteZoomMeeting } from '../integrations/zoom.ts';
 
@@ -24,11 +26,27 @@ const BASE_SELECT = `
 
 // ── GET /api/appointments ────────────────────────────────────────────────────
 appointmentsRouter.get('/', async (req, res) => {
-  const orgId = req.auth!.organizationId;
+  const orgId   = req.auth!.organizationId;
+  const actorId = req.auth!.userId;
   const { month, year, userId, contactId, opportunityId } = req.query;
 
   const where: string[] = ['a.organization_id = $1'];
   const params: unknown[] = [orgId];
+
+  // Solo citas de calendarios propios (dueño o miembro). Admin/owner ven todos.
+  const isAdmin = req.auth!.role === 'owner' || req.auth!.role === 'admin';
+  if (!isAdmin) {
+    params.push(actorId);
+    where.push(`(
+      a.calendar_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM calendars c
+        LEFT JOIN calendar_members cm ON cm.calendar_id = c.id
+        WHERE c.id = a.calendar_id
+          AND (c.user_id = $${params.length} OR cm.user_id = $${params.length})
+      )
+    )`);
+  }
 
   // Filtro de rango
   if (month && year) {
@@ -62,18 +80,75 @@ appointmentsRouter.get('/', async (req, res) => {
   res.json(rows);
 });
 
+// ── GET /api/appointments/google-events ─────────────────────────────────────
+// Devuelve eventos de Google Calendar que NO están ya en el CRM (deduplicación).
+// Debe definirse ANTES de /:id.
+appointmentsRouter.get('/google-events', async (req, res) => {
+  const orgId   = req.auth!.organizationId;
+  const actorId = req.auth!.userId;
+  const { start, end } = req.query;
+  if (!start || !end) return res.status(400).json({ error: 'start y end requeridos' });
+
+  const settings = await queryOne<{
+    google_refresh_token: string | null;
+    google_calendar_id:   string | null;
+  }>(
+    'SELECT google_refresh_token, google_calendar_id FROM calendar_settings WHERE user_id = $1 AND organization_id = $2',
+    [actorId, orgId],
+  );
+  if (!settings?.google_refresh_token) return res.json([]);
+
+  try {
+    const events = await getGoogleEvents({
+      refreshToken: settings.google_refresh_token,
+      calendarId:   settings.google_calendar_id ?? 'primary',
+      timeMin:      new Date(start as string),
+      timeMax:      new Date(end as string),
+    });
+
+    // Filtrar los que ya existen como cita en el CRM para no duplicar
+    const known = await query<{ provider_event_id: string }>(
+      `SELECT provider_event_id FROM appointments
+       WHERE organization_id = $1
+         AND provider_event_id IS NOT NULL
+         AND start_at >= $2 AND start_at < $3`,
+      [orgId, new Date(start as string), new Date(end as string)],
+    );
+    const knownIds = new Set(known.map(r => r.provider_event_id));
+    res.json(events.filter(e => !knownIds.has(e.id)));
+  } catch (err) {
+    console.error('google-events error:', err);
+    res.json([]);
+  }
+});
+
 // ── GET /api/appointments/upcoming ──────────────────────────────────────────
 // IMPORTANTE: esta ruta debe definirse ANTES de /:id para no confundirse
 appointmentsRouter.get('/upcoming', async (req, res) => {
-  const orgId  = req.auth!.organizationId;
-  const userId = req.auth!.userId;
-  const mine   = req.query.mine === 'true';
+  const orgId   = req.auth!.organizationId;
+  const actorId = req.auth!.userId;
+  const mine    = req.query.mine === 'true';
 
   const where: string[] = ['a.organization_id = $1', "a.status = 'scheduled'", 'a.start_at >= now()'];
   const params: unknown[] = [orgId];
 
+  // Solo citas de calendarios propios (dueño o miembro). Admin/owner ven todos.
+  const isAdmin = req.auth!.role === 'owner' || req.auth!.role === 'admin';
+  if (!isAdmin) {
+    params.push(actorId);
+    where.push(`(
+      a.calendar_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM calendars c
+        LEFT JOIN calendar_members cm ON cm.calendar_id = c.id
+        WHERE c.id = a.calendar_id
+          AND (c.user_id = $${params.length} OR cm.user_id = $${params.length})
+      )
+    )`);
+  }
+
   if (mine) {
-    params.push(userId);
+    params.push(actorId);
     where.push(`a.user_id = $${params.length}`);
   }
 
@@ -122,7 +197,8 @@ const appointmentSchema = z.object({
   location:           z.string().optional().nullable(),
   meeting_url:        z.string().optional().nullable(),
   provider:           z.enum(['manual', 'google', 'zoom']).optional(),
-  status:             z.enum(['scheduled', 'completed', 'cancelled', 'no_show']).optional(),
+  status:             z.enum(['scheduled', 'completed', 'cancelled', 'no_show', 'blocked']).optional(),
+  calendar_id:        z.string().uuid().optional().nullable(),
   recurrence_type:    z.enum(['none', 'daily', 'weekly', 'monthly', 'yearly']).optional(),
   recurrence_days:    z.array(z.number().int().min(0).max(6)).optional().nullable(),
   recurrence_end_at:  z.string().datetime({ offset: true }).optional().nullable(),
@@ -215,8 +291,8 @@ appointmentsRouter.post('/', async (req, res) => {
       google_calendar_id:   string | null;
       zoom_refresh_token:   string | null;
     }>(
-      'SELECT google_refresh_token, google_calendar_id, zoom_refresh_token FROM calendar_settings WHERE user_id = $1',
-      [actorId],
+      'SELECT google_refresh_token, google_calendar_id, zoom_refresh_token FROM calendar_settings WHERE user_id = $1 AND organization_id = $2',
+      [actorId, orgId],
     );
 
     if (provider === 'google' && settings?.google_refresh_token) {
@@ -269,8 +345,8 @@ appointmentsRouter.post('/', async (req, res) => {
     `INSERT INTO appointments
        (organization_id, user_id, contact_id, opportunity_id, title, description,
         start_at, end_at, timezone, is_all_day, status, location, meeting_url, provider, provider_event_id,
-        recurrence_type, recurrence_days, recurrence_end_at, recurrence_count)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+        recurrence_type, recurrence_days, recurrence_end_at, recurrence_count, calendar_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
      RETURNING id`,
     [
       orgId, actorId,
@@ -281,6 +357,7 @@ appointmentsRouter.post('/', async (req, res) => {
       d.status ?? 'scheduled',
       d.location ?? null, meetingUrl, provider, providerEventId,
       recType, recDays, recEndAt, recCount,
+      d.calendar_id ?? null,
     ],
   );
 
@@ -306,8 +383,8 @@ appointmentsRouter.post('/', async (req, res) => {
         `INSERT INTO appointments
            (organization_id, user_id, contact_id, opportunity_id, title, description,
             start_at, end_at, timezone, is_all_day, status, location, provider,
-            recurrence_type, recurrence_days, recurrence_end_at, recurrence_count, parent_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+            recurrence_type, recurrence_days, recurrence_end_at, recurrence_count, parent_id, calendar_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
         [
           orgId, actorId,
           d.contact_id ?? null, d.opportunity_id ?? null,
@@ -317,6 +394,7 @@ appointmentsRouter.post('/', async (req, res) => {
           d.status ?? 'scheduled',
           d.location ?? null, provider,
           recType, recDays, recEndAt, recCount, row.id,
+          d.calendar_id ?? null,
         ],
       );
     }
@@ -425,8 +503,8 @@ appointmentsRouter.delete('/:id', async (req, res) => {
       google_calendar_id:   string | null;
       zoom_refresh_token:   string | null;
     }>(
-      'SELECT google_refresh_token, google_calendar_id, zoom_refresh_token FROM calendar_settings WHERE user_id = $1',
-      [actorId],
+      'SELECT google_refresh_token, google_calendar_id, zoom_refresh_token FROM calendar_settings WHERE user_id = $1 AND organization_id = $2',
+      [actorId, orgId],
     );
 
     if (appt.provider === 'google' && settings?.google_refresh_token) {

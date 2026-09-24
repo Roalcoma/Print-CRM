@@ -1,17 +1,21 @@
 <script setup lang="ts">
-import { ref, watch, computed, onMounted } from 'vue';
-import { X, Calendar, Video, Pencil, Trash2, MapPin, AlertTriangle, RefreshCw, UserPlus, Mail } from 'lucide-vue-next';
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
+import { X, Calendar, Video, Pencil, Trash2, MapPin, AlertTriangle, RefreshCw, UserPlus, Mail, Search, ChevronDown, Check } from 'lucide-vue-next';
 import { api } from '../api';
+import { useDialog } from '../composables/useDialog';
 import type { Appointment } from '../types';
 import Spinner from './Spinner.vue';
 
 // ─── Props / emits ────────────────────────────────────────────────────────────
+const { confirm } = useDialog();
 const props = defineProps<{
   modelValue: boolean;
   date?: string;
+  startTime?: string;
   appointment?: Appointment;
   initialContactId?: string;
   initialContactName?: string;
+  calendarLocationType?: string;
 }>();
 
 const emit = defineEmits<{
@@ -96,6 +100,34 @@ const opportunities = ref<{ id: string; title: string }[]>([]);
 async function loadOpps() {
   try { opportunities.value = await api.get<{ id: string; title: string }[]>('/opportunities'); }
   catch { /* ignore */ }
+}
+
+const oppOpen   = ref(false);
+const oppSearch = ref('');
+const oppDropEl = ref<HTMLElement | null>(null);
+
+const selectedOppLabel = computed(() => {
+  if (!form.value.opportunity_id) return null;
+  return opportunities.value.find(o => o.id === form.value.opportunity_id)?.title ?? null;
+});
+
+const filteredOpps = computed(() => {
+  const q = oppSearch.value.trim().toLowerCase();
+  if (!q) return opportunities.value;
+  return opportunities.value.filter(o => o.title.toLowerCase().includes(q));
+});
+
+function selectOpp(id: string) {
+  form.value.opportunity_id = id;
+  oppOpen.value = false;
+  oppSearch.value = '';
+}
+
+function onOppOutsideClick(e: MouseEvent) {
+  if (oppDropEl.value && !oppDropEl.value.contains(e.target as Node)) {
+    oppOpen.value = false;
+    oppSearch.value = '';
+  }
 }
 
 // ─── Form helpers ────────────────────────────────────────────────────────────
@@ -188,9 +220,12 @@ function resetForm() {
     form.value = {
       title: '', description: '',
       date,
-      startTime: '09:00', endTime: '10:00', isAllDay: false,
+      startTime: props.startTime ?? '09:00', endTime: addHour(props.startTime ?? '09:00'), isAllDay: false,
       opportunity_id: '', location: '',
-      provider: 'manual', status: 'scheduled',
+      provider: props.calendarLocationType === 'google_meet' ? 'google'
+              : props.calendarLocationType === 'zoom' ? 'zoom'
+              : 'manual',
+      status: 'scheduled',
       recurrenceType: 'none', recurrenceDays: [],
       recurrenceEnd: 'never', recurrenceEndDate: '', recurrenceCount: 10,
     };
@@ -210,6 +245,10 @@ watch(() => props.modelValue, (open) => {
 });
 onMounted(() => {
   if (props.modelValue) { resetForm(); loadSettings(); loadOpps(); }
+  document.addEventListener('click', onOppOutsideClick, true);
+});
+onUnmounted(() => {
+  document.removeEventListener('click', onOppOutsideClick, true);
 });
 
 // ─── Computed warnings ────────────────────────────────────────────────────────
@@ -282,7 +321,7 @@ async function save() {
 
 async function remove() {
   if (!props.appointment) return;
-  if (!confirm('¿Eliminar esta cita? Si es recurrente, solo se elimina esta instancia.')) return;
+  if (!await confirm('¿Eliminar esta cita? Si es recurrente, solo se elimina esta instancia.', 'Eliminar cita')) return;
   deleting.value = true;
   try {
     await api.del(`/appointments/${props.appointment.id}`);
@@ -299,13 +338,16 @@ function close() { emit('update:modelValue', false); }
 <template>
   <div>
     <Teleport to="body">
-      <Transition name="modal">
+      <Transition name="drawer">
       <div
         v-if="modelValue"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
-        @click.self="close"
+        class="fixed inset-0 z-50 flex justify-end"
       >
-        <div class="modal-panel flex max-h-[92vh] w-full max-w-[560px] flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/40" @click="close" />
+
+        <!-- Panel lateral -->
+        <div class="drawer-panel relative flex h-full w-full max-w-[520px] flex-col bg-white shadow-2xl">
 
           <!-- Header -->
           <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
@@ -320,6 +362,25 @@ function close() { emit('update:modelValue', false); }
             <button class="cursor-pointer rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" @click="close">
               <X class="h-5 w-5" />
             </button>
+          </div>
+
+          <!-- Link de reunión (solo al editar si existe) -->
+          <div v-if="isEdit && props.appointment?.meeting_url"
+            class="flex items-center gap-3 border-b border-slate-100 bg-emerald-50 px-6 py-3">
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100">
+              <Video class="h-4 w-4 text-emerald-600" />
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="text-xs font-semibold text-emerald-700">Enlace de reunión</p>
+              <a :href="props.appointment.meeting_url" target="_blank" rel="noopener"
+                class="truncate text-xs text-emerald-600 underline hover:text-emerald-800">
+                {{ props.appointment.meeting_url }}
+              </a>
+            </div>
+            <a :href="props.appointment.meeting_url" target="_blank" rel="noopener"
+              class="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors">
+              Unirse →
+            </a>
           </div>
 
           <!-- Body -->
@@ -460,13 +521,65 @@ function close() { emit('update:modelValue', false); }
             <!-- Oportunidad -->
             <div>
               <label class="mb-1 block text-sm font-medium text-slate-700">Oportunidad</label>
-              <select
-                v-model="form.opportunity_id"
-                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-[#F69008] focus:outline-none"
-              >
-                <option value="">Sin oportunidad</option>
-                <option v-for="o in opportunities" :key="o.id" :value="o.id">{{ o.title }}</option>
-              </select>
+              <div ref="oppDropEl" class="relative">
+                <button
+                  type="button"
+                  class="flex w-full items-center justify-between rounded-lg border bg-white px-3 py-2 text-sm transition-all cursor-pointer"
+                  :class="oppOpen
+                    ? 'border-[#F69008] ring-2 ring-[#F69008]/20 text-slate-900'
+                    : 'border-slate-300 text-slate-700 hover:border-slate-400'"
+                  @click="oppOpen = !oppOpen"
+                >
+                  <span :class="selectedOppLabel ? 'text-slate-900' : 'text-slate-400'">
+                    {{ selectedOppLabel ?? 'Sin oportunidad' }}
+                  </span>
+                  <ChevronDown class="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200" :class="oppOpen ? 'rotate-180' : ''" />
+                </button>
+
+                <Transition name="opp-drop">
+                  <div v-if="oppOpen" class="absolute z-30 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-xl overflow-hidden">
+                    <!-- Búsqueda -->
+                    <div class="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
+                      <Search class="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <input
+                        v-model="oppSearch"
+                        type="text"
+                        placeholder="Buscar oportunidad…"
+                        autocomplete="off"
+                        class="flex-1 bg-transparent text-sm text-slate-700 placeholder-slate-400 outline-none"
+                      />
+                    </div>
+                    <!-- Opciones -->
+                    <div class="max-h-52 overflow-y-auto">
+                      <button
+                        type="button"
+                        class="flex w-full items-center gap-2 px-3 py-2.5 text-sm transition-colors cursor-pointer"
+                        :class="!form.opportunity_id ? 'bg-[#F69008]/8 font-medium text-[#9a5a00]' : 'text-slate-500 hover:bg-slate-50'"
+                        @click="selectOpp('')"
+                      >
+                        <Check v-if="!form.opportunity_id" class="h-3.5 w-3.5 shrink-0 text-[#F69008]" />
+                        <span v-else class="inline-block h-3.5 w-3.5 shrink-0" />
+                        Sin oportunidad
+                      </button>
+                      <button
+                        v-for="o in filteredOpps"
+                        :key="o.id"
+                        type="button"
+                        class="flex w-full items-center gap-2 px-3 py-2.5 text-sm transition-colors cursor-pointer"
+                        :class="form.opportunity_id === o.id ? 'bg-[#F69008]/8 font-medium text-[#9a5a00]' : 'text-slate-700 hover:bg-slate-50'"
+                        @click="selectOpp(o.id)"
+                      >
+                        <Check v-if="form.opportunity_id === o.id" class="h-3.5 w-3.5 shrink-0 text-[#F69008]" />
+                        <span v-else class="inline-block h-3.5 w-3.5 shrink-0" />
+                        <span class="truncate">{{ o.title }}</span>
+                      </button>
+                      <p v-if="filteredOpps.length === 0 && oppSearch" class="px-3 py-3 text-center text-xs text-slate-400">
+                        Sin resultados para "{{ oppSearch }}"
+                      </p>
+                    </div>
+                  </div>
+                </Transition>
+              </div>
             </div>
 
             <!-- Invitados -->
@@ -635,6 +748,7 @@ function close() { emit('update:modelValue', false); }
                 <option value="completed">Completada</option>
                 <option value="cancelled">Cancelada</option>
                 <option value="no_show">No asistió</option>
+                <option value="blocked">Bloqueada</option>
               </select>
             </div>
 
@@ -672,14 +786,22 @@ function close() { emit('update:modelValue', false); }
 </template>
 
 <style scoped>
-.modal-enter-active, .modal-leave-active {
-  transition: opacity 0.2s ease;
+.opp-drop-enter-active, .opp-drop-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
 }
-.modal-enter-active .modal-panel, .modal-leave-active .modal-panel {
-  transition: transform 0.2s ease, opacity 0.2s ease;
+.opp-drop-enter-from, .opp-drop-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
-.modal-enter-from, .modal-leave-to { opacity: 0; }
-.modal-enter-from .modal-panel, .modal-leave-to .modal-panel {
-  transform: translateY(-12px); opacity: 0;
+
+.drawer-enter-active, .drawer-leave-active {
+  transition: opacity 0.25s ease;
+}
+.drawer-enter-active .drawer-panel, .drawer-leave-active .drawer-panel {
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.drawer-enter-from, .drawer-leave-to { opacity: 0; }
+.drawer-enter-from .drawer-panel, .drawer-leave-to .drawer-panel {
+  transform: translateX(100%);
 }
 </style>

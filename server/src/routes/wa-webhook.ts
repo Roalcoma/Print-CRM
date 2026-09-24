@@ -4,6 +4,7 @@
 import { Router } from 'express';
 import { pool } from '../db.ts';
 import { broadcast } from '../services/ws-manager.ts';
+import { handleIncomingWaMessage, fireWaNewMessageTrigger } from '../services/automation-engine.ts';
 
 export const waWebhookRouter = Router();
 
@@ -12,11 +13,12 @@ waWebhookRouter.post('/:secret', async (req, res) => {
   const { secret } = req.params;
 
   const settingsRes = await pool.query(
-    'SELECT organization_id FROM wa_settings WHERE webhook_secret = $1',
+    'SELECT id, organization_id FROM wa_settings WHERE webhook_secret = $1',
     [secret],
   );
   if (!settingsRes.rows[0]) return res.status(404).json({ error: 'Secret no encontrado' });
 
+  const instanceId: string = settingsRes.rows[0].id;
   const orgId: string = settingsRes.rows[0].organization_id;
   res.json({ ok: true }); // responder rápido a Evolution
 
@@ -29,10 +31,10 @@ waWebhookRouter.post('/:secret', async (req, res) => {
       const stateMap: Record<string, string> = { open: 'connected', close: 'disconnected', connecting: 'connecting' };
       const mapped = stateMap[d.state ?? ''] ?? 'disconnected';
       await pool.query(
-        `UPDATE wa_settings SET session_status = $1, updated_at = NOW() WHERE organization_id = $2`,
-        [mapped, orgId],
+        `UPDATE wa_settings SET session_status = $1, updated_at = NOW() WHERE id = $2`,
+        [mapped, instanceId],
       );
-      broadcast(orgId, 'wa:status', { status: mapped, raw: d.state });
+      broadcast(orgId, 'wa:status', { status: mapped, instanceId, raw: d.state });
       return;
     }
 
@@ -53,6 +55,11 @@ waWebhookRouter.post('/:secret', async (req, res) => {
 
       const { msgType, body, mediaUrl, mediaMime, mediaFilename } = parseMessage(msg);
 
+      // Disparar motor de automatizaciones para mensajes entrantes
+      if (direction === 'inbound') {
+        handleIncomingWaMessage(orgId, chatId, body ?? '').catch(console.error);
+      }
+
       const convRes = await pool.query<{ id: string; is_new: boolean }>(
         `INSERT INTO conversations (organization_id, wa_chat_id, display_name, phone, last_message_at, last_message_preview, unread_count)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -70,27 +77,14 @@ waWebhookRouter.post('/:secret', async (req, res) => {
       const isNewConversation = convRes.rows[0].is_new === true;
 
       let contactId: string | null = null;
-      if (direction === 'inbound' && senderName) {
-        contactId = await linkContact(orgId, convId, phone, senderName);
+      if (direction === 'inbound') {
+        // Si no hay nombre, usar el teléfono como nombre para contactos desconocidos
+        contactId = await linkContact(orgId, convId, phone, senderName || phone || displayName);
       }
 
-      // Flujo automático solo en mensajes entrantes de conversaciones nuevas
+      // Disparar automatizaciones de nuevo mensaje WA
       if (isNewConversation && direction === 'inbound') {
-        const ruleRes = await pool.query<{ enabled: boolean }>(
-          `SELECT enabled FROM automation_rules
-           WHERE organization_id = $1 AND trigger_type = 'whatsapp_new_message'
-           LIMIT 1`,
-          [orgId],
-        );
-        if (ruleRes.rows[0]?.enabled) {
-          // Actualizar contador de ejecuciones
-          pool.query(
-            `UPDATE automation_rules SET run_count = run_count + 1, last_run_at = NOW()
-             WHERE organization_id = $1 AND trigger_type = 'whatsapp_new_message'`,
-            [orgId],
-          ).catch(() => {});
-          createLeadFlow(orgId, contactId, displayName).catch(e => console.error('createLeadFlow:', e));
-        }
+        fireWaNewMessageTrigger(orgId, contactId).catch(e => console.error('fireWaNewMessageTrigger:', e));
       }
 
       // Para outbound: intentar hacer UPDATE de un mensaje pendiente sin wa_message_id

@@ -6,6 +6,7 @@ import { useAuthStore } from './stores/auth';
 const routes = [
   { path: '/login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
   { path: '/book/:slug', component: () => import('./views/BookingView.vue'), meta: { public: true } },
+  { path: '/book/:slug/manage/:token', component: () => import('./views/BookingManageView.vue'), meta: { public: true } },
 
   // ─── Agency backoffice (JWT separado; layout propio) ───────────────────────
   { path: '/agency/login', component: () => import('./views/agency/AgencyLogin.vue'), meta: { public: true } },
@@ -15,9 +16,10 @@ const routes = [
     children: [
       { path: '', redirect: '/agency/dashboard' },
       { path: 'dashboard', component: () => import('./views/agency/AgencyDashboard.vue'), meta: { title: 'Dashboard', agencyOnly: true } },
-      { path: 'clients', component: () => import('./views/agency/AgencyClients.vue'), meta: { title: 'Cuentas CRM', agencyOnly: true } },
-      { path: 'clients/:id', component: () => import('./views/agency/AgencyClientDetail.vue'), meta: { title: 'Cuenta CRM', agencyOnly: true } },
+      { path: 'clients', component: () => import('./views/agency/AgencyClients.vue'), meta: { title: 'Clientes', agencyOnly: true } },
+      { path: 'clients/:id', component: () => import('./views/agency/AgencyClientDetail.vue'), meta: { title: 'Cliente', agencyOnly: true } },
       { path: 'plans', component: () => import('./views/agency/AgencyPlans.vue'), meta: { title: 'Planes', agencyOnly: true } },
+      { path: 'profile', component: () => import('./views/agency/AgencyProfile.vue'), meta: { title: 'Mi perfil', agencyOnly: true } },
     ],
   },
   {
@@ -34,9 +36,11 @@ const routes = [
       { path: 'calendar', component: () => import('./views/CalendarView.vue'), meta: { title: 'Calendario' } },
       { path: 'conversations', component: () => import('./views/ConversationsView.vue'), meta: { title: 'Conversaciones' } },
       { path: 'automations', component: () => import('./views/AutomationsView.vue'), meta: { title: 'Automatizaciones' } },
+      { path: 'settings/profile', component: () => import('./views/settings/ProfileView.vue'), meta: { title: 'Mi Perfil' } },
       { path: 'settings/calendar', component: () => import('./views/settings/CalendarSettings.vue'), meta: { title: 'Configuración > Calendario' } },
       { path: 'settings/calendars', component: () => import('./views/settings/CalendarsSettings.vue'), meta: { title: 'Mis calendarios' } },
       { path: 'settings/calendars/:id', component: () => import('./views/settings/CalendarEditView.vue'), meta: { title: 'Editar calendario' } },
+      { path: 'settings/whatsapp/:id', component: () => import('./views/settings/WhatsAppDetailView.vue'), meta: { title: 'WhatsApp · Gestionar', admin: true } },
       {
         path: 'settings',
         component: () => import('./views/settings/SettingsLayout.vue'),
@@ -47,6 +51,7 @@ const routes = [
           { path: 'business', component: () => import('./views/settings/SettingsBusiness.vue'), meta: { title: 'Configuración', admin: true } },
           { path: 'theme', component: () => import('./views/settings/SettingsTheme.vue'), meta: { title: 'Configuración', admin: true } },
           { path: 'whatsapp', component: () => import('./views/settings/WhatsAppSettings.vue'), meta: { title: 'Configuración', admin: true } },
+          { path: 'social', component: () => import('./views/settings/SocialSettings.vue'), meta: { title: 'Configuración', admin: true } },
         ],
       },
     ],

@@ -8,6 +8,10 @@
   --color-cta: #60D0FA;
   --font-sans: 'Roboto', ui-sans-serif, system-ui, sans-serif;
 
+  /* Escala de fuentes ligeramente mayor para mejor legibilidad (GHL-style) */
+  --text-xs: 0.8125rem;   /* 13px  (default 12px) */
+  --text-sm: 0.9375rem;   /* 15px  (default 14px) */
+
   /* Sistema de elevación: sombras suaves multicapa (profundidad premium). */
   --shadow-card:     0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
   --shadow-elevated: 0 2px 4px rgba(15, 23, 42, 0.04), 0 8px 20px rgba(15, 23, 42, 0.10);

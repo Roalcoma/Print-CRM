@@ -7,6 +7,7 @@ import {
 import { api } from '../../api';
 import LoadingState from '../../components/LoadingState.vue';
 import BizSelect from '../../components/BizSelect.vue';
+import { TIMEZONES } from '../../utils/timezones';
 
 interface Org {
   id: string; name: string; created_at: string;
@@ -33,18 +34,6 @@ const INDUSTRIES = [
   'Educación', 'Inmobiliaria', 'Construcción', 'Manufactura',
   'Transporte y logística', 'Alimentos y bebidas', 'Marketing y publicidad',
   'Finanzas y seguros', 'Turismo y hospitalidad', 'Entretenimiento', 'Otro',
-];
-
-const TIMEZONES = [
-  { value: 'America/Caracas',     label: 'Venezuela (UTC-4)' },
-  { value: 'America/Bogota',      label: 'Colombia (UTC-5)' },
-  { value: 'America/Lima',        label: 'Perú (UTC-5)' },
-  { value: 'America/Santiago',    label: 'Chile (UTC-3/4)' },
-  { value: 'America/Mexico_City', label: 'México (UTC-6)' },
-  { value: 'America/New_York',    label: 'EE.UU. Este (UTC-5)' },
-  { value: 'America/Los_Angeles', label: 'EE.UU. Pacífico (UTC-8)' },
-  { value: 'Europe/Madrid',       label: 'España (UTC+1)' },
-  { value: 'UTC',                 label: 'UTC' },
 ];
 
 const CURRENCIES = [

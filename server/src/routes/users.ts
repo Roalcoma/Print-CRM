@@ -82,14 +82,18 @@ usersRouter.patch('/:id', requireAdmin, async (req, res) => {
 
   const target = await queryOne<{ role: string }>('SELECT role FROM users WHERE id=$1 AND organization_id=$2', [req.params.id, orgId]);
   if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
-  if (target.role === 'owner') return res.status(403).json({ error: 'No se puede modificar al owner' });
+  const isSelf = req.auth!.userId === req.params.id;
+  const isAgency = (req.auth as Record<string, unknown>).impersonatedByAgency === true;
+  if (target.role === 'owner' && !isSelf && !isAgency) return res.status(403).json({ error: 'No se puede modificar al owner' });
 
   const sets: string[] = [];
   const values: unknown[] = [];
   const d = parsed.data;
   if (d.name !== undefined) { sets.push(`name = $${sets.length + 1}`); values.push(d.name); }
-  if (d.role !== undefined) { sets.push(`role = $${sets.length + 1}`); values.push(d.role); }
-  if (d.permissions !== undefined) { sets.push(`permissions = $${sets.length + 1}::jsonb`); values.push(JSON.stringify(d.permissions)); }
+  if (target.role !== 'owner') {
+    if (d.role !== undefined) { sets.push(`role = $${sets.length + 1}`); values.push(d.role); }
+    if (d.permissions !== undefined) { sets.push(`permissions = $${sets.length + 1}::jsonb`); values.push(JSON.stringify(d.permissions)); }
+  }
   if (d.password !== undefined) { sets.push(`password_hash = $${sets.length + 1}`); values.push(await hashPassword(d.password)); }
   if (sets.length === 0) return res.status(400).json({ error: 'Nada que actualizar' });
 
