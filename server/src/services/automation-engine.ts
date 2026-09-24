@@ -359,37 +359,50 @@ export async function executeRun(runId: string): Promise<void> {
           const client = await getWaClient(orgId);
           if (client) {
             const message = interpolate(step.message ?? '', contact, stepData);
-            await client.sendText(phone, message);
+            let messageSent = false;
+            try {
+              await client.sendText(phone, message);
+              messageSent = true;
+            } catch (sendErr: unknown) {
+              // Si el número no está registrado en WA, continuar sin fallar la automatización
+              const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+              if (msg.includes('exists":false') || msg.includes('400')) {
+                console.warn(`[automation-engine] ${step.id}: número ${phone} sin WA, continuando`);
+              } else {
+                throw sendErr;
+              }
+            }
 
-            // Insertar mensaje outbound directamente para que aparezca en el chat
-            // (el eco del webhook puede no llegar si el número destino es una instancia local)
-            const chatJid = `${phone}@s.whatsapp.net`;
-            const convRes = await pool.query<{ id: string }>(
-              `SELECT id FROM conversations WHERE organization_id = $1 AND wa_chat_id = $2 LIMIT 1`,
-              [orgId, chatJid],
-            );
-            if (convRes.rows[0]) {
-              const convId = convRes.rows[0].id;
-              const inserted = await pool.query<{ id: string }>(
-                `INSERT INTO conv_messages (conversation_id, organization_id, direction, msg_type, body, status)
-                 VALUES ($1, $2, 'outbound', 'text', $3, 'sent')
-                 RETURNING id`,
-                [convId, orgId, message],
+            // Insertar mensaje outbound en el chat solo si el envío fue exitoso
+            if (messageSent) {
+              const chatJid = `${phone}@s.whatsapp.net`;
+              const convRes = await pool.query<{ id: string }>(
+                `SELECT id FROM conversations WHERE organization_id = $1 AND wa_chat_id = $2 LIMIT 1`,
+                [orgId, chatJid],
               );
-              if (inserted.rows[0]) {
-                await pool.query(
-                  `UPDATE conversations SET last_message_at = NOW(), last_message_preview = $1, updated_at = NOW() WHERE id = $2`,
-                  [message.slice(0, 100), convId],
+              if (convRes.rows[0]) {
+                const convId = convRes.rows[0].id;
+                const inserted = await pool.query<{ id: string }>(
+                  `INSERT INTO conv_messages (conversation_id, organization_id, direction, msg_type, body, status)
+                   VALUES ($1, $2, 'outbound', 'text', $3, 'sent')
+                   RETURNING id`,
+                  [convId, orgId, message],
                 );
-                broadcast(orgId, 'message:new', {
-                  conversationId: convId,
-                  message: {
-                    id: inserted.rows[0].id, conversation_id: convId, wa_message_id: null,
-                    direction: 'outbound', msg_type: 'text', body: message,
-                    media_url: null, media_mime: null, sender_name: null,
-                    status: 'sent', created_at: new Date().toISOString(),
-                  },
-                });
+                if (inserted.rows[0]) {
+                  await pool.query(
+                    `UPDATE conversations SET last_message_at = NOW(), last_message_preview = $1, updated_at = NOW() WHERE id = $2`,
+                    [message.slice(0, 100), convId],
+                  );
+                  broadcast(orgId, 'message:new', {
+                    conversationId: convId,
+                    message: {
+                      id: inserted.rows[0].id, conversation_id: convId, wa_message_id: null,
+                      direction: 'outbound', msg_type: 'text', body: message,
+                      media_url: null, media_mime: null, sender_name: null,
+                      status: 'sent', created_at: new Date().toISOString(),
+                    },
+                  });
+                }
               }
             }
           }
@@ -510,7 +523,13 @@ function normalizeContactPhone(
 ): string | null {
   const raw = (contact.phone as string) ?? run.contact_phone ?? null;
   if (!raw) return null;
-  return raw.replace(/\D/g, '') || null;
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return null;
+  // Números de EE.UU. de 10 dígitos: añadir prefijo de país 1
+  if (digits.length === 10 && AREA_CODE_MAP[digits.slice(0, 3)]) {
+    return '1' + digits;
+  }
+  return digits;
 }
 
 // ── Tipos internos ───────────────────────────────────────────────────────────
