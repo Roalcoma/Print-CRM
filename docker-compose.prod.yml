@@ -52,6 +52,18 @@ services:
     networks:
       - crm_net
 
+  # ── Landing Page (www.arbolaureo.org) ───────────────────────────────────────
+  landing:
+    image: nginx:alpine
+    container_name: crm_landing
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    volumes:
+      - ./landing:/usr/share/nginx/html:ro
+    networks:
+      - crm_net
+
   # Nota: Evolution API ya corre en el servidor (contenedor 'evolution-api', puerto 8080).
   # No se levanta uno nuevo para evitar conflicto de puertos.
   # Configura la instancia WA en el CRM apuntando a http://100.101.243.74:8080
