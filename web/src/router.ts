@@ -6,6 +6,7 @@ import { useAuthStore } from './stores/auth';
 const routes = [
   { path: '/login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
   { path: '/privacy', component: () => import('./views/PrivacyPolicyView.vue'), meta: { public: true } },
+  { path: '/terms', component: () => import('./views/TermsView.vue'), meta: { public: true } },
   { path: '/book/:slug', component: () => import('./views/BookingView.vue'), meta: { public: true } },
   { path: '/book/:slug/manage/:token', component: () => import('./views/BookingManageView.vue'), meta: { public: true } },
 

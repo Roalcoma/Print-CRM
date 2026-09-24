@@ -782,6 +782,8 @@
         <p>© {{ currentYear }} Árbol Áureo — Rocco CRM. Todos los derechos reservados.</p>
         <p class="mt-1">
           Vigente desde {{ lastUpdated }} · Versión 1.0 ·
+          <router-link to="/terms" class="text-indigo-500 hover:underline">Términos y Condiciones</router-link>
+          ·
           <router-link to="/login" class="text-indigo-500 hover:underline">Acceder al CRM</router-link>
         </p>
       </div>

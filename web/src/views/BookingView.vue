@@ -515,9 +515,9 @@ async function submit() {
     <!-- Footer -->
     <div class="text-center py-6 text-xs text-gray-400">
       Powered by <span class="font-medium text-gray-500">Rocco CRM</span> ·
-      <router-link to="/privacy" class="hover:text-indigo-500 hover:underline transition-colors">
-        Política de Privacidad
-      </router-link>
+      <router-link to="/privacy" class="hover:text-indigo-500 hover:underline transition-colors">Privacidad</router-link>
+      ·
+      <router-link to="/terms" class="hover:text-indigo-500 hover:underline transition-colors">Términos</router-link>
     </div>
 
   </div>

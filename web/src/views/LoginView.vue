@@ -81,9 +81,9 @@ async function submit() {
 
       <p class="brand-copy">
         © {{ new Date().getFullYear() }} Árbol Áureo ·
-        <router-link to="/privacy" class="opacity-60 hover:opacity-100 hover:underline transition-opacity">
-          Política de Privacidad
-        </router-link>
+        <router-link to="/privacy" class="opacity-60 hover:opacity-100 hover:underline transition-opacity">Privacidad</router-link>
+        ·
+        <router-link to="/terms" class="opacity-60 hover:opacity-100 hover:underline transition-opacity">Términos</router-link>
       </p>
     </div>
 
