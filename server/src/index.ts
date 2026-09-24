@@ -213,5 +213,5 @@ server.listen(env.port, () => {
   setInterval(() => resumeTimedRuns(), 60_000);
   // Refrescar tokens de Instagram cada 30 días; también al arrancar para renovar de inmediato si toca
   refreshInstagramTokens();
-  setInterval(() => refreshInstagramTokens(), 30 * 24 * 60 * 60_000);
+  setInterval(() => refreshInstagramTokens(), 24 * 60 * 60_000); // revisa cada 24h; la query filtra los que toca renovar
 });
