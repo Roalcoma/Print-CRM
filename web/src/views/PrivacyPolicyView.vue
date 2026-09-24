@@ -87,7 +87,7 @@
           <p>
             <strong>Rocco CRM</strong> es una plataforma de gestión de relaciones con clientes
             (CRM) de tipo Software como Servicio (SaaS), desarrollada y operada por
-            <strong>Árbol Áureo LLC</strong> («la Empresa», «nosotros» o «nuestro»).
+            <strong>Árbol Áureo</strong> («la Empresa», «nosotros» o «nuestro»).
           </p>
           <p>
             Nuestros servicios incluyen la gestión de contactos, oportunidades de venta, citas,
@@ -321,7 +321,7 @@
 
           <p class="mt-6 text-sm text-gray-500">
             La lista actualizada de sub-encargados se puede solicitar por escrito a
-            <a href="mailto:legal@arbolaureo.com" class="text-indigo-600 hover:underline">legal@arbolaureo.com</a>.
+            <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-indigo-600 hover:underline">rodrigoalfonzo97@gmail.com</a>.
             La Empresa notificará con al menos <strong>30 días de antelación</strong> cualquier
             incorporación de nuevos sub-encargados relevantes.
           </p>
@@ -414,7 +414,7 @@
             Al cancelar una suscripción, la Organización puede solicitar la <strong>eliminación
             inmediata</strong> de todos sus datos antes del período de retención estándar,
             mediante solicitud escrita a
-            <a href="mailto:legal@arbolaureo.com" class="text-indigo-600 hover:underline">legal@arbolaureo.com</a>.
+            <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-indigo-600 hover:underline">rodrigoalfonzo97@gmail.com</a>.
             La eliminación se confirmará en un plazo máximo de <strong>72 horas hábiles</strong>.
           </p>
         </div>
@@ -483,7 +483,7 @@
             </li>
             <li>
               Para reportar vulnerabilidades de seguridad, contactar a
-              <a href="mailto:security@arbolaureo.com" class="text-indigo-600 hover:underline">security@arbolaureo.com</a>
+              <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-indigo-600 hover:underline">rodrigoalfonzo97@gmail.com</a>
               con el asunto «Responsible Disclosure».
             </li>
           </ul>
@@ -601,7 +601,7 @@
           <ul>
             <li>
               <strong>Email:</strong>
-              <a href="mailto:privacidad@arbolaureo.com" class="text-indigo-600 hover:underline">privacidad@arbolaureo.com</a>
+              <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-indigo-600 hover:underline">rodrigoalfonzo97@gmail.com</a>
               con el asunto «Solicitud de derechos ARCO».
             </li>
             <li>
@@ -660,7 +660,7 @@
           </ul>
           <p>
             Para solicitar el DPA, contactar a
-            <a href="mailto:legal@arbolaureo.com" class="text-indigo-600 hover:underline">legal@arbolaureo.com</a>.
+            <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-indigo-600 hover:underline">rodrigoalfonzo97@gmail.com</a>.
           </p>
         </div>
       </section>
@@ -691,7 +691,7 @@
             </li>
             <li>
               Las versiones anteriores de esta política estarán disponibles bajo solicitud
-              a <a href="mailto:legal@arbolaureo.com" class="text-indigo-600 hover:underline">legal@arbolaureo.com</a>.
+              a <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-indigo-600 hover:underline">rodrigoalfonzo97@gmail.com</a>.
             </li>
           </ul>
         </div>
@@ -753,19 +753,19 @@
             <ContactCard
               icon="mail"
               title="Privacidad general"
-              value="privacidad@arbolaureo.com" />
+              value="rodrigoalfonzo97@gmail.com" />
             <ContactCard
               icon="shield"
               title="Seguridad / Vulnerabilidades"
-              value="security@arbolaureo.com" />
+              value="rodrigoalfonzo97@gmail.com" />
             <ContactCard
               icon="document"
               title="Asuntos legales / DPA"
-              value="legal@arbolaureo.com" />
+              value="rodrigoalfonzo97@gmail.com" />
           </div>
           <p class="mt-6">
-            <strong>Árbol Áureo LLC</strong><br />
-            Orlando, Florida, Estados Unidos de América
+            <strong>Árbol Áureo</strong><br />
+            <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-indigo-600 hover:underline">rodrigoalfonzo97@gmail.com</a>
           </p>
           <p class="mt-3 text-sm text-gray-500">
             Si considera que el tratamiento de sus datos infringe la normativa aplicable,
@@ -779,7 +779,7 @@
 
       <!-- Footer de la página -->
       <div class="border-t border-gray-200 pt-8 pb-16 text-center text-sm text-gray-400">
-        <p>© {{ currentYear }} Árbol Áureo LLC — Rocco CRM. Todos los derechos reservados.</p>
+        <p>© {{ currentYear }} Árbol Áureo — Rocco CRM. Todos los derechos reservados.</p>
         <p class="mt-1">
           Vigente desde {{ lastUpdated }} · Versión 1.0 ·
           <router-link to="/login" class="text-indigo-500 hover:underline">Acceder al CRM</router-link>
