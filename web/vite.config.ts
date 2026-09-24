@@ -1,12 +1,20 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import tailwindcss from '@tailwindcss/vite';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+
+const { version } = JSON.parse(
+  readFileSync(resolve(__dirname, 'package.json'), 'utf-8'),
+);
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+  },
   plugins: [vue(), tailwindcss()],
   server: {
     port: 5175,
-    // Proxy al backend: el front llama /api/* y Vite lo reenvía a Express.
     proxy: { '/api': 'http://localhost:3100' },
   },
   preview: {

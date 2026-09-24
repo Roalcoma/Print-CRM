@@ -8,6 +8,9 @@ import {
 } from 'lucide-vue-next';
 import { useAuthStore } from '../stores/auth';
 import { api } from '../api';
+import { APP_VERSION } from '../version';
+
+const appVersion = APP_VERSION;
 import NotificationsDropdown from '../components/NotificationsDropdown.vue';
 import AccountSwitcher from '../components/AccountSwitcher.vue';
 
@@ -282,10 +285,13 @@ const s = computed(() => isDark.value
           </RouterLink>
         </nav>
 
-        <!-- Copyright -->
+        <!-- Copyright + versión -->
         <div v-if="!collapsed" class="px-4 pb-4 pt-2">
           <p class="text-center text-[11px] leading-tight" :class="isDark ? 'text-slate-600' : 'text-slate-400'">
             © {{ new Date().getFullYear() }} Árbol Áureo
+          </p>
+          <p class="mt-0.5 text-center text-[10px]" :class="isDark ? 'text-slate-700' : 'text-slate-300'">
+            v{{ appVersion }}
           </p>
         </div>
       </aside>

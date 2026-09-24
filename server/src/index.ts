@@ -34,6 +34,10 @@ import { resumeTimedRuns } from './services/automation-engine.ts';
 import { initWS } from './services/ws-manager.ts';
 import { verifyToken } from './auth/tokens.ts';
 import { pool } from './db.ts';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const { version: APP_VERSION } = require('../../package.json') as { version: string };
 
 const app = express();
 
@@ -67,7 +71,11 @@ const authLimiter = rateLimit({
   message: { error: 'Demasiados intentos. Espera 15 minutos e inténtalo de nuevo.' },
 });
 
-app.get('/api/health', (_req, res) => res.json({ ok: true }));
+// Versión en todas las respuestas
+app.use((_req, res, next) => { res.setHeader('X-App-Version', APP_VERSION); next(); });
+
+app.get('/api/health', (_req, res) => res.json({ ok: true, version: APP_VERSION }));
+app.get('/api/version', (_req, res) => res.json({ version: APP_VERSION }));
 
 // Rutas públicas (sin JWT)
 app.use('/api/calendar', calendarPublicRouter);
