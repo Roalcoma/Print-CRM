@@ -34,10 +34,14 @@ import { resumeTimedRuns } from './services/automation-engine.ts';
 import { initWS } from './services/ws-manager.ts';
 import { verifyToken } from './auth/tokens.ts';
 import { pool } from './db.ts';
-import { createRequire } from 'module';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
 
-const require = createRequire(import.meta.url);
-const { version: APP_VERSION } = require('../../package.json') as { version: string };
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const { version: APP_VERSION } = JSON.parse(
+  readFileSync(resolve(__dirname, '../package.json'), 'utf-8'),
+) as { version: string };
 
 const app = express();
 
