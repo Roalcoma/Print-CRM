@@ -79,7 +79,12 @@ async function submit() {
         </ul>
       </div>
 
-      <p class="brand-copy">© {{ new Date().getFullYear() }} Árbol Áureo</p>
+      <p class="brand-copy">
+        © {{ new Date().getFullYear() }} Árbol Áureo ·
+        <router-link to="/privacy" class="opacity-60 hover:opacity-100 hover:underline transition-opacity">
+          Política de Privacidad
+        </router-link>
+      </p>
     </div>
 
     <!-- ── Panel derecho (formulario) ── -->
