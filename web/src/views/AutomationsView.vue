@@ -96,6 +96,7 @@ const STEP_META: Record<string, { label: string; icon: typeof MessageCircle; col
   send_whatsapp:            { label: 'Enviar mensaje de WhatsApp',    icon: MessageSquare, color: 'text-emerald-600', bg: 'bg-emerald-50' },
   wait_for_reply:           { label: 'Esperar respuesta del contacto',icon: Timer,         color: 'text-orange-600',  bg: 'bg-orange-50'  },
   wait_before_appointment:  { label: 'Esperar antes de la cita',      icon: Clock,         color: 'text-sky-600',     bg: 'bg-sky-50'     },
+  wait_minutes:             { label: 'Esperar N minutos',             icon: Clock,         color: 'text-slate-500',   bg: 'bg-slate-100'  },
   ig_reply_comment:         { label: 'Responder comentario de IG',    icon: Instagram,     color: 'text-pink-600',    bg: 'bg-pink-50'    },
   ig_send_dm:               { label: 'Enviar DM de Instagram',        icon: MessageSquare, color: 'text-pink-600',    bg: 'bg-pink-50'    },
 };
@@ -111,9 +112,15 @@ function stepPreview(step: AutoStep): string | null {
   if (step.type === 'create_opportunity') return `Título: ${step.title ?? '{{contact.name}}'} · Fuente: ${step.source ?? '{{step.1.state}}'}`;
   if (step.type === 'ig_reply_comment') {
     const msgs: string[] = (step.messages as string[] | undefined) ?? [];
-    return msgs.length ? `${msgs.length} mensajes rotativos · "${msgs[0].slice(0,60)}…"` : (step.message as string | undefined) ?? '';
+    if (!msgs.length) return (step.message as string | undefined) ?? '';
+    return `${msgs.length} mensajes rotativos (se alternan en orden):\n\n` +
+      msgs.map((m, i) => `${i + 1}. ${m}`).join('\n\n');
   }
-  if (step.type === 'ig_send_dm') return String(step.message ?? '').slice(0, 120);
+  if (step.type === 'ig_send_dm') return String(step.message ?? '');
+  if (step.type === 'wait_minutes') {
+    const min = (step.minutes as number) ?? 1;
+    return `Pausa la ejecución ${min} minuto${min !== 1 ? 's' : ''} antes de continuar con el siguiente paso.`;
+  }
   if (step.type === 'wait_before_appointment') {
     const min = (step as any).minutes_before ?? 120;
     const h = Math.floor(min / 60);
