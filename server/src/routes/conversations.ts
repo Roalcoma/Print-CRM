@@ -4,6 +4,7 @@ import { Router } from 'express';
 import { pool } from '../db.ts';
 import { EvolutionClient } from '../services/evolution.ts';
 import { broadcast } from '../services/ws-manager.ts';
+import { sendIgDm } from '../services/instagram.ts';
 
 export const conversationsRouter = Router();
 
@@ -27,7 +28,7 @@ conversationsRouter.get('/', async (req, res) => {
     const orgId = req.auth!.organizationId;
     const { status = 'open', q, limit = '50', offset = '0', unread, starred } = req.query as Record<string, string>;
 
-    let where = `WHERE c.organization_id = $1 AND c.wa_chat_id NOT LIKE '%@g.us' AND c.wa_chat_id NOT LIKE '%@newsletter'`;
+    let where = `WHERE c.organization_id = $1 AND c.wa_chat_id NOT LIKE '%@g.us' AND c.wa_chat_id NOT LIKE '%@newsletter' AND (c.channel IS NULL OR c.channel IN ('whatsapp','instagram_dm','facebook_dm'))`;
     const vals: unknown[] = [orgId];
     let i = 2;
 
@@ -99,29 +100,48 @@ conversationsRouter.post('/:id/messages', async (req, res) => {
     const { id } = req.params;
     const { body, type = 'text', mediaUrl } = req.body as { body?: string; type?: string; mediaUrl?: string };
 
-    const convRes = await pool.query<{ wa_chat_id: string }>(
-      'SELECT wa_chat_id FROM conversations WHERE id = $1 AND organization_id = $2',
+    const convRes = await pool.query<{ wa_chat_id: string; channel: string; social_account_id: string | null }>(
+      'SELECT wa_chat_id, channel, social_account_id FROM conversations WHERE id = $1 AND organization_id = $2',
       [id, orgId],
     );
     if (!convRes.rows[0]) return res.status(404).json({ error: 'Conversación no encontrada' });
 
-    const cfg = await getWACfg(orgId);
-    if (!cfg) return res.status(503).json({ error: 'WhatsApp no configurado' });
-
-    const client = new EvolutionClient({ url: cfg.evo_url, apiKey: cfg.evo_api_key, instanceName: cfg.instance_name });
-    const chatId = convRes.rows[0].wa_chat_id;
-    // Evolution usa el número sin sufijo; extraer de @s.whatsapp.net o @c.us
-    const number = chatId.replace(/@\S+/, '');
+    const { wa_chat_id: chatId, channel, social_account_id } = convRes.rows[0];
 
     let waId: string | null = null;
-    if (type === 'text' && body) {
-      const result = await client.sendText(number, body);
-      waId = result.key?.id ?? null;
-    } else if (type === 'image' && mediaUrl) {
-      const result = await client.sendImage(number, mediaUrl, body);
-      waId = result.key?.id ?? null;
+
+    if (channel === 'instagram_dm') {
+      // Enviar DM vía Instagram Graph API
+      if (type !== 'text' || !body) return res.status(400).json({ error: 'Instagram DM solo soporta texto por ahora' });
+      if (!social_account_id) return res.status(503).json({ error: 'Cuenta de Instagram no configurada' });
+
+      const scRes = await pool.query<{ access_token: string; instagram_business_id: string }>(
+        'SELECT access_token, instagram_business_id FROM social_connections WHERE id = $1',
+        [social_account_id],
+      );
+      if (!scRes.rows[0]) return res.status(503).json({ error: 'Conexión de Instagram no encontrada' });
+
+      const { access_token, instagram_business_id } = scRes.rows[0];
+      const recipientId = chatId.replace(/^ig_/, '');
+      const result = await sendIgDm(instagram_business_id, access_token, recipientId, body) as { message_id?: string };
+      waId = result.message_id ?? null;
     } else {
-      return res.status(400).json({ error: 'Tipo de mensaje no soportado o faltan datos' });
+      // Enviar vía WhatsApp / Evolution API
+      const cfg = await getWACfg(orgId);
+      if (!cfg) return res.status(503).json({ error: 'WhatsApp no configurado' });
+
+      const client = new EvolutionClient({ url: cfg.evo_url, apiKey: cfg.evo_api_key, instanceName: cfg.instance_name });
+      const number = chatId.replace(/@\S+/, '');
+
+      if (type === 'text' && body) {
+        const result = await client.sendText(number, body);
+        waId = result.key?.id ?? null;
+      } else if (type === 'image' && mediaUrl) {
+        const result = await client.sendImage(number, mediaUrl, body);
+        waId = result.key?.id ?? null;
+      } else {
+        return res.status(400).json({ error: 'Tipo de mensaje no soportado o faltan datos' });
+      }
     }
 
     const preview = type === 'text' ? (body ?? '').slice(0, 100) : '📷 Imagen';

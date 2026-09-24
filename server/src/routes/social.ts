@@ -6,6 +6,7 @@ import { pool } from '../db.ts';
 import { requireAdmin } from '../auth/perms.ts';
 import { env } from '../env.ts';
 import { broadcast } from '../services/ws-manager.ts';
+import { fireIgCommentTrigger } from '../services/automation-engine.ts';
 
 export const socialRouter = Router();
 export const socialPublicRouter = Router(); // callback OAuth (sin auth)
@@ -355,7 +356,7 @@ metaWebhookRouter.get('/webhook', (req, res) => {
   res.status(403).end();
 });
 
-// POST /api/meta/webhook — recepción de mensajes
+// POST /api/meta/webhook — recepción de mensajes y comentarios
 metaWebhookRouter.post('/webhook', express_json_check, async (req, res) => {
   res.json({ ok: true }); // responder rápido a Meta
 
@@ -366,52 +367,109 @@ metaWebhookRouter.post('/webhook', express_json_check, async (req, res) => {
     for (const entry of body.entry ?? []) {
       const pageId = entry.id;
 
-      // Encontrar la conexión y el orgId por page_id
-      const connRes = await pool.query<{ organization_id: string; platform: string; access_token: string }>(
-        `SELECT organization_id, platform, access_token FROM social_connections
+      const connRes = await pool.query<{ id: string; organization_id: string; platform: string; access_token: string; instagram_business_id: string | null }>(
+        `SELECT id, organization_id, platform, access_token, instagram_business_id FROM social_connections
          WHERE page_id = $1 AND status = 'active' LIMIT 1`,
         [pageId],
       );
       if (!connRes.rows[0]) continue;
-      const { organization_id: orgId, platform } = connRes.rows[0];
+      const conn = connRes.rows[0];
+      const orgId = conn.organization_id;
 
-      // Mensajes de Messenger
+      // ── Mensajes de Messenger (Facebook) ─────────────────────────────────
       for (const messaging of entry.messaging ?? []) {
         if (!messaging.message) continue;
-        const senderId = messaging.sender?.id;
-        const text = messaging.message.text ?? null;
-        const mid = messaging.message.mid;
+        // Ignorar ecos de mensajes enviados por la propia página
+        if (messaging.sender?.id === pageId) continue;
 
-        broadcast(orgId, 'meta:message', {
-          platform,
-          pageId,
-          senderId,
-          messageId: mid,
-          text,
-          timestamp: messaging.timestamp,
-        });
+        const senderId = messaging.sender?.id ?? '';
+        const text = messaging.message.text ?? null;
+        const mid = messaging.message.mid ?? senderId + '_' + messaging.timestamp;
+
+        await upsertSocialConversation(orgId, conn.id, 'facebook_dm', `fb_${senderId}`, senderId, text, mid, 'inbound');
       }
 
-      // Mensajes de Instagram
+      // ── Changes: mensajes de Instagram DM y comentarios ──────────────────
       for (const change of entry.changes ?? []) {
-        if (change.field !== 'messages') continue;
-        const msg = change.value;
-        if (!msg?.message) continue;
 
-        broadcast(orgId, 'meta:message', {
-          platform: 'instagram',
-          pageId,
-          senderId: msg.sender?.id,
-          messageId: msg.message.mid,
-          text: msg.message.text ?? null,
-          timestamp: msg.timestamp,
-        });
+        // Instagram DM
+        if (change.field === 'messages') {
+          const msg = change.value as IgMessageChange | undefined;
+          if (!msg?.message) continue;
+          // Ignorar mensajes enviados por la propia cuenta
+          if (msg.sender?.id === pageId || msg.sender?.id === conn.instagram_business_id) continue;
+
+          const senderId = msg.sender?.id ?? '';
+          const text = msg.message.text ?? null;
+          const mid = msg.message.mid ?? senderId + '_' + msg.timestamp;
+
+          await upsertSocialConversation(orgId, conn.id, 'instagram_dm', `ig_${senderId}`, senderId, text, mid, 'inbound');
+        }
+
+        // Instagram Comentario en post
+        if (change.field === 'comments') {
+          const comment = change.value as IgCommentChange | undefined;
+          if (!comment?.id) continue;
+          // Ignorar respuestas propias
+          if (comment.from?.id === pageId || comment.from?.id === conn.instagram_business_id) continue;
+
+          fireIgCommentTrigger(orgId, {
+            commentId: comment.id,
+            senderId: comment.from?.id ?? '',
+            senderName: comment.from?.name ?? '',
+            text: comment.text ?? '',
+            mediaId: comment.media?.id ?? '',
+            accessToken: conn.access_token,
+            igUserId: conn.instagram_business_id ?? pageId,
+          }).catch(e => console.error('fireIgCommentTrigger error:', e));
+        }
       }
     }
   } catch (e) {
     console.error('meta-webhook error:', e);
   }
 });
+
+// ── Upsert de conversación social (IG DM / FB Messenger) ─────────────────────
+async function upsertSocialConversation(
+  orgId: string,
+  socialAccountId: string,
+  channel: 'instagram_dm' | 'facebook_dm',
+  chatId: string,
+  senderId: string,
+  text: string | null,
+  mid: string,
+  direction: 'inbound' | 'outbound',
+) {
+  try {
+    const convRes = await pool.query<{ id: string }>(
+      `INSERT INTO conversations
+         (organization_id, wa_chat_id, display_name, channel, social_account_id, last_message_at, last_message_preview, unread_count)
+       VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7)
+       ON CONFLICT (organization_id, wa_chat_id) DO UPDATE SET
+         last_message_at      = NOW(),
+         last_message_preview = EXCLUDED.last_message_preview,
+         unread_count         = conversations.unread_count + EXCLUDED.unread_count,
+         updated_at           = NOW()
+       RETURNING id`,
+      [orgId, chatId, senderId, channel, socialAccountId, text?.slice(0, 100) ?? null, direction === 'inbound' ? 1 : 0],
+    );
+    const convId = convRes.rows[0].id;
+
+    await pool.query(
+      `INSERT INTO conv_messages (conversation_id, organization_id, wa_message_id, direction, msg_type, body)
+       VALUES ($1, $2, $3, $4, 'text', $5)
+       ON CONFLICT (wa_message_id) DO NOTHING`,
+      [convId, orgId, mid, direction, text],
+    );
+
+    broadcast(orgId, 'message:new', { conversationId: convId });
+    const convFull = await pool.query('SELECT * FROM conversations WHERE id = $1', [convId]);
+    broadcast(orgId, 'conversation:update', convFull.rows[0]);
+  } catch (e) {
+    console.error('upsertSocialConversation error:', e);
+  }
+}
 
 // express.json() ya está montado globalmente, este middleware es solo un placeholder
 function express_json_check(_req: unknown, _res: unknown, next: () => void) { next(); }
@@ -428,11 +486,21 @@ interface MetaWebhookBody {
     }>;
     changes?: Array<{
       field: string;
-      value?: {
-        sender?: { id: string };
-        message?: { mid: string; text?: string };
-        timestamp?: number;
-      };
+      value?: IgMessageChange | IgCommentChange | Record<string, unknown>;
     }>;
   }>;
+}
+
+interface IgMessageChange {
+  sender?: { id: string };
+  message?: { mid: string; text?: string };
+  timestamp?: number;
+}
+
+interface IgCommentChange {
+  id: string;
+  text?: string;
+  from?: { id: string; name?: string };
+  media?: { id: string };
+  timestamp?: number;
 }

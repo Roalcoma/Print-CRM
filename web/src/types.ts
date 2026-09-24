@@ -4,9 +4,12 @@ export interface User {
   name: string;
   role: string;
   organizationId: string;
+  orgName?: string | null;
   preferences?: Record<string, unknown>;
   permissions?: string[];
   created_at?: string;
+  avatarColor?: string | null;
+  createdAt?: string;
 }
 
 export interface Contact {
@@ -149,6 +152,13 @@ export interface CalendarAvailability {
   is_active: boolean;
 }
 
+export interface CalendarMember {
+  user_id: string;
+  is_primary: boolean;
+  name: string;
+  email: string;
+}
+
 export interface Calendar {
   id: string;
   organization_id: string;
@@ -169,6 +179,7 @@ export interface Calendar {
   custom_message: string | null;
   logo_url: string | null;
   availability: CalendarAvailability[];
+  members: CalendarMember[];
   created_at: string;
 }
 
@@ -185,6 +196,8 @@ export interface Conversation {
   unread_count: number;
   status: 'open' | 'closed' | 'archived';
   starred: boolean;
+  channel: 'whatsapp' | 'instagram_dm' | 'facebook_dm' | null;
+  social_account_id: string | null;
   created_at: string;
   updated_at: string;
   contact_full_name?: string | null;
@@ -204,16 +217,22 @@ export interface ConvMessage {
   created_at: string;
 }
 
-export interface WASettings {
+export interface WAInstance {
   id: string;
-  evo_url: string;
+  display_name: string;
   instance_name: string;
   session_status: 'disconnected' | 'connecting' | 'qr' | 'connected';
+  is_default: boolean;
+  created_at: string;
+}
+
+/** @deprecated usa WAInstance */
+export type WASettings = WAInstance & {
+  evo_url: string;
   webhook_secret: string;
   has_api_key: boolean;
-  created_at: string;
   updated_at: string;
-}
+};
 
 export interface Appointment {
   id: string;
@@ -223,7 +242,7 @@ export interface Appointment {
   end_at: string;
   timezone: string;
   is_all_day: boolean;
-  status: 'scheduled' | 'completed' | 'cancelled' | 'no_show';
+  status: 'scheduled' | 'completed' | 'cancelled' | 'no_show' | 'blocked';
   provider: 'manual' | 'google' | 'zoom';
   meeting_url: string | null;
   location: string | null;
