@@ -38,9 +38,8 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const { version: APP_VERSION } = JSON.parse(
-  readFileSync(resolve(__dirname, '../package.json'), 'utf-8'),
+  readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../package.json'), 'utf-8'),
 ) as { version: string };
 
 const app = express();
