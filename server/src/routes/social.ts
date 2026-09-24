@@ -140,7 +140,6 @@ socialRouter.get('/instagram/auth-url', requireAdmin, async (req, res) => {
   url.searchParams.set('scope', scopes);
   url.searchParams.set('state', orgId);
   url.searchParams.set('response_type', 'code');
-  url.searchParams.set('force_reauth', 'true');
 
   res.json({ url: url.toString() });
 });
