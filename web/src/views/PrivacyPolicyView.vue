@@ -915,7 +915,7 @@ export const ContactCard = defineComponent({
 </script>
 
 <style scoped>
-@reference "tailwindcss";
+@reference "../style.css";
 
 .prose-content {
   @apply text-gray-600 leading-relaxed;

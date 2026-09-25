@@ -839,7 +839,7 @@ export const InfoBox = defineComponent({
 </script>
 
 <style scoped>
-@reference "tailwindcss";
+@reference "../style.css";
 
 .prose-content { @apply text-gray-600 leading-relaxed; }
 .prose-content h3 { @apply text-base font-semibold text-gray-800 mt-6 mb-3; }
