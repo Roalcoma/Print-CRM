@@ -4,7 +4,7 @@
     <header class="bg-white border-b border-gray-200 sticky top-0 z-10">
       <div class="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
+          <div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -13,10 +13,10 @@
           <span class="font-semibold text-gray-900 text-lg">Rocco CRM</span>
         </div>
         <nav class="hidden md:flex items-center gap-6 text-sm text-gray-500">
-          <a href="#privacidad" class="hover:text-indigo-600 transition-colors">Privacidad</a>
-          <a href="#seguridad" class="hover:text-indigo-600 transition-colors">Seguridad</a>
-          <a href="#derechos" class="hover:text-indigo-600 transition-colors">Tus derechos</a>
-          <a href="#contacto" class="hover:text-indigo-600 transition-colors">Contacto</a>
+          <a href="#privacidad" class="hover:text-primary transition-colors">Privacidad</a>
+          <a href="#seguridad" class="hover:text-primary transition-colors">Seguridad</a>
+          <a href="#derechos" class="hover:text-primary transition-colors">Tus derechos</a>
+          <a href="#contacto" class="hover:text-primary transition-colors">Contacto</a>
         </nav>
       </div>
     </header>
@@ -24,7 +24,7 @@
     <!-- Hero -->
     <div class="bg-white border-b border-gray-200">
       <div class="max-w-4xl mx-auto px-6 py-12">
-        <div class="flex items-center gap-2 text-indigo-600 text-sm font-medium mb-3">
+        <div class="flex items-center gap-2 text-primary text-sm font-medium mb-3">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -69,12 +69,12 @@
 
     <!-- Índice / ToC -->
     <div class="max-w-4xl mx-auto px-6 py-8">
-      <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-6 mb-10">
-        <h2 class="text-sm font-semibold text-indigo-800 uppercase tracking-wide mb-4">Contenido</h2>
+      <div class="bg-primary-light border border-primary/20 rounded-xl p-6 mb-10">
+        <h2 class="text-sm font-semibold text-primary-dark uppercase tracking-wide mb-4">Contenido</h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
           <a v-for="section in toc" :key="section.id" :href="`#${section.id}`"
-            class="flex items-center gap-2 text-indigo-700 hover:text-indigo-900 hover:underline py-1">
-            <span class="text-indigo-400 font-mono text-xs w-6 shrink-0">{{ section.num }}</span>
+            class="flex items-center gap-2 text-primary-dark hover:text-gray-900 hover:underline py-1">
+            <span class="text-primary/60 font-mono text-xs w-6 shrink-0">{{ section.num }}</span>
             {{ section.title }}
           </a>
         </div>
@@ -321,7 +321,7 @@
 
           <p class="mt-6 text-sm text-gray-500">
             La lista actualizada de sub-encargados se puede solicitar por escrito a
-            <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-indigo-600 hover:underline">rodrigoalfonzo97@gmail.com</a>.
+            <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-primary hover:underline">rodrigoalfonzo97@gmail.com</a>.
             La Empresa notificará con al menos <strong>30 días de antelación</strong> cualquier
             incorporación de nuevos sub-encargados relevantes.
           </p>
@@ -414,7 +414,7 @@
             Al cancelar una suscripción, la Organización puede solicitar la <strong>eliminación
             inmediata</strong> de todos sus datos antes del período de retención estándar,
             mediante solicitud escrita a
-            <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-indigo-600 hover:underline">rodrigoalfonzo97@gmail.com</a>.
+            <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-primary hover:underline">rodrigoalfonzo97@gmail.com</a>.
             La eliminación se confirmará en un plazo máximo de <strong>72 horas hábiles</strong>.
           </p>
         </div>
@@ -483,7 +483,7 @@
             </li>
             <li>
               Para reportar vulnerabilidades de seguridad, contactar a
-              <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-indigo-600 hover:underline">rodrigoalfonzo97@gmail.com</a>
+              <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-primary hover:underline">rodrigoalfonzo97@gmail.com</a>
               con el asunto «Responsible Disclosure».
             </li>
           </ul>
@@ -601,7 +601,7 @@
           <ul>
             <li>
               <strong>Email:</strong>
-              <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-indigo-600 hover:underline">rodrigoalfonzo97@gmail.com</a>
+              <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-primary hover:underline">rodrigoalfonzo97@gmail.com</a>
               con el asunto «Solicitud de derechos ARCO».
             </li>
             <li>
@@ -660,7 +660,7 @@
           </ul>
           <p>
             Para solicitar el DPA, contactar a
-            <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-indigo-600 hover:underline">rodrigoalfonzo97@gmail.com</a>.
+            <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-primary hover:underline">rodrigoalfonzo97@gmail.com</a>.
           </p>
         </div>
       </section>
@@ -691,7 +691,7 @@
             </li>
             <li>
               Las versiones anteriores de esta política estarán disponibles bajo solicitud
-              a <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-indigo-600 hover:underline">rodrigoalfonzo97@gmail.com</a>.
+              a <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-primary hover:underline">rodrigoalfonzo97@gmail.com</a>.
             </li>
           </ul>
         </div>
@@ -765,7 +765,7 @@
           </div>
           <p class="mt-6">
             <strong>Árbol Áureo</strong><br />
-            <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-indigo-600 hover:underline">rodrigoalfonzo97@gmail.com</a>
+            <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-primary hover:underline">rodrigoalfonzo97@gmail.com</a>
           </p>
           <p class="mt-3 text-sm text-gray-500">
             Si considera que el tratamiento de sus datos infringe la normativa aplicable,
@@ -782,9 +782,9 @@
         <p>© {{ currentYear }} Árbol Áureo — Rocco CRM. Todos los derechos reservados.</p>
         <p class="mt-1">
           Vigente desde {{ lastUpdated }} · Versión 1.0 ·
-          <router-link to="/terms" class="text-indigo-500 hover:underline">Términos y Condiciones</router-link>
+          <router-link to="/terms" class="text-primary hover:underline">Términos y Condiciones</router-link>
           ·
-          <router-link to="/login" class="text-indigo-500 hover:underline">Acceder al CRM</router-link>
+          <router-link to="/login" class="text-primary hover:underline">Acceder al CRM</router-link>
         </p>
       </div>
     </div>
@@ -828,7 +828,7 @@ export const SectionHeader = defineComponent({
   setup(props) {
     return () => h('div', { class: 'flex items-center gap-3 mb-6' }, [
       h('span', {
-        class: 'flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold flex items-center justify-center',
+        class: 'flex-shrink-0 w-8 h-8 rounded-full bg-primary-light text-primary-dark text-sm font-bold flex items-center justify-center',
       }, props.num),
       h('h2', { class: 'text-xl font-semibold text-gray-900' }, props.title),
     ]);
@@ -873,7 +873,7 @@ export const ThirdPartyCard = defineComponent({
         h('span', { class: 'font-semibold text-gray-800' }, props.name),
         props.policy ? h('a', {
           href: props.policy, target: '_blank', rel: 'noopener noreferrer',
-          class: 'text-xs text-indigo-600 hover:underline shrink-0',
+          class: 'text-xs text-primary hover:underline shrink-0',
         }, 'Política ↗') : null,
       ]),
       h('p', { class: 'text-gray-600 mb-1' }, [h('strong', {}, 'Finalidad: '), props.purpose]),
@@ -889,7 +889,7 @@ export const RightCard = defineComponent({
     const colorMap: Record<string, string> = {
       blue: 'bg-blue-50 border-blue-200', green: 'bg-green-50 border-green-200',
       red: 'bg-red-50 border-red-200', orange: 'bg-orange-50 border-orange-200',
-      purple: 'bg-purple-50 border-purple-200', indigo: 'bg-indigo-50 border-indigo-200',
+      purple: 'bg-purple-50 border-purple-200', indigo: 'bg-primary-light border-indigo-200',
       gray: 'bg-gray-50 border-gray-200', teal: 'bg-teal-50 border-teal-200',
     };
     return () => h('div', { class: `rounded-lg border p-4 text-sm ${colorMap[props.color ?? 'blue']}` }, [
@@ -907,7 +907,7 @@ export const ContactCard = defineComponent({
       h('p', { class: 'font-semibold text-gray-700 mb-1' }, props.title),
       h('a', {
         href: `mailto:${props.value}`,
-        class: 'text-indigo-600 hover:underline break-all',
+        class: 'text-primary hover:underline break-all',
       }, props.value),
     ]);
   },
@@ -936,7 +936,7 @@ export const ContactCard = defineComponent({
   @apply bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded text-xs font-mono;
 }
 .prose-content a {
-  @apply text-indigo-600 hover:underline;
+  @apply text-primary hover:underline;
 }
 .legal-table {
   @apply w-full text-sm border-collapse;

@@ -28,6 +28,7 @@ import { conversationsRouter } from './routes/conversations.ts';
 import { waSettingsRouter } from './routes/wa-settings.ts';
 import { waWebhookRouter } from './routes/wa-webhook.ts';
 import { socialRouter, socialPublicRouter, metaWebhookRouter, refreshInstagramTokens } from './routes/social.ts';
+import { leadAdsRouter } from './routes/lead-ads.ts';
 import { agencyRouter } from './routes/agency.ts';
 import { automationsRouter } from './routes/automations.ts';
 import { resumeTimedRuns } from './services/automation-engine.ts';
@@ -35,7 +36,6 @@ import { initWS } from './services/ws-manager.ts';
 import { verifyToken } from './auth/tokens.ts';
 import { pool } from './db.ts';
 import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 
 const { version: APP_VERSION } = JSON.parse(
@@ -51,13 +51,21 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-// CORS restringido al dominio del frontend
-const allowedOrigin = process.env.FRONTEND_URL || process.env.PUBLIC_URL || 'http://localhost:5175';
+// CORS: permite localhost siempre (dev) + dominios configurados en producción
+const allowedOrigins = new Set([
+  process.env.FRONTEND_URL,
+  process.env.PUBLIC_URL,
+  'http://localhost:5173',
+  'http://localhost:5175',
+  'http://localhost:5176',
+].filter(Boolean) as string[]);
 app.use(cors({
   origin: (origin, cb) => {
-    // Permitir sin Origin (Tailscale, curl, apps nativas, webhooks)
+    // Sin Origin: Tailscale, curl, apps nativas, webhooks → siempre OK
     if (!origin) return cb(null, true);
-    if (origin === allowedOrigin) return cb(null, true);
+    // localhost siempre permitido en dev
+    if (origin.startsWith('http://localhost')) return cb(null, true);
+    if (allowedOrigins.has(origin)) return cb(null, true);
     cb(new Error('Origen no permitido por CORS'));
   },
   credentials: true,
@@ -199,6 +207,7 @@ app.use('/api/conversations', requireAuth, conversationsRouter);
 app.use('/api/wa', requireAuth, waSettingsRouter);
 app.use('/api/automations', requireAuth, automationsRouter);
 app.use('/api/social', requireAuth, socialRouter);
+app.use('/api/lead-ads', requireAuth, leadAdsRouter);
 
 // Frontend estático (build de Vite). Solo activo si web/dist existe.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

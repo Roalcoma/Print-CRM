@@ -108,6 +108,7 @@ socialRouter.get('/facebook/auth-url', requireAdmin, async (req, res) => {
     'instagram_business_basic',
     'instagram_business_manage_messages',
     'instagram_business_manage_comments',
+    'leads_retrieval',
     'public_profile',
   ].join(',');
 
@@ -206,6 +207,12 @@ socialPublicRouter.get('/instagram/callback', async (req, res) => {
       [orgId, igId, igName, meJson.profile_picture_url ?? null, longToken, expiresAt, igId],
     );
 
+    // Suscribir la cuenta al webhook de Meta para recibir DMs y comentarios
+    fetch(
+      `https://graph.instagram.com/v19.0/me/subscribed_apps?subscribed_fields=messages%2Ccomments&access_token=${longToken}`,
+      { method: 'POST' },
+    ).catch(e => console.error('ig-subscribe error:', e));
+
     res.redirect(`${frontendBase}/settings/social?connected=instagram`);
   } catch (e) {
     console.error('Instagram OAuth callback error:', e);
@@ -303,6 +310,12 @@ socialPublicRouter.get('/facebook/callback', async (req, res) => {
              updated_at = NOW()`,
           [orgId, igId, igJson.name ?? page.name, igJson.profile_picture_url ?? picture, pageToken, expiresAt, igId],
         );
+
+        // Suscribir la cuenta IG vinculada a la página al webhook
+        fetch(
+          `${META_BASE}/${igId}/subscribed_apps?subscribed_fields=messages%2Ccomments&access_token=${pageToken}`,
+          { method: 'POST' },
+        ).catch(e => console.error('ig-subscribe (fb-linked) error:', e));
       }
     }
 
@@ -423,6 +436,13 @@ metaWebhookRouter.post('/webhook', express_json_check, async (req, res) => {
             igUserId: conn.instagram_business_id ?? pageId,
           }).catch(e => console.error('fireIgCommentTrigger error:', e));
         }
+
+        // Facebook Lead Ads
+        if (change.field === 'leadgen') {
+          const leadEvent = change.value as LeadgenChange | undefined;
+          if (!leadEvent?.leadgen_id || !leadEvent?.form_id) continue;
+          handleLeadgen(orgId, conn.access_token, leadEvent).catch(e => console.error('handleLeadgen error:', e));
+        }
       }
     }
   } catch (e) {
@@ -503,4 +523,92 @@ interface IgCommentChange {
   from?: { id: string; name?: string };
   media?: { id: string };
   timestamp?: number;
+}
+
+interface LeadgenChange {
+  leadgen_id: string;
+  form_id: string;
+  page_id?: string;
+  created_time?: number;
+}
+
+interface MetaLeadField {
+  name: string;
+  values: string[];
+}
+
+async function handleLeadgen(orgId: string, accessToken: string, event: LeadgenChange) {
+  // 1. Buscar configuración del formulario
+  const configRes = await pool.query<{
+    id: string; pipeline_id: string | null; stage_id: string | null;
+    field_map: Record<string, string>;
+    auto_create_contact: boolean; auto_create_opportunity: boolean;
+  }>(
+    `SELECT id, pipeline_id, stage_id, field_map, auto_create_contact, auto_create_opportunity
+     FROM lead_form_configs
+     WHERE organization_id = $1 AND form_id = $2`,
+    [orgId, event.form_id],
+  );
+  if (!configRes.rows[0]) return; // sin configuración → ignorar
+
+  const cfg = configRes.rows[0];
+
+  // 2. Obtener datos del lead desde Meta Graph API
+  const leadRes = await fetch(
+    `${META_BASE}/${event.leadgen_id}?fields=id,created_time,field_data&access_token=${accessToken}`,
+  );
+  const lead = await leadRes.json() as { id?: string; field_data?: MetaLeadField[]; error?: { message: string } };
+  if (lead.error || !lead.field_data) {
+    console.error('handleLeadgen: error obteniendo lead', lead.error);
+    return;
+  }
+
+  // 3. Mapear campos del formulario a campos del CRM
+  // field_map: { "nombre_campo_form": "campo_crm" }  ej: {"full_name":"name","phone_number":"phone"}
+  const fieldMap = cfg.field_map as Record<string, string>;
+  const extracted: Record<string, string> = {};
+  for (const field of lead.field_data) {
+    const crmKey = fieldMap[field.name];
+    if (crmKey) extracted[crmKey] = field.values?.[0] ?? '';
+  }
+
+  const firstName = extracted['name'] || 'Lead desde anuncio';
+  const contactPhone = extracted['phone'] || null;
+  const contactEmail = extracted['email'] || null;
+
+  // 4. Buscar contacto existente por teléfono o email, o crear uno nuevo
+  let contactId: string | null = null;
+  if (cfg.auto_create_contact) {
+    // Intentar encontrar contacto existente
+    const existing = await pool.query<{ id: string }>(
+      `SELECT id FROM contacts WHERE organization_id = $1
+       AND ($2::text IS NULL OR phone = $2)
+       AND ($3::text IS NULL OR email = $3)
+       LIMIT 1`,
+      [orgId, contactPhone, contactEmail],
+    );
+
+    if (existing.rows[0]) {
+      contactId = existing.rows[0].id;
+    } else {
+      const newContact = await pool.query<{ id: string }>(
+        `INSERT INTO contacts (organization_id, first_name, phone, email, source)
+         VALUES ($1, $2, $3, $4, 'facebook_lead_ad')
+         RETURNING id`,
+        [orgId, firstName, contactPhone, contactEmail],
+      );
+      contactId = newContact.rows[0]?.id ?? null;
+    }
+  }
+
+  // 5. Crear oportunidad en el pipeline configurado
+  if (cfg.auto_create_opportunity && cfg.pipeline_id && cfg.stage_id) {
+    await pool.query(
+      `INSERT INTO opportunities (organization_id, name, pipeline_id, stage_id, contact_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [orgId, `Lead: ${firstName}`, cfg.pipeline_id, cfg.stage_id, contactId],
+    ).catch(e => console.error('handleLeadgen: error creando oportunidad', e));
+  }
+
+  console.log(`handleLeadgen: lead ${event.leadgen_id} procesado para org ${orgId} → contacto ${contactId}`);
 }

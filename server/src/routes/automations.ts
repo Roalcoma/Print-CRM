@@ -46,6 +46,23 @@ automationsRouter.post('/', requireAdmin, async (req, res) => {
   }
 });
 
+// GET /:id — obtener una automatización por id
+automationsRouter.get('/:id', async (req, res) => {
+  try {
+    const row = await queryOne(
+      `SELECT id, trigger_type, name, description, enabled, run_count, last_run_at, config, created_at, updated_at
+       FROM automation_rules
+       WHERE id = $1 AND organization_id = $2`,
+      [req.params.id, req.auth!.organizationId],
+    );
+    if (!row) return res.status(404).json({ error: 'Automatización no encontrada' });
+    res.json(row);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Error al cargar automatización' });
+  }
+});
+
 // PATCH /:id — toggle enabled or update config (admin only)
 automationsRouter.patch('/:id', requireAdmin, async (req, res) => {
   try {

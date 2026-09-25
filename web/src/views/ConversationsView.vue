@@ -5,7 +5,7 @@ import {
   Search, Plus, X, Send, Phone, Check, CheckCheck, Clock, FileText, Mic,
   MessageCircle, RefreshCw, Mail, Tag, CalendarDays, Briefcase, UserCircle2,
   ChevronRight, StickyNote, Trash2, MoreVertical, Play, Pause,
-  Inbox, MessageSquare, Star,
+  Inbox, MessageSquare, Star, CheckCircle, XCircle,
 } from 'lucide-vue-next';
 import { api, getToken } from '../api';
 import { useDialog } from '../composables/useDialog';
@@ -377,6 +377,15 @@ async function deleteOpportunity(id: string) {
   await api.del(`/opportunities/${id}`);
   if (contactBundle.value) {
     contactBundle.value.opportunities = contactBundle.value.opportunities.filter(o => o.id !== id);
+  }
+}
+
+async function updateOppStatus(id: string, status: 'open' | 'won' | 'lost') {
+  activeOppMenu.value = null;
+  await api.patch(`/opportunities/${id}`, { status });
+  if (contactBundle.value) {
+    const opp = contactBundle.value.opportunities.find(o => o.id === id);
+    if (opp) opp.status = status;
   }
 }
 
@@ -976,7 +985,7 @@ async function syncNames() {
                   </div>
                   <div class="min-w-0">
                     <p class="font-bold text-slate-900 text-sm">{{ contactBundle.contact.first_name }} {{ contactBundle.contact.last_name ?? '' }}</p>
-                    <a href="/contacts" class="flex items-center gap-0.5 text-xs text-primary hover:underline">
+                    <a :href="`/contacts/${contactBundle.contact.id}`" class="flex items-center gap-0.5 text-xs text-primary hover:underline">
                       Ver perfil <ChevronRight class="h-3 w-3" />
                     </a>
                   </div>
@@ -1060,12 +1069,19 @@ async function syncNames() {
                       {{ o.stage_name }}
                     </span>
                   </div>
-                  <p class="truncate text-xs font-semibold text-slate-800">{{ o.title }}</p>
+                  <a :href="`/contacts/${contactBundle?.contact?.id}`"
+                    class="truncate text-xs font-semibold text-slate-800 hover:text-primary hover:underline block">
+                    {{ o.title }}
+                  </a>
                   <div class="mt-1 flex items-center justify-between">
                     <span class="text-xs font-medium text-slate-700">${{ Number(o.value || 0).toLocaleString('es-VE') }}</span>
-                    <span class="text-[10px]">Estado:
-                      <span class="font-semibold"
-                        :class="{ 'text-blue-600': o.status==='open', 'text-emerald-600': o.status==='won', 'text-red-500': o.status==='lost' }">
+                    <span class="text-[10px]">
+                      <span class="font-semibold rounded-full px-1.5 py-0.5"
+                        :class="{
+                          'bg-blue-50 text-blue-600': o.status==='open',
+                          'bg-emerald-50 text-emerald-600': o.status==='won',
+                          'bg-red-50 text-red-500': o.status==='lost'
+                        }">
                         {{ { open:'Abierta', won:'Ganada', lost:'Perdida' }[o.status] ?? o.status }}
                       </span>
                     </span>
@@ -1078,7 +1094,23 @@ async function syncNames() {
                       <MoreVertical class="h-3.5 w-3.5" />
                     </button>
                     <div v-if="activeOppMenu === o.id"
-                      class="absolute bottom-8 right-0 z-30 min-w-[130px] rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                      class="absolute bottom-8 right-0 z-30 min-w-[150px] rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                      <button v-if="o.status !== 'won'"
+                        class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-emerald-700 hover:bg-emerald-50"
+                        @click="updateOppStatus(o.id, 'won')">
+                        <CheckCircle class="h-3.5 w-3.5" /> Marcar como Ganada
+                      </button>
+                      <button v-if="o.status !== 'lost'"
+                        class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
+                        @click="updateOppStatus(o.id, 'lost')">
+                        <XCircle class="h-3.5 w-3.5" /> Marcar como Perdida
+                      </button>
+                      <button v-if="o.status !== 'open'"
+                        class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50"
+                        @click="updateOppStatus(o.id, 'open')">
+                        <RefreshCw class="h-3.5 w-3.5" /> Reabrir
+                      </button>
+                      <div class="my-1 border-t border-slate-100" />
                       <button class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
                         @click="deleteOpportunity(o.id)">
                         <Trash2 class="h-3.5 w-3.5" /> Eliminar

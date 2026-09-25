@@ -60,7 +60,7 @@ services:
     ports:
       - "8090:80"
     volumes:
-      - ./landing:/usr/share/nginx/html:ro
+      - ./landing/dist:/usr/share/nginx/html:ro
     networks:
       - crm_net
 

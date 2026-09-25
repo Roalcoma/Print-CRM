@@ -4,7 +4,7 @@
     <header class="bg-white border-b border-gray-200 sticky top-0 z-10">
       <div class="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
+          <div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -13,10 +13,10 @@
           <span class="font-semibold text-gray-900 text-lg">Rocco CRM</span>
         </div>
         <nav class="hidden md:flex items-center gap-6 text-sm text-gray-500">
-          <a href="#servicio" class="hover:text-indigo-600 transition-colors">El servicio</a>
-          <a href="#facturacion" class="hover:text-indigo-600 transition-colors">Facturación</a>
-          <a href="#responsabilidad" class="hover:text-indigo-600 transition-colors">Responsabilidad</a>
-          <a href="#terminacion" class="hover:text-indigo-600 transition-colors">Terminación</a>
+          <a href="#servicio" class="hover:text-primary transition-colors">El servicio</a>
+          <a href="#facturacion" class="hover:text-primary transition-colors">Facturación</a>
+          <a href="#responsabilidad" class="hover:text-primary transition-colors">Responsabilidad</a>
+          <a href="#terminacion" class="hover:text-primary transition-colors">Terminación</a>
         </nav>
       </div>
     </header>
@@ -24,7 +24,7 @@
     <!-- Hero -->
     <div class="bg-white border-b border-gray-200">
       <div class="max-w-4xl mx-auto px-6 py-12">
-        <div class="flex items-center gap-2 text-indigo-600 text-sm font-medium mb-3">
+        <div class="flex items-center gap-2 text-primary text-sm font-medium mb-3">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -56,12 +56,12 @@
 
     <div class="max-w-4xl mx-auto px-6 py-8">
       <!-- Índice -->
-      <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-6 mb-10">
-        <h2 class="text-sm font-semibold text-indigo-800 uppercase tracking-wide mb-4">Contenido</h2>
+      <div class="bg-primary-light border border-primary/20 rounded-xl p-6 mb-10">
+        <h2 class="text-sm font-semibold text-primary-dark uppercase tracking-wide mb-4">Contenido</h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
           <a v-for="s in toc" :key="s.id" :href="`#${s.id}`"
-            class="flex items-center gap-2 text-indigo-700 hover:text-indigo-900 hover:underline py-1">
-            <span class="text-indigo-400 font-mono text-xs w-6 shrink-0">{{ s.num }}</span>
+            class="flex items-center gap-2 text-primary-dark hover:text-gray-900 hover:underline py-1">
+            <span class="text-primary/60 font-mono text-xs w-6 shrink-0">{{ s.num }}</span>
             {{ s.title }}
           </a>
         </div>
@@ -756,14 +756,14 @@
           <div class="mt-4 border border-gray-200 rounded-lg p-5 inline-block text-sm">
             <p class="font-semibold text-gray-800 mb-1">Árbol Áureo — Rocco CRM</p>
             <p class="text-gray-600">
-              <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-indigo-600 hover:underline">
+              <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-primary hover:underline">
                 rodrigoalfonzo97@gmail.com
               </a>
             </p>
           </div>
           <p class="mt-4 text-sm text-gray-500">
             También puede consultar nuestra
-            <router-link to="/privacy" class="text-indigo-600 hover:underline">
+            <router-link to="/privacy" class="text-primary hover:underline">
               Política de Privacidad y Seguridad
             </router-link>
             para información sobre el tratamiento de datos personales.
@@ -776,9 +776,9 @@
         <p>© {{ currentYear }} Árbol Áureo — Rocco CRM. Todos los derechos reservados.</p>
         <p class="mt-1">
           Vigente desde {{ lastUpdated }} · Versión 1.0 ·
-          <router-link to="/privacy" class="text-indigo-500 hover:underline">Política de Privacidad</router-link>
+          <router-link to="/privacy" class="text-primary hover:underline">Política de Privacidad</router-link>
           ·
-          <router-link to="/login" class="text-indigo-500 hover:underline">Acceder al CRM</router-link>
+          <router-link to="/login" class="text-primary hover:underline">Acceder al CRM</router-link>
         </p>
       </div>
     </div>
@@ -816,7 +816,7 @@ export const SectionHeader = defineComponent({
   props: { num: String, title: String },
   setup(props) {
     return () => h('div', { class: 'flex items-center gap-3 mb-6' }, [
-      h('span', { class: 'flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold flex items-center justify-center' }, props.num),
+      h('span', { class: 'flex-shrink-0 w-8 h-8 rounded-full bg-primary-light text-primary-dark text-sm font-bold flex items-center justify-center' }, props.num),
       h('h2', { class: 'text-xl font-semibold text-gray-900' }, props.title),
     ]);
   },
@@ -846,7 +846,7 @@ export const InfoBox = defineComponent({
 .prose-content p { @apply mb-4; }
 .prose-content ul { @apply list-disc list-outside ml-5 mb-4 space-y-1.5; }
 .prose-content li { @apply text-gray-600; }
-.prose-content a { @apply text-indigo-600 hover:underline; }
+.prose-content a { @apply text-primary hover:underline; }
 .legal-table { @apply w-full text-sm border-collapse; }
 .legal-table th { @apply text-left bg-gray-50 text-gray-700 font-semibold px-4 py-2.5 border border-gray-200; }
 .legal-table td { @apply px-4 py-2.5 border border-gray-200 text-gray-600 align-top; }

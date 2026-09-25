@@ -3,11 +3,14 @@ import { ref, onMounted, computed } from 'vue';
 import {
   Zap, MessageCircle, Tag, Briefcase, Bell, Clock, Play, Pause,
   ToggleLeft, ToggleRight, Settings2, Activity, MessageSquare,
-  Timer, Search, CheckCircle2, ChevronDown, CalendarCheck, Instagram,
+  Timer, Search, CheckCircle2, ChevronDown, CalendarCheck, Instagram, Plus, Pencil,
 } from 'lucide-vue-next';
+import { useRouter } from 'vue-router';
 import { api } from '../api';
 import LoadingState from '../components/LoadingState.vue';
 import { useAuthStore } from '../stores/auth';
+
+const router = useRouter();
 
 interface AutoStep {
   id: string;
@@ -166,10 +169,19 @@ function sidebarBg(rule: AutomationRule) {
         <h3 class="text-[15px] font-semibold text-slate-900">Automatizaciones</h3>
         <p class="text-[12px] text-slate-400">Flujos que se ejecutan automáticamente en tu CRM</p>
       </div>
-      <span class="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600">
-        <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500"></span>
-        {{ rules.filter(r => r.enabled).length }} activas
-      </span>
+      <div class="flex items-center gap-3">
+        <span class="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600">
+          <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500"></span>
+          {{ rules.filter(r => r.enabled).length }} activas
+        </span>
+        <button v-if="auth.isAdmin"
+          class="flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-primary-dark"
+          @click="router.push('/automations/new')"
+        >
+          <Plus class="h-4 w-4" />
+          Nueva
+        </button>
+      </div>
     </div>
 
     <!-- Cuerpo: lista + detalle -->
@@ -246,15 +258,25 @@ function sidebarBg(rule: AutomationRule) {
                 </div>
               </div>
 
-              <button v-if="auth.isAdmin"
-                class="flex flex-shrink-0 cursor-pointer items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition-all"
-                :class="selectedRule.enabled ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'"
-                :disabled="toggling === selectedRule.id"
-                @click="toggleRule(selectedRule)">
-                <component :is="selectedRule.enabled ? ToggleRight : ToggleLeft" class="h-5 w-5"
-                  :class="selectedRule.enabled ? 'text-emerald-600' : 'text-slate-400'" />
-                {{ selectedRule.enabled ? 'Activa' : 'Inactiva' }}
-              </button>
+              <div v-if="auth.isAdmin" class="flex items-center gap-2 flex-shrink-0">
+                <button
+                  class="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] font-semibold text-slate-600 transition-all hover:bg-slate-50"
+                  @click="router.push(`/automations/${selectedRule.id}/edit`)"
+                >
+                  <Pencil class="h-4 w-4" />
+                  Editar
+                </button>
+                <button
+                  class="flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition-all"
+                  :class="selectedRule.enabled ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'"
+                  :disabled="toggling === selectedRule.id"
+                  @click="toggleRule(selectedRule)"
+                >
+                  <component :is="selectedRule.enabled ? ToggleRight : ToggleLeft" class="h-5 w-5"
+                    :class="selectedRule.enabled ? 'text-emerald-600' : 'text-slate-400'" />
+                  {{ selectedRule.enabled ? 'Activa' : 'Inactiva' }}
+                </button>
+              </div>
             </div>
           </div>
 

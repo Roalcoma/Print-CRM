@@ -599,7 +599,13 @@ function close() { emit('update:modelValue', false); }
                   <span class="inline-block h-2 w-2 rounded-full shrink-0"
                     :class="att.user_id ? 'bg-violet-400' : 'bg-[#F69008]'"
                   ></span>
-                  {{ att.name }}
+                  <a
+                    v-if="att.contact_id"
+                    :href="`/contacts/${att.contact_id}`"
+                    target="_blank"
+                    class="hover:text-[#F69008] hover:underline"
+                  >{{ att.name }}</a>
+                  <span v-else>{{ att.name }}</span>
                   <button type="button" class="ml-0.5 text-slate-400 hover:text-red-500 cursor-pointer" @click="removeAttendee(i)">
                     <X class="h-3 w-3" />
                   </button>

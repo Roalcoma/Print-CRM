@@ -1,0 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Roboto', ui-sans-serif, system-ui, sans-serif;
+  --color-primary:      #F69008;
+  --color-primary-dark: #D97706;
+  --color-primary-light:#FEF3C7;
+  --color-cta:          #60D0FA;
+  --color-cta-dark:     #38BDF8;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-10px); }
+}
+
+.float { animation: float 4s ease-in-out infinite; }
+
+.gradient-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0f172a 100%);
+}
+
+.gradient-cta {
+  background: linear-gradient(135deg, #F69008 0%, #D97706 100%);
+}
