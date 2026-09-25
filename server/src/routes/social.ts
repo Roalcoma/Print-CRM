@@ -185,12 +185,13 @@ socialPublicRouter.get('/instagram/callback', async (req, res) => {
       ? new Date(Date.now() + llJson.expires_in * 1000).toISOString()
       : null;
 
-    // 3. Info de la cuenta
+    // 3. Info de la cuenta — user_id devuelve el IGSID (17841...) que usa el webhook en entry.id
     const meRes = await fetch(
-      `https://graph.instagram.com/v19.0/me?fields=id,name,username,profile_picture_url&access_token=${longToken}`,
+      `https://graph.instagram.com/v19.0/me?fields=id,user_id,name,username,profile_picture_url&access_token=${longToken}`,
     );
-    const meJson = await meRes.json() as { id?: string; name?: string; username?: string; profile_picture_url?: string };
-    const igId = meJson.id ?? String(tokenJson.user_id);
+    const meJson = await meRes.json() as { id?: string; user_id?: string; name?: string; username?: string; profile_picture_url?: string };
+    // Preferir user_id (IGSID) porque es el ID que envía Meta en entry.id del webhook
+    const igId = meJson.user_id ?? meJson.id ?? String(tokenJson.user_id);
     const igName = meJson.name ?? meJson.username ?? 'Instagram';
 
     await pool.query(
@@ -375,6 +376,7 @@ metaWebhookRouter.post('/webhook', express_json_check, async (req, res) => {
 
   try {
     const body = req.body as MetaWebhookBody;
+    console.log(`[meta-webhook] object=${body.object} entries=${body.entry?.length ?? 0}`);
     if (body.object !== 'page' && body.object !== 'instagram') return;
 
     for (const entry of body.entry ?? []) {
