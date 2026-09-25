@@ -58,7 +58,7 @@ services:
     container_name: crm_landing
     restart: unless-stopped
     ports:
-      - "8090:80"
+      - "8091:80"
     volumes:
       - ./landing/dist:/usr/share/nginx/html:ro
     networks:
