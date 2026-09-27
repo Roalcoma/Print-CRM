@@ -3,7 +3,7 @@ import { ref, onMounted, computed } from 'vue';
 import {
   Zap, MessageCircle, Tag, Briefcase, Bell, Clock, Play, Pause,
   ToggleLeft, ToggleRight, Settings2, Activity, MessageSquare,
-  Timer, Search, CheckCircle2, ChevronDown, CalendarCheck, Instagram, Plus, Pencil,
+  Timer, Search, CheckCircle2, ChevronDown, CalendarCheck, Instagram, Plus, Pencil, UserPlus, ListTodo,
 } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
@@ -103,6 +103,14 @@ const STEP_META: Record<string, { label: string; icon: typeof MessageCircle; col
   ig_reply_comment:         { label: 'Responder comentario de IG',    icon: Instagram,     color: 'text-pink-600',    bg: 'bg-pink-50'    },
   ig_send_dm:               { label: 'Enviar DM de Instagram',        icon: MessageSquare, color: 'text-pink-600',    bg: 'bg-pink-50'    },
 };
+
+// Acciones de la regla integrada (config antigua con flags booleanos), en orden de ejecución.
+const LEGACY_ACTIONS: { key: string; label: string; icon: typeof MessageCircle }[] = [
+  { key: 'create_contact',      label: 'Crear contacto',            icon: UserPlus },
+  { key: 'create_opportunity',  label: 'Crear oportunidad',         icon: Briefcase },
+  { key: 'create_task',         label: 'Crear tarea para el equipo', icon: ListTodo },
+  { key: 'create_notification', label: 'Notificar al equipo',       icon: Bell },
+];
 
 function stepMeta(type: string) {
   return STEP_META[type] ?? { label: type, icon: CheckCircle2, color: 'text-slate-500', bg: 'bg-slate-100' };
@@ -376,13 +384,16 @@ function sidebarBg(rule: AutomationRule) {
                   <div class="h-5 w-0.5 bg-slate-200"></div>
                   <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-400">luego</span>
                 </div>
-                <div v-for="(val, key) in selectedRule.config" :key="key">
-                  <div v-if="val && key !== 'trigger'" class="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3.5">
-                    <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100">
-                      <CheckCircle2 class="h-4 w-4 text-slate-500" />
+                <div class="space-y-2">
+                  <template v-for="a in LEGACY_ACTIONS" :key="a.key">
+                    <div v-if="(selectedRule.config as Record<string, unknown>)[a.key]"
+                      class="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3.5">
+                      <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100">
+                        <component :is="a.icon" class="h-4 w-4 text-slate-500" />
+                      </div>
+                      <p class="text-[13px] font-medium text-slate-700">{{ a.label }}</p>
                     </div>
-                    <p class="text-[13px] text-slate-700">{{ key }}</p>
-                  </div>
+                  </template>
                 </div>
               </template>
             </div>

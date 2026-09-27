@@ -136,7 +136,7 @@ function statusInfo(s: string) {
 </script>
 
 <template>
-  <div class="flex flex-col min-h-full bg-[#F1F5F9]">
+  <div class="flex flex-col min-h-full bg-canvas">
     <!-- Toolbar -->
     <div class="page-toolbar">
       <div class="flex items-center gap-3">

@@ -258,25 +258,7 @@ const initials = () => {
   color: #475569;
 }
 
-.biz-input {
-  width: 100%;
-  border-radius: 8px;
-  border: 1.5px solid #E2E8F0;
-  padding: 9px 12px;
-  font-size: 13px;
-  color: #0F172A;
-  background: #F8FAFC;
-  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
-  outline: none;
-  font-family: inherit;
-  line-height: 1.4;
-}
-.biz-input:focus {
-  border-color: #F69008;
-  background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(246, 144, 8, 0.12);
-}
-.biz-input::placeholder { color: #94A3B8; }
+
 
 /* Input con ícono a la izquierda */
 .biz-icon-wrap {

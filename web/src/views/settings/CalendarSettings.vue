@@ -10,6 +10,7 @@ import { useDialog } from '../../composables/useDialog';
 import { useAuthStore } from '../../stores/auth';
 import type { Calendar } from '../../types';
 import Spinner from '../../components/Spinner.vue';
+import BizSelect from '../../components/BizSelect.vue';
 import { TIMEZONES, tzLabel } from '../../utils/timezones';
 
 const { alert, confirm } = useDialog();
@@ -386,7 +387,7 @@ watch(selectedUser, () => { Promise.all([loadCalendars(), isAllSelected.value ? 
     </div>
 
     <!-- Cuerpo scrollable -->
-    <div class="flex-1 overflow-y-auto bg-[#F1F5F9] p-4 sm:p-6">
+    <div class="flex-1 overflow-y-auto bg-canvas p-4 sm:p-6">
 
       <!-- ══════════ TAB: Calendarios ══════════ -->
       <template v-if="activeTab === 'calendarios'">
@@ -553,12 +554,7 @@ watch(selectedUser, () => { Promise.all([loadCalendars(), isAllSelected.value ? 
               </button>
             </div>
             <div class="px-6 py-4">
-              <select
-                v-model="selectedTimezone"
-                class="w-full cursor-pointer rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none transition-colors"
-              >
-                <option v-for="t in TIMEZONES" :key="t.value" :value="t.value">{{ t.label }}</option>
-              </select>
+              <BizSelect v-model="selectedTimezone" :options="TIMEZONES" input-class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700" />
             </div>
           </div>
 

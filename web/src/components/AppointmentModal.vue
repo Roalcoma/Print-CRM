@@ -5,6 +5,7 @@ import { api } from '../api';
 import { useDialog } from '../composables/useDialog';
 import type { Appointment } from '../types';
 import Spinner from './Spinner.vue';
+import BizSelect from './BizSelect.vue';
 
 // ─── Props / emits ────────────────────────────────────────────────────────────
 const { confirm } = useDialog();
@@ -461,12 +462,7 @@ function close() { emit('update:modelValue', false); }
                 <label class="text-sm font-medium text-slate-700">Repetición</label>
               </div>
 
-              <select
-                v-model="form.recurrenceType"
-                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-[#F69008] focus:outline-none"
-              >
-                <option v-for="(label, key) in recurrenceLabel" :key="key" :value="key">{{ label }}</option>
-              </select>
+              <BizSelect v-model="form.recurrenceType" :options="Object.entries(recurrenceLabel).map(([value, label]) => ({ value, label }))" input-class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
 
               <!-- Días de la semana (solo weekly) -->
               <div v-if="form.recurrenceType === 'weekly'" class="flex gap-1.5">
@@ -746,16 +742,11 @@ function close() { emit('update:modelValue', false); }
             <!-- Estado -->
             <div>
               <label class="mb-1 block text-sm font-medium text-slate-700">Estado</label>
-              <select
-                v-model="form.status"
-                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-[#F69008] focus:outline-none"
-              >
-                <option value="scheduled">Programada</option>
-                <option value="completed">Completada</option>
-                <option value="cancelled">Cancelada</option>
-                <option value="no_show">No asistió</option>
-                <option value="blocked">Bloqueada</option>
-              </select>
+              <BizSelect v-model="form.status" input-class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" :options="[
+                { value: 'scheduled', label: 'Programada' }, { value: 'completed', label: 'Completada' },
+                { value: 'cancelled', label: 'Cancelada' }, { value: 'no_show', label: 'No asistió' },
+                { value: 'blocked', label: 'Bloqueada' },
+              ]" />
             </div>
 
           </div>

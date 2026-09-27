@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import {
   Plus, Search, Copy, Check, ArrowLeft,
-  UserRound, Shield, Mail, Lock, Users, Trash2,
+  UserRound, Shield, Mail, Lock, Users, Trash2, Pencil,
 } from 'lucide-vue-next';
 import { api } from '../../api';
 import { useDialog } from '../../composables/useDialog';
@@ -10,6 +10,7 @@ import type { User } from '../../types';
 import { MODULES } from '../../modules';
 import { useAuthStore } from '../../stores/auth';
 import Spinner from '../../components/Spinner.vue';
+import BizSelect from '../../components/BizSelect.vue';
 import LoadingState from '../../components/LoadingState.vue';
 
 const { alert, confirm } = useDialog();
@@ -135,15 +136,11 @@ async function remove(u: User) {
           <span class="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{{ filtered.length }}</span>
         </div>
         <div class="flex items-center gap-2">
-          <select
-            v-model="roleFilter"
-            class="hidden cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 focus:border-primary focus:outline-none sm:block"
-          >
-            <option value="">Todos los roles</option>
-            <option value="owner">Owner</option>
-            <option value="admin">Administrador</option>
-            <option value="member">Miembro</option>
-          </select>
+          <div class="hidden w-44 sm:block">
+            <BizSelect v-model="roleFilter" placeholder="Todos los roles"
+              input-class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600"
+              :options="[{ value: 'owner', label: 'Owner' }, { value: 'admin', label: 'Administrador' }, { value: 'member', label: 'Miembro' }]" />
+          </div>
           <div class="relative hidden sm:block">
             <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input v-model="search" placeholder="Nombre o email…" class="w-52 rounded-lg border border-slate-200 py-1.5 pl-9 pr-3 text-sm focus:border-primary focus:outline-none" />
@@ -212,8 +209,11 @@ async function remove(u: User) {
                   <span v-else class="text-xs text-slate-300">Sin acceso</span>
                 </td>
                 <td class="px-4 py-3.5 sm:px-6" @click.stop>
-                  <div class="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    <button v-if="canManage(u) && !isSelf(u)" class="cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600" @click="remove(u)">
+                  <div class="flex items-center justify-end gap-1 opacity-60 transition-opacity group-hover:opacity-100">
+                    <button v-if="canManage(u)" title="Editar" class="cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-[#F69008]/10 hover:text-[#D97706]" @click="openEdit(u)">
+                      <Pencil class="h-4 w-4" />
+                    </button>
+                    <button v-if="canManage(u) && !isSelf(u)" title="Eliminar" class="cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600" @click="remove(u)">
                       <Trash2 class="h-4 w-4" />
                     </button>
                   </div>
@@ -262,7 +262,7 @@ async function remove(u: User) {
       </div>
 
       <!-- Cuerpo del formulario -->
-      <div class="flex-1 overflow-y-auto bg-[#F1F5F9]">
+      <div class="flex-1 overflow-y-auto bg-canvas">
         <div class="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
 
           <p v-if="error" class="mb-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 border border-red-100">{{ error }}</p>

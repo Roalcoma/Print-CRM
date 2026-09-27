@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, reactive, onMounted, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { Share2, Facebook, Instagram, CheckCircle2, AlertCircle, Loader2, Unlink, ExternalLink } from 'lucide-vue-next';
 import { api } from '../../api';
@@ -101,6 +101,9 @@ onMounted(() => {
     showToast('Error al conectar con Facebook', 'error');
   }
 });
+
+// Las URLs de foto de Meta caducan; si fallan se muestra la inicial.
+const brokenPics = reactive(new Set<string>());
 </script>
 
 <template>
@@ -167,8 +170,9 @@ onMounted(() => {
               class="flex items-center gap-3 px-5 py-3.5"
             >
               <img
-                v-if="conn.page_picture"
+                v-if="conn.page_picture && !brokenPics.has(conn.id)"
                 :src="conn.page_picture"
+                @error="brokenPics.add(conn.id)"
                 :alt="conn.page_name"
                 class="h-9 w-9 rounded-full object-cover flex-shrink-0"
               />
@@ -236,8 +240,9 @@ onMounted(() => {
               class="flex items-center gap-3 px-5 py-3.5"
             >
               <img
-                v-if="conn.page_picture"
+                v-if="conn.page_picture && !brokenPics.has(conn.id)"
                 :src="conn.page_picture"
+                @error="brokenPics.add(conn.id)"
                 :alt="conn.page_name"
                 class="h-9 w-9 rounded-full object-cover flex-shrink-0"
               />

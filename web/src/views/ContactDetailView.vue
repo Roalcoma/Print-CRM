@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import {
   ArrowLeft, Mail, Phone, Edit2, Check, X, CalendarDays, MapPin,
   Building2, Briefcase, Globe, Linkedin, Twitter, Instagram,
-  Tag, StickyNote, Cake, Trash2, ExternalLink, ChevronRight, ChevronDown,
+  Tag, StickyNote, Cake, Trash2, ExternalLink, ChevronRight, ChevronDown, MessageCircle,
 } from 'lucide-vue-next';
 import { api } from '../api';
 import { useDialog } from '../composables/useDialog';
@@ -265,24 +265,33 @@ const tabs = [
           </div>
 
           <!-- Action buttons -->
-          <div class="flex w-full gap-2">
+          <div class="flex w-full flex-col gap-2">
             <a
-              v-if="contact.phone"
-              :href="`tel:${contact.phone}`"
-              class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-1.5 text-xs font-medium text-slate-600 hover:border-primary hover:text-primary transition-colors"
+              :href="`/conversations?contact_id=${contact.id}`"
+              class="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-white transition-all"
+              style="background: linear-gradient(135deg, #F69008 0%, #D97706 100%); box-shadow: 0 4px 14px rgba(246,144,8,0.35);"
             >
-              <Phone class="h-3.5 w-3.5" /> Llamar
+              <MessageCircle class="h-4 w-4" /> Ver conversaciones
             </a>
-            <a
-              v-if="contact.email"
-              :href="`mailto:${contact.email}`"
-              class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-1.5 text-xs font-medium text-slate-600 hover:border-primary hover:text-primary transition-colors"
-            >
-              <Mail class="h-3.5 w-3.5" /> Email
-            </a>
-            <button class="btn btn-primary btn-sm flex-1 justify-center" @click="openEdit">
-              <Edit2 class="h-3.5 w-3.5" /> Editar
-            </button>
+            <div class="flex gap-2">
+              <a
+                v-if="contact.phone"
+                :href="`tel:${contact.phone}`"
+                class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-1.5 text-xs font-medium text-slate-600 hover:border-primary hover:text-primary transition-colors"
+              >
+                <Phone class="h-3.5 w-3.5" /> Llamar
+              </a>
+              <a
+                v-if="contact.email"
+                :href="`mailto:${contact.email}`"
+                class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-1.5 text-xs font-medium text-slate-600 hover:border-primary hover:text-primary transition-colors"
+              >
+                <Mail class="h-3.5 w-3.5" /> Email
+              </a>
+              <button class="btn btn-primary btn-sm flex-1 justify-center" @click="openEdit">
+                <Edit2 class="h-3.5 w-3.5" /> Editar
+              </button>
+            </div>
           </div>
         </div>
 

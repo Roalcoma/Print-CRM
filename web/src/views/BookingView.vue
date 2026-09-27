@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
+import BizSelect from '../components/BizSelect.vue';
 import { ChevronLeft, ChevronRight, Clock, Calendar, CheckCircle, AlertCircle, Globe, ChevronDown, Search, Check, MapPin } from 'lucide-vue-next';
 
 const route = useRoute();
@@ -62,6 +63,11 @@ const TZ_LIST = [
 ];
 
 const systemTzInList = TZ_LIST.flatMap(g => g.zones).some(z => z.id === systemTz);
+// Opciones agrupadas para el selector (la zona del sistema va primero si no está en la lista)
+const tzOptions = [
+  ...(systemTzInList ? [] : [{ value: systemTz, label: `${systemCity} (auto)` }]),
+  ...TZ_LIST.flatMap(g => g.zones.map(z => ({ value: z.id, label: z.label, group: g.group }))),
+];
 
 // Label legible para la TZ del calendario (para mostrar al visitante)
 const calTzLabel = computed(() => {
@@ -219,7 +225,7 @@ async function submit() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center p-4">
+  <div class="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 flex flex-col items-center justify-center p-4">
 
     <!-- Loading -->
     <div v-if="step === 'loading'" class="flex flex-col items-center gap-3 text-slate-500">
@@ -287,118 +293,119 @@ async function submit() {
 
     <!-- Panel principal de booking -->
     <div v-else class="w-full max-w-3xl bg-white rounded-2xl shadow-xl overflow-hidden">
-      <div class="flex flex-col md:flex-row min-h-[540px]">
+      <div class="flex flex-col md:flex-row">
 
         <!-- ── Panel izquierdo ────────────────────────────────────────────── -->
-        <div class="md:w-64 shrink-0 p-6 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col gap-4">
+        <div class="md:w-64 shrink-0 md:border-r border-slate-100 flex flex-col">
 
-          <!-- Logo o avatar -->
-          <div>
-            <img v-if="calendar?.logo_url"
-              :src="calendar.logo_url"
-              alt="Logo"
-              class="h-14 w-14 rounded-2xl object-cover border border-slate-100 shadow-sm"
-            />
+          <!-- Header compacto en móvil (logo + nombre + duración en fila) -->
+          <div class="flex items-center gap-3 p-4 md:hidden border-b border-slate-100">
+            <img v-if="calendar?.logo_url" :src="calendar.logo_url" alt="Logo"
+              class="h-10 w-10 rounded-xl object-cover border border-slate-100 shadow-sm shrink-0" />
             <div v-else
-              class="flex h-14 w-14 items-center justify-center rounded-2xl text-white text-xl font-bold shadow-sm"
+              class="flex h-10 w-10 items-center justify-center rounded-xl text-white text-base font-bold shadow-sm shrink-0"
               :style="`background:${calendar?.color}`">
               {{ (calendar?.owner_name ?? 'C')[0].toUpperCase() }}
             </div>
+            <div class="min-w-0">
+              <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">{{ calendar?.owner_name }}</p>
+              <h1 class="text-sm font-bold text-slate-900 leading-tight truncate">{{ calendar?.name }}</h1>
+            </div>
+            <div class="ml-auto flex items-center gap-1 text-xs text-slate-500 shrink-0">
+              <Clock class="h-3.5 w-3.5" :style="`color:${calendar?.color}`" />
+              <span>{{ calendar?.duration_minutes }} min</span>
+            </div>
           </div>
 
-          <div>
-            <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">{{ calendar?.owner_name }}</p>
-            <h1 class="text-lg font-bold text-slate-900 mt-0.5 leading-tight">{{ calendar?.name }}</h1>
+          <!-- Panel izquierdo completo en desktop -->
+          <div class="hidden md:flex flex-col gap-4 p-6 flex-1">
+            <div>
+              <img v-if="calendar?.logo_url" :src="calendar.logo_url" alt="Logo"
+                class="h-14 w-14 rounded-2xl object-cover border border-slate-100 shadow-sm" />
+              <div v-else
+                class="flex h-14 w-14 items-center justify-center rounded-2xl text-white text-xl font-bold shadow-sm"
+                :style="`background:${calendar?.color}`">
+                {{ (calendar?.owner_name ?? 'C')[0].toUpperCase() }}
+              </div>
+            </div>
+            <div>
+              <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">{{ calendar?.owner_name }}</p>
+              <h1 class="text-lg font-bold text-slate-900 mt-0.5 leading-tight">{{ calendar?.name }}</h1>
+            </div>
+            <div class="flex items-center gap-2 text-sm text-slate-500">
+              <Clock class="h-4 w-4 shrink-0" :style="`color:${calendar?.color}`" />
+              <span>{{ calendar?.duration_minutes }} minutos</span>
+            </div>
+            <div class="rounded-xl border border-slate-100 bg-slate-50 p-3 space-y-2">
+              <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Tu zona horaria</p>
+              <div class="flex items-center gap-1.5">
+                <Globe class="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                <div class="min-w-0 flex-1">
+                  <BizSelect v-model="visitorTz" searchable :options="tzOptions" input-class="bg-transparent py-0.5 text-xs text-slate-700" />
+                </div>
+              </div>
+              <p v-if="calendar?.timezone !== visitorTz" class="text-[10px] text-slate-400 leading-tight">
+                Agenda en {{ calTzLabel || calendar?.timezone }}
+              </p>
+            </div>
+            <p v-if="calendar?.description" class="text-sm text-slate-500 leading-relaxed">{{ calendar.description }}</p>
+            <div v-if="calendar?.custom_message"
+              class="mt-auto rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 leading-relaxed">
+              {{ calendar.custom_message }}
+            </div>
+            <div v-if="step !== 'pick-date'" class="flex items-center gap-1 text-xs text-slate-400 mt-auto">
+              <button class="hover:text-slate-700 cursor-pointer transition-colors" @click="backToDate">Fecha</button>
+              <span>/</span>
+              <button v-if="step === 'form'" class="hover:text-slate-700 cursor-pointer transition-colors" @click="backToTime">Hora</button>
+              <span v-if="step === 'form'">/</span>
+              <span class="font-semibold text-slate-700">{{ step === 'pick-time' ? 'Hora' : 'Tus datos' }}</span>
+            </div>
           </div>
 
-          <div class="flex items-center gap-2 text-sm text-slate-500">
-            <Clock class="h-4 w-4 shrink-0" :style="`color:${calendar?.color}`" />
-            <span>{{ calendar?.duration_minutes }} minutos</span>
-          </div>
-
-          <!-- Zona horaria del visitante -->
-          <div class="rounded-xl border border-slate-100 bg-slate-50 p-3 space-y-2">
-            <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Tu zona horaria</p>
+          <!-- Zona horaria compacta en móvil (solo en paso 1) -->
+          <div v-if="step === 'pick-date'" class="md:hidden px-4 py-2 border-b border-slate-100">
             <div class="flex items-center gap-1.5">
               <Globe class="h-3.5 w-3.5 shrink-0 text-slate-400" />
-              <select
-                v-model="visitorTz"
-                class="flex-1 min-w-0 bg-transparent text-xs text-slate-700 outline-none cursor-pointer"
-              >
-                <option v-if="!systemTzInList" :value="systemTz">{{ systemCity }} (auto)</option>
-                <optgroup v-for="group in TZ_LIST" :key="group.group" :label="group.group">
-                  <option v-for="z in group.zones" :key="z.id" :value="z.id">{{ z.label }}</option>
-                </optgroup>
-              </select>
+              <div class="min-w-0 flex-1">
+                <BizSelect v-model="visitorTz" searchable :options="tzOptions" input-class="bg-transparent py-1 text-xs text-slate-600" />
+              </div>
             </div>
-            <p v-if="calendar?.timezone !== visitorTz"
-              class="text-[10px] text-slate-400 leading-tight">
-              Agenda en {{ calTzLabel || calendar?.timezone }}
-            </p>
-          </div>
-
-          <p v-if="calendar?.description" class="text-sm text-slate-500 leading-relaxed">
-            {{ calendar.description }}
-          </p>
-
-          <div v-if="calendar?.custom_message"
-            class="mt-auto rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 leading-relaxed">
-            {{ calendar.custom_message }}
-          </div>
-
-          <!-- Breadcrumb (pasos 2 y 3) -->
-          <div v-if="step !== 'pick-date'" class="flex items-center gap-1 text-xs text-slate-400 mt-auto">
-            <button class="hover:text-slate-700 cursor-pointer transition-colors" @click="backToDate">Fecha</button>
-            <span>/</span>
-            <button v-if="step === 'form'" class="hover:text-slate-700 cursor-pointer transition-colors" @click="backToTime">Hora</button>
-            <span v-if="step === 'form'">/</span>
-            <span class="font-semibold text-slate-700">
-              {{ step === 'pick-time' ? 'Hora' : 'Tus datos' }}
-            </span>
           </div>
         </div>
 
         <!-- ── Panel derecho ──────────────────────────────────────────────── -->
-        <div class="flex-1 p-6 flex flex-col overflow-hidden">
+        <div class="flex-1 p-4 sm:p-6 flex flex-col min-h-[420px]">
 
           <!-- PASO 1: Mini calendario mensual -->
           <template v-if="step === 'pick-date'">
-            <h2 class="text-base font-semibold text-slate-800 mb-5">Selecciona un día</h2>
+            <h2 class="text-base font-semibold text-slate-800 mb-4">Selecciona un día</h2>
 
             <div v-if="allSlots.length === 0" class="flex-1 flex items-center justify-center text-sm text-slate-400">
               No hay horarios disponibles en los próximos días.
             </div>
 
             <div v-else class="flex-1 flex flex-col">
-              <!-- Navegación mes -->
               <div class="mb-4 flex items-center justify-between">
-                <button
-                  class="rounded-lg p-1.5 transition-colors cursor-pointer"
+                <button class="rounded-lg p-1.5 transition-colors cursor-pointer"
                   :class="canGoPrev ? 'text-slate-500 hover:bg-slate-100 hover:text-slate-800' : 'text-slate-200 cursor-not-allowed'"
-                  :disabled="!canGoPrev"
-                  @click="prevMonth">
+                  :disabled="!canGoPrev" @click="prevMonth">
                   <ChevronLeft class="h-5 w-5" />
                 </button>
                 <span class="text-sm font-semibold text-slate-800 capitalize">
                   {{ MONTHS_ES[calView.getMonth()] }} {{ calView.getFullYear() }}
                 </span>
-                <button
-                  class="rounded-lg p-1.5 transition-colors cursor-pointer"
+                <button class="rounded-lg p-1.5 transition-colors cursor-pointer"
                   :class="canGoNext ? 'text-slate-500 hover:bg-slate-100 hover:text-slate-800' : 'text-slate-200 cursor-not-allowed'"
-                  :disabled="!canGoNext"
-                  @click="nextMonth">
+                  :disabled="!canGoNext" @click="nextMonth">
                   <ChevronRight class="h-5 w-5" />
                 </button>
               </div>
 
-              <!-- Cabecera días de semana -->
               <div class="mb-1 grid grid-cols-7 text-center">
-                <span v-for="d in DAYS_ES" :key="d" class="text-[11px] font-semibold uppercase tracking-wide text-slate-400 py-1">
-                  {{ d }}
-                </span>
+                <span v-for="d in DAYS_ES" :key="d"
+                  class="text-[11px] font-semibold uppercase tracking-wide text-slate-400 py-1">{{ d }}</span>
               </div>
 
-              <!-- Grid de semanas -->
               <div class="space-y-1">
                 <div v-for="(week, wi) in calWeeks" :key="wi" class="grid grid-cols-7 gap-0.5">
                   <template v-for="(cell, ci) in week" :key="ci">
@@ -411,23 +418,15 @@ async function submit() {
                             ? 'text-white font-semibold shadow-sm'
                             : 'text-slate-700 hover:font-semibold cursor-pointer'
                           : 'text-slate-300 cursor-not-allowed',
-                        cell.isToday && selDate !== cell.dateStr && cell.available
-                          ? 'ring-1 ring-inset'
-                          : '',
+                        cell.isToday && selDate !== cell.dateStr && cell.available ? 'ring-1 ring-inset' : '',
                       ]"
-                      :style="selDate === cell.dateStr
-                        ? `background:${calendar?.color}`
-                        : cell.isToday && cell.available
-                          ? `ring-color:${calendar?.color}`
-                          : ''"
+                      :style="selDate === cell.dateStr ? `background:${calendar?.color}` : cell.isToday && cell.available ? `ring-color:${calendar?.color}` : ''"
                       :disabled="!cell.available"
-                      @click="pickDate(cell.dateStr)"
-                    >
+                      @click="pickDate(cell.dateStr)">
                       {{ cell.day }}
                       <span v-if="cell.available && selDate !== cell.dateStr"
                         class="absolute bottom-1 left-1/2 -translate-x-1/2 h-1 w-1 rounded-full"
-                        :style="`background:${calendar?.color}`"
-                      ></span>
+                        :style="`background:${calendar?.color}`"></span>
                     </button>
                   </template>
                 </div>
@@ -437,14 +436,14 @@ async function submit() {
 
           <!-- PASO 2: Elegir hora -->
           <template v-else-if="step === 'pick-time'">
-            <div class="flex items-center gap-2 mb-5">
+            <div class="flex items-center gap-2 mb-4">
               <button class="rounded-lg p-1 text-slate-400 hover:bg-slate-100 cursor-pointer transition-colors" @click="backToDate">
                 <ChevronLeft class="h-5 w-5" />
               </button>
               <h2 class="text-base font-semibold text-slate-800 capitalize">{{ formatDate(selDate) }}</h2>
             </div>
-
-            <div class="grid grid-cols-3 gap-2 overflow-auto flex-1 content-start">
+            <!-- 2 cols en móvil, 3 en sm+ -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 overflow-auto flex-1 content-start">
               <button
                 v-for="utcIso in timesForDate"
                 :key="utcIso"
@@ -453,8 +452,7 @@ async function submit() {
                   ? 'border-transparent text-white shadow-sm'
                   : 'border-slate-200 text-slate-700 hover:border-[#F69008]/60 hover:bg-[#F69008]/5'"
                 :style="selTime === utcIso ? `background:${calendar?.color}` : ''"
-                @click="pickTime(utcIso)"
-              >
+                @click="pickTime(utcIso)">
                 {{ slotDisplayTime(utcIso) }}
               </button>
             </div>
@@ -468,10 +466,9 @@ async function submit() {
               </button>
               <h2 class="text-base font-semibold text-slate-800">Tus datos</h2>
             </div>
-            <p class="text-xs text-slate-400 mb-5 ml-8 capitalize">
+            <p class="text-xs text-slate-400 mb-4 ml-8 capitalize">
               {{ formatDate(selDate) }} · {{ slotDisplayTime(selTime) }} · {{ calendar?.duration_minutes }} min
             </p>
-
             <div class="space-y-3 flex-1">
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Nombre *</label>
@@ -494,7 +491,6 @@ async function submit() {
                   class="w-full resize-none rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-[#F69008] focus:ring-2 focus:ring-[#F69008]/20" />
               </div>
             </div>
-
             <button
               :disabled="saving || !form.name.trim() || !form.email.trim()"
               class="mt-5 w-full rounded-xl py-3 text-sm font-bold text-white shadow-sm transition-opacity disabled:opacity-60 cursor-pointer"

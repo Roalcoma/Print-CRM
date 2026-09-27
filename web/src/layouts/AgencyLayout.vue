@@ -52,7 +52,7 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile));
 </script>
 
 <template>
-  <div class="flex h-screen bg-[#F1F5F9] text-slate-900">
+  <div class="flex h-screen bg-canvas text-slate-900">
     <!-- Backdrop móvil -->
     <Transition name="backdrop">
       <div v-if="mobileOpen" class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm md:hidden" @click="mobileOpen = false"></div>
@@ -61,14 +61,14 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile));
     <!-- Sidebar -->
     <Transition name="mobile-drawer">
       <aside v-show="!isMobile || mobileOpen"
-        class="flex w-[220px] flex-shrink-0 flex-col bg-[#111827] shadow-2xl"
+        class="sidebar-ink flex w-[220px] flex-shrink-0 flex-col shadow-2xl"
         :class="isMobile ? 'fixed inset-y-0 left-0 z-[60]' : ''">
       <!-- Logo -->
-      <div class="flex h-16 items-center gap-3 border-b border-slate-800/60 px-5">
-        <img src="/isotipo.png" alt="Rocco" class="h-9 w-9 flex-shrink-0 object-contain" />
+      <div class="flex h-16 items-center gap-3 border-b border-white/[0.07] px-5">
+        <img src="/isotipo-mark.png" alt="Rocco" class="brand-mark h-8 w-auto flex-shrink-0 object-contain" />
         <div class="leading-tight">
-          <p class="text-[15px] font-bold tracking-wide text-white">Rocco</p>
-          <p class="text-[10px] text-slate-500 uppercase tracking-widest">Backoffice</p>
+          <p class="font-display text-[19px] font-extrabold leading-none tracking-tight text-white">rocco<span class="text-[#F69008]">.</span></p>
+          <p class="mt-0.5 text-[10px] uppercase tracking-widest text-slate-400">Backoffice</p>
         </div>
       </div>
 
@@ -133,7 +133,7 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile));
     </Transition>
 
     <!-- Main content -->
-    <div class="flex flex-1 flex-col overflow-hidden bg-[#F1F5F9]">
+    <div class="flex flex-1 flex-col overflow-hidden bg-canvas">
       <!-- Header -->
       <header class="flex h-16 flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 shadow-sm sm:px-6">
         <div class="flex items-center gap-3">

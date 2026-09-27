@@ -55,6 +55,27 @@ const breadcrumb = computed(() => {
 const isDark    = computed(() => ((auth.preferences.sidebarTheme as string) ?? 'dark') === 'dark');
 const collapsed = computed(() => !!(auth.preferences.sidebarCollapsed as boolean));
 
+// ── Búsqueda global: busca contactos (⌘K / Ctrl+K enfoca el buscador) ────────
+const globalQuery = ref('');
+const sidebarSearchEl = ref<HTMLInputElement | null>(null);
+const headerSearchEl  = ref<HTMLInputElement | null>(null);
+function globalSearch() {
+  const q = globalQuery.value.trim();
+  if (!q || !auth.can('contacts')) return;
+  router.push({ path: '/contacts', query: { q } });
+  globalQuery.value = '';
+  (document.activeElement as HTMLElement | null)?.blur();
+}
+function onSearchShortcut(e: KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    const el = !collapsed.value && !isMobile.value ? sidebarSearchEl.value : headerSearchEl.value;
+    el?.focus();
+  }
+}
+onMounted(() => document.addEventListener('keydown', onSearchShortcut));
+onUnmounted(() => document.removeEventListener('keydown', onSearchShortcut));
+
 function toggleSidebar() {
   auth.savePreferences({ sidebarCollapsed: !collapsed.value });
 }
@@ -113,18 +134,18 @@ const currentAccountInitial = computed(() => {
 // ── Theme tokens ──────────────────────────────────────────────────────────────
 const s = computed(() => isDark.value
   ? {
-      wrap:             'bg-[#111827] text-slate-400 shadow-xl',
-      groupLabel:       'text-slate-600',
-      activeItem:       'bg-[#F69008]/10 text-white font-semibold',
-      inactiveItem:     'text-slate-400 hover:bg-[#1f2937] hover:text-white',
+      wrap:             'sidebar-ink text-slate-400 shadow-xl',
+      groupLabel:       'text-slate-500/80',
+      activeItem:       'bg-gradient-to-r from-[#F69008]/20 to-[#F69008]/[0.03] text-white font-semibold',
+      inactiveItem:     'text-slate-400 hover:bg-white/[0.06] hover:text-white',
       accent:           'bg-[#F69008]',
-      footerBorder:     'border-slate-800/60',
-      settingsActive:   'bg-[#F69008]/10 text-white font-semibold',
-      settingsInactive: 'text-slate-400 hover:bg-[#1f2937] hover:text-white',
-      divider:          'bg-slate-800',
-      navDivider:       'bg-slate-700/60',
-      searchBg:         'bg-[#1f2937] border-slate-700 placeholder-slate-600 text-slate-300 focus:border-[#F69008]/50',
-      searchIcon:       'text-slate-600',
+      footerBorder:     'border-white/[0.07]',
+      settingsActive:   'bg-gradient-to-r from-[#F69008]/20 to-[#F69008]/[0.03] text-white font-semibold',
+      settingsInactive: 'text-slate-400 hover:bg-white/[0.06] hover:text-white',
+      divider:          'bg-white/[0.07]',
+      navDivider:       'bg-white/10',
+      searchBg:         'bg-white/[0.05] border-white/10 placeholder-slate-500 text-slate-200 focus:border-[#F69008]/50 focus:bg-white/[0.08]',
+      searchIcon:       'text-slate-500',
     }
   : {
       wrap:             'bg-white border-r border-slate-200',
@@ -144,7 +165,7 @@ const s = computed(() => isDark.value
 </script>
 
 <template>
-  <div class="flex h-screen bg-[#F1F5F9] text-slate-900">
+  <div class="flex h-screen bg-canvas text-slate-900">
 
     <!-- ── Backdrop móvil ─────────────────────────────────────────────────── -->
     <Transition name="backdrop">
@@ -168,9 +189,9 @@ const s = computed(() => isDark.value
         >
         <!-- Logo -->
         <div class="flex h-16 flex-shrink-0 items-center gap-3 px-4">
-          <img src="/isotipo.png" alt="Rocco" class="h-9 w-9 flex-shrink-0 object-contain" />
-          <span class="sidebar-label text-[17px] font-bold tracking-tight leading-none"
-            :class="isDark ? 'text-white' : 'text-slate-900'">Rocco</span>
+          <img src="/isotipo-mark.png" alt="Rocco" class="brand-mark h-8 w-auto flex-shrink-0 object-contain" />
+          <span class="sidebar-label font-display text-[21px] font-extrabold leading-none tracking-tight"
+            :class="isDark ? 'text-white' : 'text-ink'">rocco<span class="text-[#F69008]">.</span></span>
         </div>
 
         <!-- Account switcher trigger -->
@@ -220,7 +241,10 @@ const s = computed(() => isDark.value
           <div class="relative">
             <Search class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2" :class="s.searchIcon" />
             <input
-              placeholder="Buscar… ⌘K"
+              ref="sidebarSearchEl"
+              v-model="globalQuery"
+              placeholder="Buscar contactos…  ⌘K"
+              @keydown.enter="globalSearch"
               class="w-full rounded-lg border py-1.5 pl-8 pr-3 text-[13px] transition-all focus:outline-none focus:ring-1 focus:ring-[#F69008]/30"
               :class="s.searchBg"
             />
@@ -342,7 +366,10 @@ const s = computed(() => isDark.value
           <div class="relative hidden sm:block">
             <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
-              placeholder="Buscar…"
+              ref="headerSearchEl"
+              v-model="globalQuery"
+              placeholder="Buscar contactos…"
+              @keydown.enter="globalSearch"
               class="w-44 rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm transition-all focus:border-primary focus:bg-white focus:shadow-sm focus:ring-2 focus:ring-primary/20 focus:outline-none lg:w-52"
             />
           </div>

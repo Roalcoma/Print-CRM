@@ -96,6 +96,9 @@ export interface Opportunity {
   contact_last_name: string | null;
   contact_email: string | null;
   contact_phone: string | null;
+  stage_name?: string;
+  pipeline_name?: string;
+  stage_color?: string;
 }
 
 export interface Note {

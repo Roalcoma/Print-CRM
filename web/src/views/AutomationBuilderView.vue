@@ -294,7 +294,7 @@ function stepPreview(step: Step): string {
     </div>
 
     <!-- ── Body ─────────────────────────────────────────────────────────────── -->
-    <div class="flex flex-1 overflow-hidden">
+    <div class="relative flex flex-1 overflow-hidden">
 
       <!-- Canvas -->
       <div
@@ -386,33 +386,39 @@ function stepPreview(step: Step): string {
             </button>
           </div>
 
-          <!-- Step type picker popup -->
-          <Transition name="picker-fade">
-            <div v-if="showStepPicker" class="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-dropdown">
-              <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tipo de paso</p>
-                <button class="rounded p-1 text-slate-400 hover:text-slate-700" @click="showStepPicker = false">
-                  <X class="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <div class="grid grid-cols-2 gap-1 p-2">
-                <button
-                  v-for="(meta, type) in STEP_META"
-                  :key="type"
-                  class="flex items-center gap-2.5 rounded-lg p-3 text-left transition-colors hover:bg-slate-50"
-                  @click="addStep(type as StepType)"
-                >
-                  <div class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg" :class="meta.bg">
-                    <component :is="meta.icon" class="h-3.5 w-3.5" :class="meta.color" />
-                  </div>
-                  <span class="text-[12px] font-medium text-slate-700">{{ meta.label }}</span>
-                </button>
-              </div>
-            </div>
-          </Transition>
-
         </div>
       </div>
+
+      <!-- Step type picker — overlay flotante centrado en el canvas -->
+      <Transition name="picker-fade">
+        <div
+          v-if="showStepPicker"
+          class="absolute inset-0 z-30 flex items-center justify-center bg-black/10"
+          @click.self="showStepPicker = false"
+        >
+          <div class="w-[420px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+              <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tipo de paso</p>
+              <button class="rounded p-1 text-slate-400 hover:text-slate-700" @click="showStepPicker = false">
+                <X class="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div class="grid grid-cols-2 gap-1 p-2">
+              <button
+                v-for="(meta, type) in STEP_META"
+                :key="type"
+                class="flex items-center gap-2.5 rounded-lg p-3 text-left transition-colors hover:bg-slate-50"
+                @click="addStep(type as StepType)"
+              >
+                <div class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg" :class="meta.bg">
+                  <component :is="meta.icon" class="h-3.5 w-3.5" :class="meta.color" />
+                </div>
+                <span class="text-[12px] font-medium text-slate-700">{{ meta.label }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
 
       <!-- ── Right config panel ─────────────────────────────────────────────── -->
       <Transition name="panel-slide">

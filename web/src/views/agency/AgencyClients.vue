@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { Plus, Search, ChevronRight, X, Copy, Check, Eye, EyeOff, Infinity } from 'lucide-vue-next';
 import { agencyApi } from '../../agencyApi';
+import BizSelect from '../../components/BizSelect.vue';
 
 interface AgencyClient {
   id: string;
@@ -209,33 +210,9 @@ const totalPages = computed(() => Math.ceil(total.value / 20));
           class="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder-slate-400 focus:border-[#F69008] focus:ring-2 focus:ring-[#F69008]/20 focus:outline-none transition-all"
         />
       </div>
-      <select
-        v-model="filterStatus"
-        class="rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-8 text-sm text-slate-700 focus:border-[#F69008] focus:outline-none cursor-pointer"
-      >
-        <option value="">Todos los estados</option>
-        <option value="active">Activo</option>
-        <option value="trial">Trial</option>
-        <option value="suspended">Suspendido</option>
-        <option value="cancelled">Cancelado</option>
-      </select>
-      <select
-        v-model="filterPlan"
-        class="rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-8 text-sm text-slate-700 focus:border-[#F69008] focus:outline-none cursor-pointer"
-      >
-        <option value="">Todos los planes</option>
-        <option value="starter">Starter</option>
-        <option value="pro">Pro</option>
-        <option value="enterprise">Enterprise</option>
-      </select>
-      <select
-        v-model="filterType"
-        class="rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-8 text-sm text-slate-700 focus:border-[#F69008] focus:outline-none cursor-pointer"
-      >
-        <option value="">Todos los tipos</option>
-        <option value="own">Propias</option>
-        <option value="client">Clientes</option>
-      </select>
+      <div class="w-44"><BizSelect v-model="filterStatus" placeholder="Todos los estados" input-class="rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-3 text-sm text-slate-700" :options="[{ value: 'active', label: 'Activo' }, { value: 'trial', label: 'Trial' }, { value: 'suspended', label: 'Suspendido' }, { value: 'cancelled', label: 'Cancelado' }]" /></div>
+      <div class="w-44"><BizSelect v-model="filterPlan" placeholder="Todos los planes" input-class="rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-3 text-sm text-slate-700" :options="[{ value: 'starter', label: 'Starter' }, { value: 'pro', label: 'Pro' }, { value: 'enterprise', label: 'Enterprise' }]" /></div>
+      <div class="w-40"><BizSelect v-model="filterType" placeholder="Todos los tipos" input-class="rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-3 text-sm text-slate-700" :options="[{ value: 'own', label: 'Propias' }, { value: 'client', label: 'Clientes' }]" /></div>
     </div>
 
     <!-- Error -->
@@ -435,20 +412,11 @@ const totalPages = computed(() => Math.ceil(total.value / 20));
               <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label class="mb-1 block text-xs font-medium text-slate-600">Plan</label>
-                  <select v-model="form.plan"
-                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-[#F69008] focus:outline-none cursor-pointer">
-                    <option value="starter">Starter</option>
-                    <option value="pro">Pro</option>
-                    <option value="enterprise">Enterprise</option>
-                  </select>
+                  <BizSelect v-model="form.plan" input-class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" :options="[{ value: 'starter', label: 'Starter' }, { value: 'pro', label: 'Pro' }, { value: 'enterprise', label: 'Enterprise' }]" />
                 </div>
                 <div>
                   <label class="mb-1 block text-xs font-medium text-slate-600">Estado</label>
-                  <select v-model="form.status"
-                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-[#F69008] focus:outline-none cursor-pointer">
-                    <option value="active">Activo</option>
-                    <option value="trial">Trial</option>
-                  </select>
+                  <BizSelect v-model="form.status" input-class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" :options="[{ value: 'active', label: 'Activo' }, { value: 'trial', label: 'Trial' }]" />
                 </div>
               </div>
 

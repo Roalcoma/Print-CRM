@@ -51,7 +51,8 @@ async function submit() {
       <div class="brand-content">
         <!-- Logo -->
         <div class="brand-logo-wrap">
-          <img src="/logo.png" alt="Rocco" class="brand-logo" />
+          <img src="/isotipo-mark.png" alt="" aria-hidden="true" class="brand-logo" />
+          <span class="brand-wordmark">rocco<span class="brand-dot">.</span></span>
         </div>
 
         <!-- Tagline -->
@@ -177,7 +178,7 @@ async function submit() {
   flex-direction: column;
   width: 36%;
   min-height: 100vh;
-  background: linear-gradient(160deg, #111318 0%, #1a1d25 60%, #141720 100%);
+  background: linear-gradient(160deg, #13243D 0%, #0E1B2E 60%, #0B1626 100%);
   overflow: hidden;
   padding: 3rem 2.5rem;
   flex-shrink: 0;
@@ -213,16 +214,32 @@ async function submit() {
 }
 
 .brand-logo-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   margin-bottom: 2.5rem;
 }
 .brand-logo {
-  height: 48px;
+  height: 52px;
+  width: auto;
   object-fit: contain;
-  filter: drop-shadow(0 0 20px rgba(246,144,8,0.3));
+  filter: drop-shadow(0 0 24px rgba(246,144,8,0.35));
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+.brand-logo-wrap:hover .brand-logo { transform: rotate(-14deg) scale(1.05); }
+.brand-wordmark {
+  font-family: var(--font-display);
+  font-size: 2.1rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+  line-height: 1;
+}
+.brand-dot { color: #F69008; }
 
 .brand-title {
-  font-size: 2.1rem;
+  font-family: var(--font-display);
+  font-size: 2.4rem;
   font-weight: 800;
   line-height: 1.15;
   color: #f1f5f9;

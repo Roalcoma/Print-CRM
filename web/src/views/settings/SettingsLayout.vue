@@ -91,7 +91,7 @@ const activeLabel = () => allItems.find(i => route.path.startsWith(i.to))?.label
     </aside>
 
     <!-- Contenido de la sección -->
-    <div class="flex flex-1 flex-col overflow-hidden bg-[#F1F5F9]">
+    <div class="flex flex-1 flex-col overflow-hidden bg-canvas">
       <RouterView />
     </div>
   </div>

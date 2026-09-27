@@ -5,14 +5,15 @@ import {
   Search, Plus, X, Send, Phone, Check, CheckCheck, Clock, FileText, Mic,
   MessageCircle, RefreshCw, Mail, Tag, CalendarDays, Briefcase, UserCircle2,
   ChevronRight, StickyNote, Trash2, MoreVertical, Play, Pause,
-  Inbox, MessageSquare, Star, CheckCircle, XCircle,
+  Inbox, MessageSquare, Star, CheckCircle, XCircle, ExternalLink,
 } from 'lucide-vue-next';
 import { api, getToken } from '../api';
 import { useDialog } from '../composables/useDialog';
-import type { Conversation, ConvMessage, Contact } from '../types';
+import type { Conversation, ConvMessage, Contact, Pipeline, Stage } from '../types';
 import { useWs } from '../composables/useWs';
 import LoadingState from '../components/LoadingState.vue';
 import Spinner from '../components/Spinner.vue';
+import BizSelect from '../components/BizSelect.vue';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 interface TimelineItem {
@@ -20,10 +21,9 @@ interface TimelineItem {
   ts: string;
   data: Record<string, unknown>;
 }
-interface OppItem { id: string; title: string; status: string; value: string; stage_name: string; stage_color: string | null; pipeline_name: string; created_at: string }
+interface OppItem { id: string; pipeline_id: string; stage_id: string; title: string; status: string; value: string; stage_name: string; stage_color: string | null; pipeline_name: string; created_at: string }
 interface ApptItem { id: string; title: string; status: string; start_at: string; meeting_url: string | null; created_at: string }
 interface ContactBundle { contact: Contact | null; opportunities: OppItem[]; appointments: ApptItem[]; conv_phone?: string | null }
-interface Pipeline { id: string; name: string; stages: { id: string; name: string; color: string }[] }
 
 // ── WebSocket ────────────────────────────────────────────────────────────────
 const { isConnected, on } = useWs();
@@ -178,6 +178,22 @@ const addOppPipelines = ref<Pipeline[]>([]);
 const addOppForm = ref({ title: '', pipeline_id: '', stage_id: '', value: '0' });
 const addingOpp = ref(false);
 const addOppStages = computed(() => addOppPipelines.value.find(p => p.id === addOppForm.value.pipeline_id)?.stages ?? []);
+
+// Caché de etapas por pipeline_id para el menú "Mover a etapa"
+const pipelineStagesCache = ref<Record<string, Stage[]>>({});
+const menuPos = ref({ top: 0, right: 0 });
+
+function openOppMenu(opp: { id: string; pipeline_id: string }, event: Event) {
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  menuPos.value = { top: rect.bottom + 4, right: window.innerWidth - rect.right };
+  activeOppMenu.value = activeOppMenu.value === opp.id ? null : opp.id;
+  if (activeOppMenu.value && opp.pipeline_id && !pipelineStagesCache.value[opp.pipeline_id]) {
+    api.get<Pipeline[]>('/pipelines').then(pipelines => {
+      const pipeline = pipelines.find(p => p.id === opp.pipeline_id);
+      if (pipeline) pipelineStagesCache.value[opp.pipeline_id] = pipeline.stages;
+    }).catch(() => {});
+  }
+}
 
 function closeOppMenu() { activeOppMenu.value = null; }
 onMounted(() => document.addEventListener('click', closeOppMenu));
@@ -346,12 +362,14 @@ async function openAddOpp() {
   if (!addOppPipelines.value.length) {
     addOppPipelines.value = await api.get<Pipeline[]>('/pipelines');
   }
-  addOppForm.value = { title: '', pipeline_id: '', stage_id: '', value: '0' };
+  // Preselecciona el primer pipeline y su primera etapa (el caso más común)
+  const first = addOppPipelines.value[0];
+  addOppForm.value = { title: '', pipeline_id: first?.id ?? '', stage_id: first?.stages[0]?.id ?? '', value: '0' };
   showAddOpp.value = true;
 }
 
 async function createOpportunity() {
-  if (!contactBundle.value?.contact) return;
+  if (!contactBundle.value?.contact || !addOppForm.value.pipeline_id || !addOppForm.value.stage_id) return;
   addingOpp.value = true;
   try {
     await api.post('/opportunities', {
@@ -387,6 +405,13 @@ async function updateOppStatus(id: string, status: 'open' | 'won' | 'lost') {
     const opp = contactBundle.value.opportunities.find(o => o.id === id);
     if (opp) opp.status = status;
   }
+}
+
+async function moveOppStage(opp: { id: string; pipeline_id: string; stage_id: string }, stage: Stage) {
+  activeOppMenu.value = null;
+  await api.patch(`/opportunities/${opp.id}`, { stage_id: stage.id });
+  const o = contactBundle.value?.opportunities.find(x => x.id === opp.id);
+  if (o) { o.stage_id = stage.id; o.stage_name = stage.name; o.stage_color = stage.color ?? null; }
 }
 
 async function deleteConversation(id: string) {
@@ -657,7 +682,7 @@ async function syncNames() {
 
       <!-- Lista -->
       <div class="flex-1 overflow-y-auto">
-        <LoadingState v-if="loading" label="Cargando…" compact />
+        <LoadingState v-if="loading" :skeleton="true" :rows="6" />
         <div v-else-if="conversations.length === 0" class="flex flex-col items-center gap-2 py-16 text-slate-500">
           <MessageCircle class="h-10 w-10 opacity-30" />
           <p class="text-sm font-medium">Sin conversaciones</p>
@@ -1028,20 +1053,12 @@ async function syncNames() {
                 class="space-y-2 border-b border-slate-100 bg-slate-50 px-4 pb-3 pt-2">
                 <input v-model="addOppForm.title" placeholder="Título *" required
                   class="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none" />
-                <select v-model="addOppForm.pipeline_id" required
-                  class="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none">
-                  <option value="">Pipeline…</option>
-                  <option v-for="p in addOppPipelines" :key="p.id" :value="p.id">{{ p.name }}</option>
-                </select>
-                <select v-model="addOppForm.stage_id" required :disabled="!addOppForm.pipeline_id"
-                  class="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none disabled:opacity-50">
-                  <option value="">Etapa…</option>
-                  <option v-for="s in addOppStages" :key="s.id" :value="s.id">{{ s.name }}</option>
-                </select>
+                <BizSelect v-model="addOppForm.pipeline_id" placeholder="Pipeline…" @update:model-value="addOppForm.stage_id = addOppStages[0]?.id ?? ''" :options="addOppPipelines.map(p => ({ value: p.id, label: p.name }))" input-class="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs" />
+                <BizSelect v-model="addOppForm.stage_id" placeholder="Etapa…" :disabled="!addOppForm.pipeline_id" :options="addOppStages.map(s => ({ value: s.id, label: s.name }))" input-class="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs" />
                 <input v-model="addOppForm.value" type="number" placeholder="Valor" min="0" step="0.01"
                   class="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none" />
                 <div class="flex gap-2">
-                  <button type="submit" :disabled="addingOpp"
+                  <button type="submit" :disabled="addingOpp || !addOppForm.pipeline_id || !addOppForm.stage_id"
                     class="flex-1 cursor-pointer rounded-md bg-primary py-1.5 text-xs font-semibold text-white disabled:opacity-60">
                     {{ addingOpp ? 'Creando…' : 'Crear' }}
                   </button>
@@ -1057,26 +1074,28 @@ async function syncNames() {
               class="px-4 py-6 text-center text-[11px] font-medium text-slate-500">Sin oportunidades</div>
 
             <div class="space-y-2 p-3">
-              <div v-for="o in contactBundle?.opportunities ?? []" :key="o.id"
-                class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                <div class="p-2.5">
-                  <div class="mb-1.5 flex items-center gap-1 text-[11px] text-slate-500">
-                    <span class="truncate font-medium">{{ o.pipeline_name }}</span>
-                    <ChevronRight class="h-3 w-3 flex-shrink-0 opacity-50" />
-                    <span class="flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold"
-                      :style="o.stage_color ? { background: o.stage_color + '25', color: o.stage_color } : {}"
-                      :class="!o.stage_color ? 'bg-slate-100 text-slate-600' : ''">
-                      {{ o.stage_name }}
-                    </span>
-                  </div>
-                  <a :href="`/contacts/${contactBundle?.contact?.id}`"
-                    class="truncate text-xs font-semibold text-slate-800 hover:text-primary hover:underline block">
-                    {{ o.title }}
-                  </a>
-                  <div class="mt-1 flex items-center justify-between">
-                    <span class="text-xs font-medium text-slate-700">${{ Number(o.value || 0).toLocaleString('es-VE') }}</span>
-                    <span class="text-[10px]">
-                      <span class="font-semibold rounded-full px-1.5 py-0.5"
+              <div v-for="o in contactBundle?.opportunities ?? []" :key="o.id" class="relative">
+                <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm cursor-pointer hover:border-primary/40 hover:shadow-md transition-all"
+                  @click.stop="openOppMenu(o, $event)">
+                  <div class="p-2.5">
+                    <!-- Pipeline > stage -->
+                    <div class="mb-1.5 flex items-center gap-1 text-[11px] text-slate-500">
+                      <span class="truncate font-medium">{{ o.pipeline_name }}</span>
+                      <ChevronRight class="h-3 w-3 flex-shrink-0 opacity-50" />
+                      <!-- Dot + nombre del stage, texto siempre legible -->
+                      <span class="flex-shrink-0 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-slate-600"
+                        :style="o.stage_color ? { background: o.stage_color + '20' } : { background: '#f1f5f9' }">
+                        <span class="h-1.5 w-1.5 rounded-full flex-shrink-0"
+                          :style="{ background: o.stage_color || '#94a3b8' }" />
+                        {{ o.stage_name }}
+                      </span>
+                    </div>
+                    <!-- Título -->
+                    <p class="truncate text-xs font-semibold text-slate-800">{{ o.title }}</p>
+                    <!-- Valor + estado -->
+                    <div class="mt-1 flex items-center justify-between">
+                      <span class="text-xs font-medium text-slate-700">${{ Number(o.value || 0).toLocaleString('es-VE') }}</span>
+                      <span class="font-semibold rounded-full px-1.5 py-0.5 text-[10px]"
                         :class="{
                           'bg-blue-50 text-blue-600': o.status==='open',
                           'bg-emerald-50 text-emerald-600': o.status==='won',
@@ -1084,40 +1103,65 @@ async function syncNames() {
                         }">
                         {{ { open:'Abierta', won:'Ganada', lost:'Perdida' }[o.status] ?? o.status }}
                       </span>
-                    </span>
-                  </div>
-                </div>
-                <div class="flex items-center justify-end border-t border-slate-100 bg-slate-50/60 px-2.5 py-1">
-                  <div class="relative" @click.stop>
-                    <button class="cursor-pointer rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
-                      @click="activeOppMenu = activeOppMenu === o.id ? null : o.id">
-                      <MoreVertical class="h-3.5 w-3.5" />
-                    </button>
-                    <div v-if="activeOppMenu === o.id"
-                      class="absolute bottom-8 right-0 z-30 min-w-[150px] rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                      <button v-if="o.status !== 'won'"
-                        class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-emerald-700 hover:bg-emerald-50"
-                        @click="updateOppStatus(o.id, 'won')">
-                        <CheckCircle class="h-3.5 w-3.5" /> Marcar como Ganada
-                      </button>
-                      <button v-if="o.status !== 'lost'"
-                        class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
-                        @click="updateOppStatus(o.id, 'lost')">
-                        <XCircle class="h-3.5 w-3.5" /> Marcar como Perdida
-                      </button>
-                      <button v-if="o.status !== 'open'"
-                        class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50"
-                        @click="updateOppStatus(o.id, 'open')">
-                        <RefreshCw class="h-3.5 w-3.5" /> Reabrir
-                      </button>
-                      <div class="my-1 border-t border-slate-100" />
-                      <button class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
-                        @click="deleteOpportunity(o.id)">
-                        <Trash2 class="h-3.5 w-3.5" /> Eliminar
-                      </button>
                     </div>
                   </div>
+                  <!-- Footer con hint visual del menú -->
+                  <div class="flex items-center justify-end border-t border-slate-100 bg-slate-50/60 px-2.5 py-1">
+                    <MoreVertical class="h-3.5 w-3.5 text-slate-300" />
+                  </div>
                 </div>
+
+                <!-- Dropdown en body vía Teleport para escapar de cualquier overflow -->
+                <Teleport to="body">
+                  <div v-if="activeOppMenu === o.id"
+                    class="fixed z-[9999] min-w-[170px] rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+                    :style="{ top: menuPos.top + 'px', right: menuPos.right + 'px' }"
+                    @click.stop>
+                    <!-- Ver contacto -->
+                    <a :href="`/contacts/${contactBundle?.contact?.id}`"
+                      class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                      @click="activeOppMenu = null">
+                      <ExternalLink class="h-3.5 w-3.5" /> Ver contacto
+                    </a>
+                    <!-- Mover a etapa -->
+                    <template v-if="pipelineStagesCache[o.pipeline_id]?.length">
+                      <div class="my-1 border-t border-slate-100" />
+                      <p class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Mover a etapa</p>
+                      <button
+                        v-for="stage in pipelineStagesCache[o.pipeline_id]"
+                        :key="stage.id"
+                        class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs hover:bg-slate-50"
+                        :class="stage.id === o.stage_id ? 'font-semibold text-primary' : 'text-slate-700'"
+                        @click="moveOppStage(o, stage)">
+                        <span class="h-2 w-2 rounded-full flex-shrink-0"
+                          :style="stage.color ? { background: stage.color } : { background: '#94a3b8' }" />
+                        {{ stage.name }}
+                      </button>
+                    </template>
+                    <!-- Estado -->
+                    <div class="my-1 border-t border-slate-100" />
+                    <button v-if="o.status !== 'won'"
+                      class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-emerald-700 hover:bg-emerald-50"
+                      @click="updateOppStatus(o.id, 'won')">
+                      <CheckCircle class="h-3.5 w-3.5" /> Marcar como Ganada
+                    </button>
+                    <button v-if="o.status !== 'lost'"
+                      class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
+                      @click="updateOppStatus(o.id, 'lost')">
+                      <XCircle class="h-3.5 w-3.5" /> Marcar como Perdida
+                    </button>
+                    <button v-if="o.status !== 'open'"
+                      class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50"
+                      @click="updateOppStatus(o.id, 'open')">
+                      <RefreshCw class="h-3.5 w-3.5" /> Reabrir
+                    </button>
+                    <div class="my-1 border-t border-slate-100" />
+                    <button class="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
+                      @click="deleteOpportunity(o.id)">
+                      <Trash2 class="h-3.5 w-3.5" /> Eliminar
+                    </button>
+                  </div>
+                </Teleport>
               </div>
             </div>
           </template>
@@ -1301,7 +1345,7 @@ async function syncNames() {
               </button>
 
               <Transition name="expand">
-                <form v-if="newChatShowManual" @submit.prevent="createChat" class="mt-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <form v-if="newChatShowManual" @submit.prevent="createChat()" class="mt-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div>
                     <label class="mb-1 block text-xs font-semibold text-slate-700">Teléfono <span class="text-red-500">*</span></label>
                     <input v-model="newPhone" placeholder="+58 414 000 0000" required

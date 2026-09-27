@@ -37,7 +37,7 @@ async function save() {
       <h3 class="text-[15px] font-semibold text-slate-900">Mi perfil</h3>
     </div>
 
-    <div class="flex-1 overflow-y-auto bg-[#F1F5F9] p-6">
+    <div class="flex-1 overflow-y-auto bg-canvas p-6">
       <div class="mx-auto max-w-lg space-y-5">
 
         <p v-if="error" class="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{{ error }}</p>

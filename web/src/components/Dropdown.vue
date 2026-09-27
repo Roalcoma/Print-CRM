@@ -2,7 +2,7 @@
 import { ref, onBeforeUnmount, nextTick } from 'vue';
 // Menú flotante genérico. El menú se teletransporta al <body> con posición fija,
 // así se superpone a todo y no lo recorta ningún contenedor con overflow.
-const props = withDefaults(defineProps<{ align?: 'left' | 'right'; width?: string; triggerClass?: string }>(), {
+const props = withDefaults(defineProps<{ align?: 'left' | 'right'; width?: string; triggerClass?: string; disabled?: boolean }>(), {
   align: 'left', width: '', triggerClass: 'inline-flex',
 });
 const open = ref(false);
@@ -14,7 +14,10 @@ function updatePos() {
   const el = triggerEl.value;
   if (!el) return;
   const r = el.getBoundingClientRect();
-  const w = props.width ? parseInt(props.width) : r.width;
+  // Un ancho en % (p. ej. '100%') se interpreta relativo al trigger, no al <body>.
+  const w = !props.width ? r.width
+    : props.width.endsWith('%') ? r.width * parseFloat(props.width) / 100
+    : parseInt(props.width);
   let left = props.align === 'right' ? r.right - w : r.left;
   left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
   let top = r.bottom + 6;
@@ -24,6 +27,7 @@ function updatePos() {
 }
 
 async function toggle() {
+  if (props.disabled && !open.value) return;
   open.value = !open.value;
   if (open.value) { await nextTick(); updatePos(); await nextTick(); updatePos(); listen(true); } else listen(false);
 }

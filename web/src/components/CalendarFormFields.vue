@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CalendarAvailability } from '../types';
 import { TIMEZONES } from '../utils/timezones';
+import BizSelect from './BizSelect.vue';
 
 const DAYS   = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const COLORS = ['#F69008','#60D0FA','#10B981','#8B5CF6','#EF4444','#F59E0B','#3B82F6','#EC4899','#6366F1'];
@@ -59,9 +60,7 @@ const emit  = defineEmits<{ autoSlug: [] }>();
       </div>
       <div>
         <label class="cf-label">Zona horaria</label>
-        <select v-model="form.timezone" class="cf-input cursor-pointer">
-          <option v-for="tz in TIMEZONES" :key="tz.value" :value="tz.value">{{ tz.label }}</option>
-        </select>
+        <BizSelect v-model="form.timezone" :options="TIMEZONES" input-class="cf-input" />
       </div>
     </div>
 
@@ -97,44 +96,19 @@ const emit  = defineEmits<{ autoSlug: [] }>();
           <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div>
               <label class="cf-label-sm">Duración</label>
-              <select v-model.number="form.duration_minutes" class="cf-input-sm cursor-pointer">
-                <option :value="15">15 min</option>
-                <option :value="30">30 min</option>
-                <option :value="45">45 min</option>
-                <option :value="60">1 hora</option>
-                <option :value="90">1.5 h</option>
-                <option :value="120">2 h</option>
-              </select>
+              <BizSelect v-model="form.duration_minutes" input-class="cf-input-sm" :options="[{ value: 15, label: '15 min' }, { value: 30, label: '30 min' }, { value: 45, label: '45 min' }, { value: 60, label: '1 hora' }, { value: 90, label: '1.5 h' }, { value: 120, label: '2 h' }]" />
             </div>
             <div>
               <label class="cf-label-sm">Buffer</label>
-              <select v-model.number="form.buffer_minutes" class="cf-input-sm cursor-pointer">
-                <option :value="0">Sin buffer</option>
-                <option :value="5">5 min</option>
-                <option :value="10">10 min</option>
-                <option :value="15">15 min</option>
-                <option :value="30">30 min</option>
-              </select>
+              <BizSelect v-model="form.buffer_minutes" input-class="cf-input-sm" :options="[{ value: 0, label: 'Sin buffer' }, { value: 5, label: '5 min' }, { value: 10, label: '10 min' }, { value: 15, label: '15 min' }, { value: 30, label: '30 min' }]" />
             </div>
             <div>
               <label class="cf-label-sm">Aviso mínimo</label>
-              <select v-model.number="form.min_notice_hours" class="cf-input-sm cursor-pointer">
-                <option :value="0">Sin mínimo</option>
-                <option :value="1">1 hora</option>
-                <option :value="2">2 horas</option>
-                <option :value="4">4 horas</option>
-                <option :value="24">1 día</option>
-                <option :value="48">2 días</option>
-              </select>
+              <BizSelect v-model="form.min_notice_hours" input-class="cf-input-sm" :options="[{ value: 0, label: 'Sin mínimo' }, { value: 1, label: '1 hora' }, { value: 2, label: '2 horas' }, { value: 4, label: '4 horas' }, { value: 24, label: '1 día' }, { value: 48, label: '2 días' }]" />
             </div>
             <div>
               <label class="cf-label-sm">Ventana</label>
-              <select v-model.number="form.max_advance_days" class="cf-input-sm cursor-pointer">
-                <option :value="14">2 semanas</option>
-                <option :value="30">1 mes</option>
-                <option :value="60">2 meses</option>
-                <option :value="90">3 meses</option>
-              </select>
+              <BizSelect v-model="form.max_advance_days" input-class="cf-input-sm" :options="[{ value: 14, label: '2 semanas' }, { value: 30, label: '1 mes' }, { value: 60, label: '2 meses' }, { value: 90, label: '3 meses' }]" />
             </div>
           </div>
           <div>

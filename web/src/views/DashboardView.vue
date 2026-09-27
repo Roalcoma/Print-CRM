@@ -6,7 +6,7 @@ import {
 } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
-import type { Contact, Pipeline, Opportunity, Task } from '../types';
+import type { ContactStats, Pipeline, Opportunity, Task } from '../types';
 import LoadingState from '../components/LoadingState.vue';
 import { useAuthStore } from '../stores/auth';
 
@@ -15,6 +15,7 @@ const router = useRouter();
 const loading = ref(true);
 
 const contacts = ref(0);
+const activeContacts = ref(0);
 const allOpps  = ref<Opportunity[]>([]);
 const tasks    = ref<Task[]>([]);
 const pipeline = ref<Pipeline | null>(null);
@@ -24,7 +25,7 @@ onMounted(async () => {
     const fetches: Promise<unknown>[] = [];
     if (auth.can('contacts')) {
       fetches.push(
-        api.get<Contact[]>('/contacts').then(r => { contacts.value = r.length; })
+        api.get<ContactStats>('/contacts/stats').then(r => { contacts.value = r.total; activeContacts.value = r.active; })
       );
     }
     if (auth.can('opportunities')) {
@@ -101,11 +102,22 @@ const moneyFull = (n: number) => {
   <div v-else class="flex h-full flex-col overflow-y-auto">
 
     <!-- ── Banner de bienvenida ──────────────────────────────────────────────── -->
-    <div class="flex-shrink-0 border-b border-slate-200 bg-white px-4 py-3 sm:px-6 sm:py-4">
-      <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="welcome-banner relative flex-shrink-0 overflow-hidden border-b border-[#eee7dc] bg-white px-4 py-5 sm:px-6 sm:py-6">
+      <!-- Textura cítrica (piel de naranja) que se desvanece hacia el centro -->
+      <div class="citrus-dots pointer-events-none absolute inset-y-0 right-0 w-1/2 [mask-image:linear-gradient(to_left,black,transparent)]"></div>
+
+      <div class="relative flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p class="text-[11px] font-medium capitalize text-slate-400">{{ todayStr }}</p>
-          <h1 class="mt-0.5 text-base font-bold text-slate-900 sm:text-[18px]">{{ greeting }}, {{ firstName }}</h1>
+          <p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D97706]">{{ todayStr }}</p>
+          <h1 class="mt-1 text-2xl font-extrabold text-ink sm:text-[28px]">{{ greeting }}, {{ firstName }}</h1>
+          <p class="mt-1 max-w-xl text-sm text-slate-500">
+            <template v-if="auth.can('opportunities') && openOpps.length">
+              Tienes <span class="font-semibold text-slate-700">{{ openOpps.length }} oportunidades abiertas</span>
+              por <span class="font-semibold text-[#D97706]">{{ moneyFull(openValue) }}</span><template v-if="pendingTasks">
+              y <span class="font-semibold text-slate-700">{{ pendingTasks }} {{ pendingTasks === 1 ? 'tarea pendiente' : 'tareas pendientes' }}</span></template>.
+            </template>
+            <template v-else>Todo en orden. Un buen momento para sumar nuevos contactos.</template>
+          </p>
         </div>
         <div class="flex items-center gap-2">
           <button
@@ -155,7 +167,7 @@ const moneyFull = (n: number) => {
           <div class="mt-3 flex items-center justify-between">
             <span class="badge-trend badge-trend--up">
               <ArrowUpRight class="h-3 w-3" />
-              activos
+              {{ activeContacts }} activos
             </span>
             <ChevronRight class="h-3.5 w-3.5 text-slate-300 transition-colors group-hover:text-slate-500" />
           </div>
@@ -298,14 +310,15 @@ const moneyFull = (n: number) => {
           </h2>
           <div v-if="stageStats.length" class="space-y-4">
             <div v-for="s in stageStats" :key="s.name" class="flex items-center gap-3">
-              <span class="h-2.5 w-2.5 flex-shrink-0 rounded-full" :style="{ background: s.color }"></span>
+              <span class="stage-vivid h-2.5 w-2.5 flex-shrink-0 rounded-full" :style="{ background: s.color, '--stage': s.color }"></span>
               <span class="w-32 truncate text-xs font-medium text-slate-600">{{ s.name }}</span>
               <div class="flex-1">
                 <div class="h-2 w-full rounded-full bg-slate-100">
                   <div
-                    class="h-2 rounded-full transition-all duration-700"
+                    class="stage-vivid h-2 rounded-full transition-all duration-700"
                     :style="{
                       background: s.color,
+                      '--stage': s.color,
                       width: `${openOpps.length > 0 ? Math.round((s.count / openOpps.length) * 100) : 0}%`
                     }"
                   ></div>
@@ -361,3 +374,12 @@ const moneyFull = (n: number) => {
   </div>
 </template>
 
+
+<style scoped>
+/* Los colores de etapa son pastel (pensados para fondos); en barras y puntos se intensifican */
+.stage-vivid { filter: saturate(2.6) brightness(0.9); }
+@supports (color: oklch(from red l c h)) {
+  .stage-vivid { filter: none; background: oklch(from var(--stage) calc(l - 0.18) calc(c + 0.1) h) !important; }
+}
+
+</style>

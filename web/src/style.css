@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&display=swap');
 @import 'tailwindcss';
 
 /* Tema del CRM: West Side #F69008 primario + Seagull #60D0FA acento. */
@@ -8,6 +8,14 @@
   --color-primary-light: #FEF3C7;
   --color-cta: #60D0FA;
   --font-sans: 'Roboto', ui-sans-serif, system-ui, sans-serif;
+  /* Display con carácter para títulos, cifras y wordmark (personalidad Rocco) */
+  --font-display: 'Bricolage Grotesque', 'Roboto', ui-sans-serif, sans-serif;
+
+  /* Identidad Rocco: naranja (fruta) + azul marino (wordmark) + lienzo cálido */
+  --color-ink: #13243D;
+  --color-ink-soft: #1C3150;
+  --color-leaf: #2F5D8A;
+  --color-canvas: #F6F4F0;
 
   /* Escala de fuentes ligeramente mayor para mejor legibilidad (GHL-style) */
   --text-xs: 0.8125rem;   /* 13px  (default 12px) */
@@ -24,6 +32,44 @@
 html {
   font-family: var(--font-sans);
 }
+
+/* Títulos de página y secciones principales con la fuente display */
+h1, h2, .font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.015em;
+}
+
+/* ── Sidebar oscuro con identidad: azul marino Rocco + brillo cítrico ─────── */
+.sidebar-ink {
+  background:
+    radial-gradient(120% 40% at 0% 0%, rgb(246 144 8 / 0.14), transparent 60%),
+    radial-gradient(90% 30% at 100% 100%, rgb(47 93 138 / 0.35), transparent 70%),
+    linear-gradient(180deg, #13243D 0%, #0E1B2E 100%);
+}
+/* El isotipo se inclina al pasar el cursor, como una naranja que rueda */
+.brand-mark { transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.brand-mark:hover { transform: rotate(-12deg) scale(1.06); }
+
+/* Textura cítrica: puntos sutiles como la piel de la naranja del logo */
+.citrus-dots {
+  background-image: radial-gradient(circle, rgb(246 144 8 / 0.28) 1px, transparent 1.4px);
+  background-size: 14px 14px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Spin — linear, 0.9s. will-change fuerza composición GPU */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.animate-spin {
+  animation: spin 0.9s linear infinite;
+  will-change: transform;
+}
+
 
 /* Campo de formulario reutilizable en vistas con @apply (evita @reference en scoped) */
 .input {
@@ -43,24 +89,62 @@ html {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 20%, transparent);
 }
 
+/* Campo estilo "negocio" (usado también por BizSelect) */
+.biz-input {
+  width: 100%;
+  border-radius: 8px;
+  border: 1.5px solid #E2E8F0;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: #0F172A;
+  background: #F8FAFC;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  outline: none;
+  font-family: inherit;
+  line-height: 1.4;
+}
+.biz-input:focus {
+  border-color: #F69008;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(246, 144, 8, 0.12);
+}
+.biz-input::placeholder { color: #94A3B8; }
+
 /* ── Stat card (Dashboard KPI) ──────────────────────────────────────────────── */
 .stat-card {
+  position: relative;
+  overflow: hidden;
   border-radius: 0.75rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #e7e2da;
   background: #ffffff;
   padding: 1.25rem;
   box-shadow: var(--shadow-card);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+/* Filo naranja que aparece al pasar el cursor */
+.stat-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--color-primary), #FBBF24);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .stat-card:hover {
   transform: translateY(-2px);
+  border-color: #f3d3a6;
   box-shadow: var(--shadow-elevated);
 }
+.stat-card:hover::before { transform: scaleX(1); }
 .stat-card__number {
-  font-size: 2rem;
+  font-family: var(--font-display);
+  font-size: 2.25rem;
   font-weight: 700;
   line-height: 1;
-  color: #0f172a;
+  letter-spacing: -0.03em;
+  color: var(--color-ink);
 }
 .stat-card__label {
   font-size: 0.75rem;
@@ -205,30 +289,52 @@ select {
 .fade-enter-active, .fade-leave-active { transition: opacity 0.18s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-.modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
+/* Transición de página — solo opacity, rápida para no sentirse "lenta" */
+.page-enter-active { transition: opacity 0.15s ease; }
+.page-leave-active { transition: opacity 0.1s ease; }
+.page-enter-from, .page-leave-to { opacity: 0; }
+
+/* Modal: scale sutil en el panel — solo transform+opacity (GPU) */
+.modal-enter-active, .modal-leave-active { transition: opacity 0.18s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
-.modal-enter-active .modal-panel,
-.modal-leave-active .modal-panel { transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease; }
-.modal-enter-from .modal-panel,
-.modal-leave-to .modal-panel { transform: scale(0.96) translateY(8px); opacity: 0; }
+.modal-enter-active .modal-panel { transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s ease; }
+.modal-leave-active .modal-panel  { transition: transform 0.15s ease, opacity 0.15s ease; }
+.modal-enter-from .modal-panel, .modal-leave-to .modal-panel { transform: scale(0.96) translateY(8px); opacity: 0; }
 
-.expand-enter-active, .expand-leave-active { transition: opacity 0.2s ease, max-height 0.25s ease, transform 0.2s ease; overflow: hidden; }
-.expand-enter-from, .expand-leave-to { opacity: 0; max-height: 0; transform: translateY(-6px); }
-.expand-enter-to, .expand-leave-from { max-height: 600px; }
+/* Expand — SOLO opacity+transform, sin max-height (evita reflow) */
+.expand-enter-active { transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
+.expand-leave-active { transition: opacity 0.12s ease, transform 0.12s ease; }
+.expand-enter-from, .expand-leave-to { opacity: 0; transform: translateY(-6px) scaleY(0.96); }
+.expand-enter-active, .expand-leave-active { transform-origin: top; }
 
-.slideover-enter-active, .slideover-leave-active { transition: opacity 0.2s ease; }
+/* Slideover */
+.slideover-enter-active, .slideover-leave-active { transition: opacity 0.18s ease; }
 .slideover-enter-from, .slideover-leave-to { opacity: 0; }
-.slideover-enter-active .slideover-panel,
-.slideover-leave-active .slideover-panel { transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
-.slideover-enter-from .slideover-panel,
-.slideover-leave-to .slideover-panel { transform: translateX(100%); }
+.slideover-enter-active .slideover-panel { transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+.slideover-leave-active .slideover-panel { transition: transform 0.2s ease; }
+.slideover-enter-from .slideover-panel, .slideover-leave-to .slideover-panel { transform: translateX(100%); }
 
-.dropdown-enter-active, .dropdown-leave-active { transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1); }
-.dropdown-enter-from, .dropdown-leave-to { opacity: 0; transform: translateY(-6px) scale(0.98); }
+/* Dropdown — muy rápido para sentirse snappy */
+.dropdown-enter-active { transition: opacity 0.12s ease, transform 0.12s cubic-bezier(0.16, 1, 0.3, 1); }
+.dropdown-leave-active { transition: opacity 0.08s ease; }
+.dropdown-enter-from, .dropdown-leave-to { opacity: 0; transform: translateY(-4px) scale(0.98); }
 
-.list-move, .list-enter-active, .list-leave-active { transition: transform 0.25s ease, opacity 0.25s ease; }
-.list-enter-from, .list-leave-to { opacity: 0; transform: translateY(8px); }
-.list-leave-active { position: absolute; width: calc(100% - 1.25rem); }
+/* List — para Kanban y listas donde los items se reordenan */
+.list-move        { transition: transform 0.2s ease; }
+.list-enter-active { transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
+.list-leave-active { transition: opacity 0.12s ease; position: absolute; width: 100%; }
+.list-enter-from, .list-leave-to { opacity: 0; transform: translateY(4px); }
+
+/* Shimmer skeleton */
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position: 600px 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e8edf2 50%, #f1f5f9 75%);
+  background-size: 1200px 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
 
 /* ── Sistema de botones unificado ────────────────────────────────────────────── */
 .btn {

@@ -14,6 +14,7 @@ import LoadingState from '../components/LoadingState.vue';
 import Dropdown from '../components/Dropdown.vue';
 import ViewToggle from '../components/ViewToggle.vue';
 import StatusSelect from '../components/StatusSelect.vue';
+import BizSelect from '../components/BizSelect.vue';
 
 const auth  = useAuthStore();
 const { confirm } = useDialog();
@@ -471,16 +472,11 @@ async function remove(t: Task) {
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="mb-1 block text-sm font-medium text-slate-700">Tipo</label>
-              <select v-model="form.task_type" class="w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none">
-                <option value="">Sin tipo</option>
-                <option v-for="tp in TASK_TYPES" :key="tp" :value="tp">{{ tp }}</option>
-              </select>
+              <BizSelect v-model="form.task_type" placeholder="Sin tipo" :options="TASK_TYPES" input-class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm" />
             </div>
             <div>
               <label class="mb-1 block text-sm font-medium text-slate-700">Prioridad</label>
-              <select v-model="form.priority" class="w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none">
-                <option v-for="p in PRIORITIES" :key="p.value" :value="p.value">{{ p.label }}</option>
-              </select>
+              <BizSelect v-model="form.priority" :options="PRIORITIES" input-class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm" />
             </div>
           </div>
 
@@ -499,18 +495,13 @@ async function remove(t: Task) {
           <!-- Oportunidad asociada -->
           <div>
             <label class="mb-1 block text-sm font-medium text-slate-700">Oportunidad asociada (opcional)</label>
-            <select v-model="form.opportunity_id" class="w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none">
-              <option value="">Sin oportunidad</option>
-              <option v-for="o in opps" :key="o.id" :value="o.id">{{ o.title }}</option>
-            </select>
+            <BizSelect v-model="form.opportunity_id" placeholder="Sin oportunidad" :options="opps.map(o => ({ value: o.id, label: o.title }))" input-class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm" />
           </div>
 
           <!-- Recordatorio -->
           <div>
             <label class="mb-1 block text-sm font-medium text-slate-700">Recordatorio</label>
-            <select v-model="form.reminder" class="w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none">
-              <option v-for="r in REMINDER_OPTIONS" :key="r.value" :value="r.value">{{ r.label }}</option>
-            </select>
+            <BizSelect v-model="form.reminder" :options="REMINDER_OPTIONS" input-class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm" />
           </div>
 
           <!-- Responsables -->

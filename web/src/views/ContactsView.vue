@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, computed, onMounted, watch } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import {
   Plus, Trash2, Search, X, Users, UserCheck, TrendingUp,
   Building2, ChevronDown, Check, Download, Upload,
@@ -15,11 +15,13 @@ import Dropdown from '../components/Dropdown.vue';
 
 const { alert, confirm } = useDialog();
 const router = useRouter();
+const route = useRoute();
 
 // ── state ─────────────────────────────────────────────────────────────────────
 const contacts  = ref<Contact[]>([]);
 const stats     = ref<ContactStats | null>(null);
-const q         = ref('');
+// Búsqueda inicial desde la barra global (?q=)
+const q         = ref(String(route.query.q ?? ''));
 const loading   = ref(true);
 const saving    = ref(false);
 const showForm  = ref(false);
@@ -109,6 +111,12 @@ async function load() {
 async function loadStats() {
   stats.value = await api.get<ContactStats>('/contacts/stats');
 }
+
+// La búsqueda global puede cambiar ?q= estando ya en esta vista.
+watch(() => route.query.q, v => {
+  if (v === undefined) return;
+  q.value = String(v); page.value = 1; load();
+});
 
 onMounted(async () => {
   try { await Promise.all([load(), loadStats()]); }
@@ -581,7 +589,7 @@ const statusLabel: Record<string, string> = {
 
               <!-- Created -->
               <td class="hidden px-3 py-3.5 xl:table-cell">
-                <span class="text-[11px] text-slate-400">{{ shortDate(c.created_at) }}</span>
+                <span class="whitespace-nowrap text-[11px] text-slate-400">{{ shortDate(c.created_at) }}</span>
               </td>
 
               <!-- Actions -->

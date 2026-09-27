@@ -3,6 +3,7 @@ import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 import { X, Ban, ChevronDown, Clock } from 'lucide-vue-next';
 import { api } from '../api';
 import type { Calendar } from '../types';
+import BizSelect from './BizSelect.vue';
 import Spinner from './Spinner.vue';
 
 const props = defineProps<{
@@ -206,12 +207,7 @@ function close() { emit('update:modelValue', false); }
             <!-- Calendario -->
             <div v-if="calendars.length" class="space-y-1.5">
               <label class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Calendario</label>
-              <select
-                v-model="form.calendar_id"
-                class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
-              >
-                <option v-for="cal in calendars" :key="cal.id" :value="cal.id">{{ cal.name }}</option>
-              </select>
+              <BizSelect v-model="form.calendar_id" :options="calendars.map(c => ({ value: c.id, label: c.name }))" input-class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700" />
             </div>
             <p v-else class="text-sm text-slate-400 italic">No tienes calendarios creados.</p>
 

@@ -14,6 +14,7 @@ import OpportunityCard from '../components/OpportunityCard.vue';
 import CustomizeCardPanel from '../components/CustomizeCardPanel.vue';
 import ViewToggle from '../components/ViewToggle.vue';
 import StatusSelect from '../components/StatusSelect.vue';
+import BizSelect from '../components/BizSelect.vue';
 import { normalizeCardConfig, type CardConfig } from '../cardConfig';
 import { useAuthStore } from '../stores/auth';
 
@@ -199,8 +200,18 @@ async function loadOpps() {
     reloading.value = false;
   }
 }
-function onSourceChange(e: Event) {
-  const v = (e.target as HTMLSelectElement).value;
+const SOURCE_OPTS = [
+  { value: 'whatsapp', label: 'WhatsApp' }, { value: 'facebook', label: 'Facebook' },
+  { value: 'instagram', label: 'Instagram' }, { value: 'tiktok', label: 'TikTok' },
+  { value: 'google', label: 'Google' }, { value: 'linkedin', label: 'LinkedIn' },
+  { value: 'referido', label: 'Referido' }, { value: 'sitio_web', label: 'Sitio web' },
+  { value: 'email', label: 'Email' }, { value: 'llamada', label: 'Llamada telefónica' },
+  { value: 'otro', label: 'Otro (personalizado)' },
+];
+// Fuente personalizada: se muestra el input libre (antes se ocultaba al elegir "Otro").
+const sourceCustom = ref(false);
+function onSourcePick(v: string) {
+  sourceCustom.value = v === 'otro';
   form.value.source = v === 'otro' ? '' : v;
   if (v === 'otro') nextTick(() => { (document.getElementById('source-custom') as HTMLInputElement | null)?.focus(); });
 }
@@ -314,6 +325,8 @@ const blankForm = () => ({
   contact_name: '', contact_email: '', contact_phone: '',
 });
 const form = ref(blankForm());
+// Al abrir el formulario (form reemplazado), detecta si la fuente guardada es personalizada.
+watch(form, f => { sourceCustom.value = f.source !== '' && !KNOWN_SOURCES.includes(f.source); });
 
 // Seguidores del formulario
 const followerUsers = computed(() => users.value.filter(u => form.value.follower_ids.includes(u.id)));
@@ -636,10 +649,8 @@ async function deleteNote(id: string) {
               <!-- Responsable -->
               <div>
                 <p class="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Responsable</p>
-                <select v-model="qf.owner_id" class="qf-input w-full">
-                  <option value="">Cualquiera</option>
-                  <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
-                </select>
+                <BizSelect v-model="qf.owner_id" placeholder="Cualquiera" input-class="qf-input w-full"
+                  :options="users.map(u => ({ value: u.id, label: u.name }))" />
               </div>
 
               <!-- Valor -->
@@ -655,19 +666,8 @@ async function deleteNote(id: string) {
               <!-- Origen -->
               <div>
                 <p class="mb-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">Origen</p>
-                <select v-model="qf.source" class="qf-input w-full cursor-pointer">
-                  <option value="">Todas las fuentes</option>
-                  <option value="whatsapp">WhatsApp</option>
-                  <option value="facebook">Facebook</option>
-                  <option value="instagram">Instagram</option>
-                  <option value="tiktok">TikTok</option>
-                  <option value="google">Google</option>
-                  <option value="linkedin">LinkedIn</option>
-                  <option value="referido">Referido</option>
-                  <option value="sitio_web">Sitio web</option>
-                  <option value="email">Email</option>
-                  <option value="llamada">Llamada telefónica</option>
-                </select>
+                <BizSelect v-model="qf.source" placeholder="Todas las fuentes" input-class="qf-input w-full"
+                  :options="SOURCE_OPTS.filter(o => o.value !== 'otro')" />
               </div>
 
               <!-- Empresa -->
@@ -889,23 +889,20 @@ async function deleteNote(id: string) {
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="mb-1 block text-sm font-medium text-slate-700">Pipeline</label>
-                    <select v-model="form.pipeline_id" @change="onFormPipelineChange" class="w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none">
-                      <option v-for="p in pipelines" :key="p.id" :value="p.id">{{ p.name }}</option>
-                    </select>
+                    <BizSelect v-model="form.pipeline_id" @update:model-value="onFormPipelineChange"
+                      :options="pipelines.map(p => ({ value: p.id, label: p.name }))" input-class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm" />
                   </div>
                   <div>
                     <label class="mb-1 block text-sm font-medium text-slate-700">Etapa</label>
-                    <select v-model="form.stage_id" class="w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none">
-                      <option v-for="s in formPipeline?.stages ?? []" :key="s.id" :value="s.id">{{ s.name }}</option>
-                    </select>
+                    <BizSelect v-model="form.stage_id"
+                      :options="(formPipeline?.stages ?? []).map(s => ({ value: s.id, label: s.name }))" input-class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm" />
                   </div>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="mb-1 block text-sm font-medium text-slate-700">Estado</label>
-                    <select v-model="form.status" class="w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none">
-                      <option v-for="s in STATUS_OPTS" :key="s.v" :value="s.v">{{ s.l }}</option>
-                    </select>
+                    <BizSelect v-model="form.status"
+                      :options="STATUS_OPTS.map(s => ({ value: s.v, label: s.l }))" input-class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm" />
                   </div>
                   <div>
                     <label class="mb-1 block text-sm font-medium text-slate-700">Valor (USD)</label>
@@ -915,10 +912,8 @@ async function deleteNote(id: string) {
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="mb-1 block text-sm font-medium text-slate-700">Responsable</label>
-                    <select v-model="form.owner_id" class="w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none">
-                      <option value="">Sin asignar</option>
-                      <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
-                    </select>
+                    <BizSelect v-model="form.owner_id" placeholder="Sin asignar"
+                      :options="users.map(u => ({ value: u.id, label: u.name }))" input-class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm" />
                   </div>
                   <div>
                     <label class="mb-1 block text-sm font-medium text-slate-700">Empresa</label>
@@ -927,26 +922,10 @@ async function deleteNote(id: string) {
                 </div>
                 <div>
                   <label class="mb-1 block text-sm font-medium text-slate-700">Fuente</label>
-                  <select
-                    class="w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"
-                    :value="KNOWN_SOURCES.includes(form.source) || form.source === '' ? form.source : 'otro'"
-                    @change="onSourceChange"
-                  >
-                    <option value="">Sin especificar</option>
-                    <option value="whatsapp">WhatsApp</option>
-                    <option value="facebook">Facebook</option>
-                    <option value="instagram">Instagram</option>
-                    <option value="tiktok">TikTok</option>
-                    <option value="google">Google</option>
-                    <option value="linkedin">LinkedIn</option>
-                    <option value="referido">Referido</option>
-                    <option value="sitio_web">Sitio web</option>
-                    <option value="email">Email</option>
-                    <option value="llamada">Llamada telefónica</option>
-                    <option value="otro">Otro (personalizado)</option>
-                  </select>
+                  <BizSelect :model-value="sourceCustom ? 'otro' : form.source" placeholder="Sin especificar"
+                    :options="SOURCE_OPTS" input-class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm" @update:model-value="onSourcePick" />
                   <input
-                    v-if="!KNOWN_SOURCES.includes(form.source) && form.source !== ''"
+                    v-if="sourceCustom"
                     id="source-custom"
                     v-model="form.source"
                     placeholder="Escribe la fuente…"

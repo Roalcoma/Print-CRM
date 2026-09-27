@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
-import { Megaphone, Plus, Trash2, ChevronDown, Loader2, CheckCircle2, AlertCircle, X } from 'lucide-vue-next';
+import { Megaphone, Plus, Trash2, Loader2, CheckCircle2, AlertCircle, X } from 'lucide-vue-next';
 import { api } from '../../api';
+import BizSelect from '../../components/BizSelect.vue';
 
 interface SocialConnection {
   id: string;
@@ -342,34 +343,15 @@ onMounted(load);
             <!-- 1. Seleccionar conexión FB -->
             <div>
               <label class="form-label">Página de Facebook</label>
-              <div class="relative">
-                <select v-model="form.social_connection_id" class="input pr-8 appearance-none">
-                  <option value="">Seleccionar página…</option>
-                  <option v-for="c in fbConnections" :key="c.id" :value="c.id">{{ c.page_name }}</option>
-                </select>
-                <ChevronDown class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              </div>
+              <BizSelect v-model="form.social_connection_id" placeholder="Seleccionar página…" input-class="input" :options="fbConnections.map(c => ({ value: c.id, label: c.page_name }))" />
             </div>
 
             <!-- 2. Seleccionar formulario -->
             <div>
               <label class="form-label">Formulario Lead Ads</label>
-              <div class="relative">
-                <select
-                  v-model="form.form_id"
-                  class="input pr-8 appearance-none"
-                  :disabled="!form.social_connection_id || loadingForms"
-                >
-                  <option value="">
-                    {{ loadingForms ? 'Cargando formularios…' : 'Seleccionar formulario…' }}
-                  </option>
-                  <option v-for="f in availableForms" :key="f.id" :value="f.id">
-                    {{ f.name }} {{ f.leads_count != null ? `(${f.leads_count} leads)` : '' }}
-                  </option>
-                </select>
-                <Loader2 v-if="loadingForms" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 animate-spin" />
-                <ChevronDown v-else class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              </div>
+              <BizSelect v-model="form.form_id" input-class="input" :disabled="!form.social_connection_id || loadingForms"
+                :placeholder="loadingForms ? 'Cargando formularios…' : 'Seleccionar formulario…'"
+                :options="availableForms.map(f => ({ value: f.id, label: f.leads_count != null ? `${f.name} (${f.leads_count} leads)` : f.name }))" />
               <p v-if="form.social_connection_id && availableForms.length === 0 && !loadingForms" class="text-xs text-amber-600 mt-1">
                 No se encontraron formularios. Verifica que la app de Meta tenga el permiso <code>leads_retrieval</code>.
               </p>
@@ -379,23 +361,11 @@ onMounted(load);
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="form-label">Pipeline destino</label>
-                <div class="relative">
-                  <select v-model="form.pipeline_id" class="input pr-8 appearance-none">
-                    <option value="">Sin pipeline</option>
-                    <option v-for="p in pipelines" :key="p.id" :value="p.id">{{ p.name }}</option>
-                  </select>
-                  <ChevronDown class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                </div>
+                <BizSelect v-model="form.pipeline_id" placeholder="Sin pipeline" input-class="input" :options="pipelines.map(p => ({ value: p.id, label: p.name }))" />
               </div>
               <div>
                 <label class="form-label">Etapa inicial</label>
-                <div class="relative">
-                  <select v-model="form.stage_id" class="input pr-8 appearance-none" :disabled="!form.pipeline_id">
-                    <option value="">Sin etapa</option>
-                    <option v-for="s in stages" :key="s.id" :value="s.id">{{ s.name }}</option>
-                  </select>
-                  <ChevronDown class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                </div>
+                <BizSelect v-model="form.stage_id" placeholder="Sin etapa" input-class="input" :disabled="!form.pipeline_id" :options="stages.map(s => ({ value: s.id, label: s.name }))" />
               </div>
             </div>
 
@@ -440,13 +410,7 @@ onMounted(load);
                 </div>
                 <div class="flex-1">
                   <label class="form-label text-[11px]">Campo del CRM</label>
-                  <div class="relative">
-                    <select v-model="customMappingValue" class="input pr-8 appearance-none text-sm">
-                      <option value="">Seleccionar…</option>
-                      <option v-for="f in crmFields" :key="f.value" :value="f.value">{{ f.label }}</option>
-                    </select>
-                    <ChevronDown class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                  </div>
+                  <BizSelect v-model="customMappingValue" placeholder="Seleccionar…" input-class="input text-sm" :options="crmFields" />
                 </div>
                 <button
                   class="btn btn-secondary btn-sm flex-shrink-0"

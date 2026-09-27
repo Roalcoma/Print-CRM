@@ -8,6 +8,7 @@ import {
   ShieldCheck, Clock, User, Infinity,
 } from 'lucide-vue-next';
 import { agencyApi } from '../../agencyApi';
+import BizSelect from '../../components/BizSelect.vue';
 import { useDialog } from '../../composables/useDialog';
 
 
@@ -748,23 +749,7 @@ function auditActionDot(action: string) {
             <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
               <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Registro de auditoría del CRM</p>
               <div class="flex items-center gap-2">
-                <select
-                  v-model="auditActionFilter"
-                  class="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-[#F69008] focus:outline-none cursor-pointer"
-                  @change="auditPage = 1; loadAudit()"
-                >
-                  <option value="">Todas las acciones</option>
-                  <option value="login">Login</option>
-                  <option value="contact.created">Contacto creado</option>
-                  <option value="contact.updated">Contacto actualizado</option>
-                  <option value="contact.deleted">Contacto eliminado</option>
-                  <option value="opportunity.created">Oportunidad creada</option>
-                  <option value="opportunity.stage_changed">Etapa cambiada</option>
-                  <option value="opportunity.deleted">Oportunidad eliminada</option>
-                  <option value="task.created">Tarea creada</option>
-                  <option value="task.status_changed">Estado de tarea cambiado</option>
-                  <option value="task.deleted">Tarea eliminada</option>
-                </select>
+                <div class="w-52"><BizSelect v-model="auditActionFilter" placeholder="Todas las acciones" input-class="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700" :options="[{ value: 'login', label: 'Login' }, { value: 'contact.created', label: 'Contacto creado' }, { value: 'contact.updated', label: 'Contacto actualizado' }, { value: 'contact.deleted', label: 'Contacto eliminado' }, { value: 'opportunity.created', label: 'Oportunidad creada' }, { value: 'opportunity.stage_changed', label: 'Etapa cambiada' }, { value: 'opportunity.deleted', label: 'Oportunidad eliminada' }, { value: 'task.created', label: 'Tarea creada' }, { value: 'task.status_changed', label: 'Estado de tarea cambiado' }, { value: 'task.deleted', label: 'Tarea eliminada' }]" @update:model-value="auditPage = 1; loadAudit()" /></div>
                 <button
                   class="rounded-lg border border-slate-300 p-1.5 text-slate-500 hover:text-slate-700 hover:border-slate-400 transition-all cursor-pointer"
                   title="Actualizar"
@@ -895,20 +880,11 @@ function auditActionDot(action: string) {
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <label class="mb-1 block text-xs font-medium text-slate-600">Plan</label>
-                <select v-model="editForm.plan" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-[#F69008] focus:outline-none cursor-pointer">
-                  <option value="starter">Starter</option>
-                  <option value="pro">Pro</option>
-                  <option value="enterprise">Enterprise</option>
-                </select>
+                <BizSelect v-model="editForm.plan" input-class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" :options="[{ value: 'starter', label: 'Starter' }, { value: 'pro', label: 'Pro' }, { value: 'enterprise', label: 'Enterprise' }]" />
               </div>
               <div>
                 <label class="mb-1 block text-xs font-medium text-slate-600">Estado</label>
-                <select v-model="editForm.status" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-[#F69008] focus:outline-none cursor-pointer">
-                  <option value="active">Activo</option>
-                  <option value="trial">Trial</option>
-                  <option value="suspended">Suspendido</option>
-                  <option value="cancelled">Cancelado</option>
-                </select>
+                <BizSelect v-model="editForm.status" input-class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" :options="[{ value: 'active', label: 'Activo' }, { value: 'trial', label: 'Trial' }, { value: 'suspended', label: 'Suspendido' }, { value: 'cancelled', label: 'Cancelado' }]" />
               </div>
             </div>
             <div>
@@ -984,12 +960,7 @@ function auditActionDot(action: string) {
               </div>
               <div>
                 <label class="mb-1 block text-xs font-medium text-slate-600">Estado</label>
-                <select v-model="paymentForm.status"
-                  class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-[#F69008] focus:outline-none cursor-pointer">
-                  <option value="paid">Pagado</option>
-                  <option value="pending">Pendiente</option>
-                  <option value="overdue">Vencido</option>
-                </select>
+                <BizSelect v-model="paymentForm.status" input-class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" :options="[{ value: 'paid', label: 'Pagado' }, { value: 'pending', label: 'Pendiente' }, { value: 'overdue', label: 'Vencido' }]" />
               </div>
             </div>
             <div>
