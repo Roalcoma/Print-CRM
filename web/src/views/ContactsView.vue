@@ -303,8 +303,8 @@ const statusLabel: Record<string, string> = {
     </div>
 
     <!-- Móvil: tira compacta con scroll horizontal -->
-    <div class="flex flex-shrink-0 items-center gap-0 overflow-x-auto border-b border-slate-200 bg-white px-4 md:hidden">
-      <div class="flex flex-shrink-0 items-center gap-2 border-r border-slate-100 py-3 pr-4">
+    <div class="grid flex-shrink-0 grid-cols-4 divide-x divide-slate-100 border-b border-slate-200 bg-white md:hidden">
+      <div class="flex min-w-0 items-center justify-center gap-1.5 px-1 py-3">
         <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-[#F69008]/10">
           <Users class="h-4 w-4 text-[#F69008]" />
         </div>
@@ -313,7 +313,7 @@ const statusLabel: Record<string, string> = {
           <p class="mt-0.5 text-[10px] text-slate-400">Total</p>
         </div>
       </div>
-      <div class="flex flex-shrink-0 items-center gap-2 border-r border-slate-100 py-3 px-4">
+      <div class="flex min-w-0 items-center justify-center gap-1.5 px-1 py-3">
         <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50">
           <UserCheck class="h-4 w-4 text-emerald-600" />
         </div>
@@ -322,7 +322,7 @@ const statusLabel: Record<string, string> = {
           <p class="mt-0.5 text-[10px] text-slate-400">Activos</p>
         </div>
       </div>
-      <div class="flex flex-shrink-0 items-center gap-2 border-r border-slate-100 py-3 px-4">
+      <div class="flex min-w-0 items-center justify-center gap-1.5 px-1 py-3">
         <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50">
           <TrendingUp class="h-4 w-4 text-blue-500" />
         </div>
@@ -331,7 +331,7 @@ const statusLabel: Record<string, string> = {
           <p class="mt-0.5 text-[10px] text-slate-400">Este mes</p>
         </div>
       </div>
-      <div class="flex flex-shrink-0 items-center gap-2 py-3 pl-4">
+      <div class="flex min-w-0 items-center justify-center gap-1.5 px-1 py-3">
         <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-50">
           <Building2 class="h-4 w-4 text-violet-500" />
         </div>
@@ -346,7 +346,7 @@ const statusLabel: Record<string, string> = {
     <div class="z-[4] border-b border-slate-200 bg-white shadow-toolbar">
 
       <!-- Fila principal: título + controles -->
-      <div class="flex items-center gap-3 px-6 py-3.5">
+      <div class="flex flex-wrap items-center gap-3 px-4 py-3 md:flex-nowrap md:px-6 md:py-3.5">
 
         <!-- Título (desktop) -->
         <div class="hidden flex-shrink-0 md:block">
@@ -363,7 +363,7 @@ const statusLabel: Record<string, string> = {
         </div>
 
         <!-- Búsqueda (móvil) -->
-        <div class="relative flex-1 md:hidden">
+        <div class="relative basis-full md:hidden">
           <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input v-model="q" @input="onSearch" placeholder="Buscar contactos…"
             class="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none" />
@@ -372,7 +372,7 @@ const statusLabel: Record<string, string> = {
         <div class="hidden h-5 w-px flex-shrink-0 bg-slate-200 md:block"></div>
 
         <!-- Filtros -->
-        <div class="flex items-center gap-1.5 overflow-x-auto">
+        <div class="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto md:flex-none">
           <Dropdown width="148">
             <template #trigger="{ open }">
               <button class="btn btn-secondary btn-sm flex-shrink-0" :class="(open || filterStatus) && 'btn-secondary--active'">

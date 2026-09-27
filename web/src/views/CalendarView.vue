@@ -412,6 +412,34 @@ function openNew(ds?: string, st?: string) {
   modalAppointment.value = undefined;
   showModal.value = true;
 }
+// ── Móvil: la vista mes muestra puntos por día y la agenda del día tocado debajo ──
+const narrowMq = window.matchMedia('(max-width: 639px)');
+const isNarrow = ref(narrowMq.matches);
+const onNarrowChange = (e: MediaQueryListEvent) => { isNarrow.value = e.matches; };
+narrowMq.addEventListener('change', onNarrowChange);
+onUnmounted(() => narrowMq.removeEventListener('change', onNarrowChange));
+
+const selectedDay = ref({ y: today.getFullYear(), m: today.getMonth(), d: today.getDate() });
+function isSelected(y: number, m: number, d: number) {
+  const s = selectedDay.value;
+  return s.y === y && s.m === m && s.d === d;
+}
+function onDayClick(y: number, m: number, d: number) {
+  if (isNarrow.value) selectedDay.value = { y, m, d };
+  else openNew(mkDateStr(y, m, d));
+}
+function dayDots(y: number, m: number, d: number): string[] {
+  return [
+    ...appsForDay(y, m, d).map(a => apptChipStyle(a).dot),
+    ...googleEventsForDay(y, m, d).map(() => '#4285F4'),
+    ...tasksForDay(y, m, d).map(t => taskChipStyle(t).dot),
+  ];
+}
+const selectedDayLabel = computed(() => {
+  const { y, m, d } = selectedDay.value;
+  return new Date(y, m, d).toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' });
+});
+
 function openEdit(a: Appointment) { modalDate.value = undefined; modalStartTime.value = undefined; modalAppointment.value = a; showModal.value = true; }
 function onSaved()   { loadMonth(); }
 function onDeleted() { loadMonth(); }
@@ -627,7 +655,8 @@ function goToWeekDay(year: number, month: number, day: number) {
         </div>
 
         <!-- Grid -->
-        <div class="grid flex-1 grid-cols-7 overflow-auto" style="grid-auto-rows: minmax(110px, 1fr)">
+        <div class="grid grid-cols-7 overflow-auto" :class="isNarrow ? 'flex-none' : 'flex-1'"
+          :style="{ gridAutoRows: isNarrow ? 'minmax(52px, 1fr)' : 'minmax(110px, 1fr)' }">
           <div
             v-for="cell in calendarDays"
             :key="`${cell.year}-${cell.month}-${cell.day}`"
@@ -639,8 +668,9 @@ function goToWeekDay(year: number, month: number, day: number) {
                   ? 'bg-white hover:bg-slate-50/70'
                   : 'bg-white hover:bg-slate-50',
               isToday(cell.year, cell.month, cell.day) ? '!bg-orange-50/40' : '',
+              isNarrow && isSelected(cell.year, cell.month, cell.day) ? 'ring-2 ring-inset ring-[#F69008]/60' : '',
             ]"
-            @click="openNew(mkDateStr(cell.year, cell.month, cell.day))"
+            @click="onDayClick(cell.year, cell.month, cell.day)"
           >
             <!-- Número + botón + en hover -->
             <div class="mb-1 flex items-center justify-between px-0.5">
@@ -661,8 +691,14 @@ function goToWeekDay(year: number, month: number, day: number) {
               </button>
             </div>
 
+            <!-- Móvil: solo puntos de color -->
+            <div v-if="isNarrow" class="flex flex-wrap justify-center gap-0.5 px-0.5">
+              <span v-for="(c, i) in dayDots(cell.year, cell.month, cell.day).slice(0, 4)" :key="i"
+                class="h-1.5 w-1.5 rounded-full" :style="{ background: c }"></span>
+            </div>
+
             <!-- Chips / Pills -->
-            <div class="space-y-0.5">
+            <div v-else class="space-y-0.5">
               <template v-for="a in appsForDay(cell.year, cell.month, cell.day).slice(0, 4)" :key="a.id">
                 <div
                   class="flex items-center gap-1.5 rounded-md px-1.5 py-[2px] text-[11px] font-medium leading-tight cursor-pointer transition-all hover:brightness-95 truncate"
@@ -723,6 +759,41 @@ function goToWeekDay(year: number, month: number, day: number) {
                 +{{ appsForDay(cell.year, cell.month, cell.day).length + googleEventsForDay(cell.year, cell.month, cell.day).length + tasksForDay(cell.year, cell.month, cell.day).length - 4 }} más →
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Móvil: agenda del día seleccionado -->
+        <div v-if="isNarrow" class="flex-1 overflow-y-auto border-t border-slate-200 bg-white">
+          <div class="flex items-center justify-between px-4 py-3">
+            <p class="text-sm font-semibold text-slate-800 first-letter:uppercase">{{ selectedDayLabel }}</p>
+            <button class="btn btn-secondary btn-sm" @click="openNew(mkDateStr(selectedDay.y, selectedDay.m, selectedDay.d))">
+              <Plus class="h-3.5 w-3.5" /> Cita
+            </button>
+          </div>
+          <div class="divide-y divide-slate-100">
+            <button v-for="a in appsForDay(selectedDay.y, selectedDay.m, selectedDay.d)" :key="a.id"
+              class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50" @click="openEdit(a)">
+              <span class="h-2.5 w-2.5 flex-shrink-0 rounded-full" :style="{ background: apptChipStyle(a).dot }"></span>
+              <span class="w-16 flex-shrink-0 text-xs text-slate-500">{{ a.is_all_day ? 'Todo el día' : fmtTime(a.start_at) }}</span>
+              <span class="min-w-0 flex-1 truncate text-sm font-medium text-slate-800"
+                :class="a.status === 'cancelled' || a.status === 'no_show' ? 'line-through opacity-60' : ''">{{ a.title }}</span>
+            </button>
+            <a v-for="ge in googleEventsForDay(selectedDay.y, selectedDay.m, selectedDay.d)" :key="'g-' + ge.id"
+              :href="ge.htmlLink" target="_blank" class="flex items-center gap-3 px-4 py-3 hover:bg-slate-50">
+              <span class="h-2.5 w-2.5 flex-shrink-0 rounded-full bg-[#4285F4]"></span>
+              <span class="w-16 flex-shrink-0 text-xs text-slate-500">{{ fmtTime(ge.startAt) }}</span>
+              <span class="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{{ ge.title }}</span>
+            </a>
+            <div v-for="t in tasksForDay(selectedDay.y, selectedDay.m, selectedDay.d)" :key="'t-' + t.id"
+              class="flex items-center gap-3 px-4 py-3">
+              <span class="h-2.5 w-2.5 flex-shrink-0 rounded-full" :style="{ background: taskChipStyle(t).dot }"></span>
+              <span class="w-16 flex-shrink-0 text-xs text-slate-500">Tarea</span>
+              <span class="min-w-0 flex-1 truncate text-sm text-slate-700"
+                :class="t.status === 'done' || t.status === 'cancelled' ? 'line-through opacity-50' : ''">{{ t.title }}</span>
+            </div>
+            <p v-if="!dayDots(selectedDay.y, selectedDay.m, selectedDay.d).length" class="px-4 py-6 text-center text-sm text-slate-400">
+              Sin citas este día
+            </p>
           </div>
         </div>
       </div>

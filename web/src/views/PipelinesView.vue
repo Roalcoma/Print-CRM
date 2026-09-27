@@ -120,30 +120,30 @@ async function deletePipeline(p: Pipeline) {
         <table class="w-full text-sm">
           <thead class="sticky top-0 z-10">
             <tr class="border-b border-slate-200 bg-slate-50/95 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 backdrop-blur">
-              <th class="w-10 px-4 py-3.5"></th>
-              <th class="w-12 px-2 py-3.5"><span class="flex items-center gap-1.5"><Hash class="h-3.5 w-3.5" /></span></th>
-              <th class="px-2 py-3.5"><span class="flex items-center gap-1.5"><Workflow class="h-3.5 w-3.5" /> Nombre del pipeline</span></th>
+              <th class="hidden w-10 px-4 py-3.5 sm:table-cell"></th>
+              <th class="hidden w-12 px-2 py-3.5 sm:table-cell"><span class="flex items-center gap-1.5"><Hash class="h-3.5 w-3.5" /></span></th>
+              <th class="px-4 py-3.5 sm:px-2"><span class="flex items-center gap-1.5"><Workflow class="h-3.5 w-3.5" /> Nombre del pipeline</span></th>
               <th class="px-2 py-3.5"><span class="flex items-center gap-1.5"><Layers class="h-3.5 w-3.5" /> Etapas</span></th>
-              <th class="px-2 py-3.5"><span class="flex items-center gap-1.5"><CalendarClock class="h-3.5 w-3.5" /> Actualizado</span></th>
-              <th class="w-16 px-6 py-3.5 text-right">Acciones</th>
+              <th class="hidden px-2 py-3.5 md:table-cell"><span class="flex items-center gap-1.5"><CalendarClock class="h-3.5 w-3.5" /> Actualizado</span></th>
+              <th class="w-12 px-3 py-3.5 text-right sm:w-16 sm:px-6"><span class="sr-only sm:not-sr-only">Acciones</span></th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="(p, i) in filtered" :key="p.id" class="group border-b border-slate-100 transition-colors last:border-0 hover:bg-[#F69008]/4">
-              <td class="px-4 py-4 text-slate-300"><GripVertical class="h-4 w-4" /></td>
-              <td class="px-2 py-4 font-medium text-slate-400">{{ i + 1 }}</td>
-              <td class="px-2 py-4">
-                <button class="cursor-pointer font-semibold text-slate-900 transition-colors hover:text-primary" @click="openEditor(p)">{{ p.name }}</button>
+              <td class="hidden px-4 py-4 text-slate-300 sm:table-cell"><GripVertical class="h-4 w-4" /></td>
+              <td class="hidden px-2 py-4 font-medium text-slate-400 sm:table-cell">{{ i + 1 }}</td>
+              <td class="px-4 py-4 sm:px-2">
+                <button class="cursor-pointer text-left font-semibold text-slate-900 transition-colors hover:text-primary" @click="openEditor(p)">{{ p.name }}</button>
                 <div class="mt-2 flex flex-wrap gap-1">
                   <span v-for="s in p.stages.slice(0, 8)" :key="s.id" class="h-2 w-7 rounded-full" :style="{ backgroundColor: s.color }" :title="s.name"></span>
                   <span v-if="p.stages.length > 8" class="text-[11px] text-slate-400">+{{ p.stages.length - 8 }}</span>
                 </div>
               </td>
               <td class="px-2 py-4">
-                <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{{ p.stages.length }} etapa{{ p.stages.length === 1 ? '' : 's' }}</span>
+                <span class="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{{ p.stages.length }} etapa{{ p.stages.length === 1 ? '' : 's' }}</span>
               </td>
-              <td class="px-2 py-4 text-slate-500">{{ dateTime(p.updated_at) }}</td>
-              <td class="px-6 py-4 text-right">
+              <td class="hidden px-2 py-4 text-slate-500 md:table-cell">{{ dateTime(p.updated_at) }}</td>
+              <td class="px-3 py-4 text-right sm:px-6">
                 <Dropdown align="right" width="160px">
                   <template #trigger="{ open }">
                     <button class="cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700" :class="open && 'bg-slate-100 text-primary'" aria-label="Acciones">
@@ -169,7 +169,7 @@ async function deletePipeline(p: Pipeline) {
       </div>
 
       <!-- Footer -->
-      <div class="flex flex-shrink-0 items-center justify-between border-t border-slate-100 bg-slate-50/60 px-6 py-2.5 text-xs text-slate-400">
+      <div class="flex flex-shrink-0 items-center justify-between border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 text-xs sm:px-6 text-slate-400">
         <span>{{ filtered.length }} pipeline{{ filtered.length === 1 ? '' : 's' }}</span>
         <span>Página 1 de 1</span>
       </div>

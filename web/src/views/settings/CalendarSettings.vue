@@ -427,9 +427,10 @@ watch(selectedUser, () => { Promise.all([loadCalendars(), isAllSelected.value ? 
               <tr
                 v-for="cal in calendars"
                 :key="cal.id"
-                class="group transition-colors hover:bg-slate-50/60"
+                class="group cursor-pointer transition-colors hover:bg-slate-50/60"
+                @click="router.push(`/settings/calendars/${cal.id}`)"
               >
-                <td class="px-5 py-3.5">
+                <td class="w-full max-w-0 px-4 py-3.5 sm:px-5">
                   <div class="flex items-center gap-3">
                     <div
                       class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white shadow-sm"
@@ -504,7 +505,7 @@ watch(selectedUser, () => { Promise.all([loadCalendars(), isAllSelected.value ? 
                       <Trash2 v-else class="h-3.5 w-3.5" />
                     </button>
                     <button
-                      class="btn btn-primary btn-sm"
+                      class="btn btn-primary btn-sm hidden sm:inline-flex"
                       @click.stop="router.push(`/settings/calendars/${cal.id}`)"
                     >
                       Editar →

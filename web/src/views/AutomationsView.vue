@@ -172,13 +172,13 @@ function sidebarBg(rule: AutomationRule) {
   <div v-else class="flex h-full flex-col overflow-hidden">
 
     <!-- Cabecera -->
-    <div class="flex flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-3.5">
-      <div>
+    <div class="flex flex-shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3.5 md:px-6">
+      <div class="min-w-0">
         <h3 class="text-[15px] font-semibold text-slate-900">Automatizaciones</h3>
         <p class="text-[12px] text-slate-400">Flujos que se ejecutan automáticamente en tu CRM</p>
       </div>
-      <div class="flex items-center gap-3">
-        <span class="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600">
+      <div class="flex flex-shrink-0 items-center gap-3">
+        <span class="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600">
           <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500"></span>
           {{ rules.filter(r => r.enabled).length }} activas
         </span>
@@ -252,9 +252,9 @@ function sidebarBg(rule: AutomationRule) {
 
         <template v-else>
           <!-- Header -->
-          <div class="border-b border-slate-200 bg-white px-6 py-5">
-            <div class="flex items-start justify-between gap-4">
-              <div class="flex items-start gap-4">
+          <div class="border-b border-slate-200 bg-white px-4 py-5 md:px-6">
+            <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div class="flex min-w-0 items-start gap-4">
                 <div class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl"
                   :class="selectedRule.enabled ? (TRIGGER_META[selectedRule.trigger_type]?.bg ?? 'bg-slate-100') : 'bg-slate-100'">
                   <component :is="TRIGGER_META[selectedRule.trigger_type]?.icon ?? Zap" class="h-6 w-6"
@@ -288,10 +288,10 @@ function sidebarBg(rule: AutomationRule) {
             </div>
           </div>
 
-          <div class="flex-1 space-y-4 p-6">
+          <div class="flex-1 space-y-4 p-4 md:p-6">
 
             <!-- Stats -->
-            <div class="grid grid-cols-3 gap-4">
+            <div class="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
               <div class="rounded-xl border border-slate-200 bg-white p-4">
                 <div class="flex items-center gap-2 text-slate-400">
                   <Activity class="h-4 w-4" />

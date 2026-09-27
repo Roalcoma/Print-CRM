@@ -440,7 +440,7 @@ async function submit() {
               <button class="rounded-lg p-1 text-slate-400 hover:bg-slate-100 cursor-pointer transition-colors" @click="backToDate">
                 <ChevronLeft class="h-5 w-5" />
               </button>
-              <h2 class="text-base font-semibold text-slate-800 capitalize">{{ formatDate(selDate) }}</h2>
+              <h2 class="text-base font-semibold text-slate-800 first-letter:uppercase">{{ formatDate(selDate) }}</h2>
             </div>
             <!-- 2 cols en móvil, 3 en sm+ -->
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 overflow-auto flex-1 content-start">
@@ -466,7 +466,7 @@ async function submit() {
               </button>
               <h2 class="text-base font-semibold text-slate-800">Tus datos</h2>
             </div>
-            <p class="text-xs text-slate-400 mb-4 ml-8 capitalize">
+            <p class="text-xs text-slate-400 mb-4 ml-8 first-letter:uppercase">
               {{ formatDate(selDate) }} · {{ slotDisplayTime(selTime) }} · {{ calendar?.duration_minutes }} min
             </p>
             <div class="space-y-3 flex-1">

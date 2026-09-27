@@ -1034,9 +1034,9 @@ async function deleteNote(id: string) {
         </div>
 
         <!-- Footer -->
-        <div class="flex items-center justify-between gap-3 border-t border-slate-200 px-6 py-4">
+        <div class="flex flex-col gap-2 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-6 sm:py-4">
           <p v-if="editing" class="text-xs text-slate-400">Creado el {{ dateTime(editing.created_at) }}</p>
-          <div class="ml-auto flex items-center gap-2">
+          <div class="flex items-center justify-end gap-2 sm:ml-auto">
             <button v-if="editing" type="button" class="btn btn-danger" @click="deleteOpp">Eliminar</button>
             <button type="button" class="btn btn-ghost" @click="showForm = false">Cancelar</button>
             <button type="button" :disabled="saving" class="btn btn-primary" @click="saveForm">

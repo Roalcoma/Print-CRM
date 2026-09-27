@@ -188,18 +188,18 @@ const brokenPics = reactive(new Set<string>());
                   Token válido hasta {{ formatDate(conn.token_expires_at) }}
                 </p>
               </div>
-              <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+              <span class="inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-1.5 text-xs font-medium text-emerald-700 sm:px-2.5 sm:py-0.5" title="Activo">
                 <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                Activo
+                <span class="hidden sm:inline">Activo</span>
               </span>
               <button
-                class="ml-2 flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:border-red-200 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                title="Desconectar" class="flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium sm:ml-2 text-slate-600 hover:border-red-200 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
                 :disabled="disconnecting === conn.id"
                 @click="disconnect(conn)"
               >
                 <Loader2 v-if="disconnecting === conn.id" class="h-3.5 w-3.5 animate-spin" />
                 <Unlink v-else class="h-3.5 w-3.5" />
-                Desconectar
+                <span class="hidden sm:inline">Desconectar</span>
               </button>
             </div>
           </div>
@@ -259,18 +259,18 @@ const brokenPics = reactive(new Set<string>());
                   {{ conn.token_expires_at ? `Token válido hasta ${formatDate(conn.token_expires_at)}` : 'Token sin expiración' }}
                 </p>
               </div>
-              <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+              <span class="inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-1.5 text-xs font-medium text-emerald-700 sm:px-2.5 sm:py-0.5" title="Activo">
                 <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                Activo
+                <span class="hidden sm:inline">Activo</span>
               </span>
               <button
-                class="ml-2 flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:border-red-200 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                title="Desconectar" class="flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium sm:ml-2 text-slate-600 hover:border-red-200 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
                 :disabled="disconnecting === conn.id"
                 @click="disconnect(conn)"
               >
                 <Loader2 v-if="disconnecting === conn.id" class="h-3.5 w-3.5 animate-spin" />
                 <Unlink v-else class="h-3.5 w-3.5" />
-                Desconectar
+                <span class="hidden sm:inline">Desconectar</span>
               </button>
             </div>
           </div>
@@ -301,7 +301,7 @@ const brokenPics = reactive(new Set<string>());
         <div class="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-600">
           <p class="font-medium mb-1 text-slate-700">URL del Webhook</p>
           <p class="text-slate-500 mb-2">Registra esta URL en Meta Developers para recibir mensajes en tiempo real:</p>
-          <code class="block bg-white border border-slate-200 px-3 py-2 rounded-lg text-xs font-mono text-slate-700 select-all">{{ webhookUrl }}</code>
+          <code class="block bg-white border border-slate-200 px-3 py-2 rounded-lg text-xs font-mono text-slate-700 select-all break-all">{{ webhookUrl }}</code>
         </div>
 
       </template>
