@@ -28,6 +28,7 @@ import { conversationsRouter } from './routes/conversations.ts';
 import { waSettingsRouter } from './routes/wa-settings.ts';
 import { waWebhookRouter } from './routes/wa-webhook.ts';
 import { socialRouter, socialPublicRouter, metaWebhookRouter, refreshInstagramTokens } from './routes/social.ts';
+import { pollIgComments } from './services/ig-comments.ts';
 import { leadAdsRouter } from './routes/lead-ads.ts';
 import { agencyRouter } from './routes/agency.ts';
 import { automationsRouter } from './routes/automations.ts';
@@ -234,4 +235,7 @@ server.listen(env.port, () => {
   // Refrescar tokens de Instagram cada 30 días; también al arrancar para renovar de inmediato si toca
   refreshInstagramTokens();
   setInterval(() => refreshInstagramTokens(), 24 * 60 * 60_000); // revisa cada 24h; la query filtra los que toca renovar
+  // Polling de comentarios IG: con Standard Access Meta no envía webhooks de `comments`.
+  pollIgComments();
+  setInterval(() => pollIgComments(), 2 * 60_000);
 });

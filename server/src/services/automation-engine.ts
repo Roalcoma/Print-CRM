@@ -5,7 +5,7 @@
 import { pool } from '../db.ts';
 import { broadcast } from './ws-manager.ts';
 import { EvolutionClient } from './evolution.ts';
-import { sendIgDm, replyToIgComment } from './instagram.ts';
+import { sendIgDm, sendIgPrivateReply, replyToIgComment } from './instagram.ts';
 
 // ── Mapa de códigos de área de EE.UU. → Estado ──────────────────────────────
 
@@ -442,14 +442,25 @@ export async function executeRun(runId: string): Promise<void> {
 
       } else if (step.type === 'ig_send_dm') {
         // Envía un DM al usuario que comentó
-        const senderId = (stepData['__ig_comment__']?.senderId as string | undefined) ?? '';
-        const igUserId = (stepData['__ig_comment__']?.igUserId as string | undefined) ?? '';
-        const accessToken = (stepData['__ig_comment__']?.accessToken as string | undefined) ?? '';
+        // El primer DM a quien comentó va como private reply (recipient.comment_id): un DM por
+        // IGSID solo se permite si la persona escribió en las últimas 24h.
+        const ig = stepData['__ig_comment__'] ?? {};
+        const commentId = (ig.commentId as string | undefined) ?? '';
+        const senderId = (ig.senderId as string | undefined) ?? '';
+        const igUserId = (ig.igUserId as string | undefined) ?? '';
+        const accessToken = (ig.accessToken as string | undefined) ?? '';
+        const privateReplyUsed = Boolean(stepData['__ig_private_reply__']);
         const message = interpolate((step.message as string) ?? '', contact, stepData);
-        if (senderId && igUserId && accessToken && message) {
-          await sendIgDm(igUserId, accessToken, senderId, message);
+        let result: { message_id?: string; error?: unknown } = {};
+        if (igUserId && accessToken && message) {
+          if (commentId && !privateReplyUsed) {
+            result = await sendIgPrivateReply(igUserId, accessToken, commentId, message);
+            stepData['__ig_private_reply__'] = { used: true };
+          } else if (senderId) {
+            result = await sendIgDm(igUserId, accessToken, senderId, message);
+          }
         }
-        stepData[step.id] = { sent: true };
+        stepData[step.id] = { sent: Boolean(result.message_id), ...(result.error ? { error: result.error } : {}) };
         currentStep = i + 1;
         await persistRunProgress(runId, currentStep, stepData);
 
@@ -745,13 +756,16 @@ export async function fireIgCommentTrigger(
        WHERE organization_id = $1 AND trigger_type = 'ig_comment_received' AND enabled = true`,
       [orgId],
     );
-    if (!rulesRes.rows.length) return;
+    if (!rulesRes.rows.length) {
+      console.log(`[automation-engine] comentario IG ${commentData.commentId} ignorado: org ${orgId} sin regla ig_comment_received activa`);
+      return;
+    }
 
     // Crear o encontrar contacto por senderId de IG
     const existingContact = await pool.query<{ id: string }>(
       `SELECT id FROM contacts WHERE organization_id = $1 AND ig_sender_id = $2 LIMIT 1`,
       [orgId, commentData.senderId],
-    ).catch(() => ({ rows: [] as { id: string }[] }));
+    );
 
     let contactId: string;
     if (existingContact.rows[0]) {
@@ -759,10 +773,10 @@ export async function fireIgCommentTrigger(
     } else {
       const parts = commentData.senderName.trim().split(/\s+/);
       const created = await pool.query<{ id: string }>(
-        `INSERT INTO contacts (organization_id, first_name, last_name, tags)
-         VALUES ($1, $2, $3, ARRAY['instagram']::text[])
+        `INSERT INTO contacts (organization_id, first_name, last_name, tags, ig_sender_id)
+         VALUES ($1, $2, $3, ARRAY['instagram']::text[], $4)
          RETURNING id`,
-        [orgId, parts[0] || commentData.senderId, parts.slice(1).join(' ') || null],
+        [orgId, parts[0] || commentData.senderId, parts.slice(1).join(' ') || null, commentData.senderId || null],
       );
       contactId = created.rows[0].id;
     }

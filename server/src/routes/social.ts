@@ -6,7 +6,7 @@ import { pool } from '../db.ts';
 import { requireAdmin } from '../auth/perms.ts';
 import { env } from '../env.ts';
 import { broadcast } from '../services/ws-manager.ts';
-import { fireIgCommentTrigger } from '../services/automation-engine.ts';
+import { handleIgComment } from '../services/ig-comments.ts';
 
 export const socialRouter = Router();
 export const socialPublicRouter = Router(); // callback OAuth (sin auth)
@@ -50,6 +50,17 @@ const META_APP_ID = process.env.META_APP_ID ?? '';
 const META_APP_SECRET = process.env.META_APP_SECRET ?? '';
 const IG_APP_ID = process.env.INSTAGRAM_APP_ID ?? '';
 const IG_APP_SECRET = process.env.INSTAGRAM_APP_SECRET ?? '';
+
+// Suscribe una cuenta/página a los webhooks de la app y loguea la respuesta de Meta.
+async function subscribeApps(url: string, label: string) {
+  try {
+    const r = await fetch(url, { method: 'POST' });
+    const json = await r.json();
+    console.log(`[meta-subscribe] ${label}:`, JSON.stringify(json));
+  } catch (e) {
+    console.error(`[meta-subscribe] ${label} error:`, e);
+  }
+}
 
 type SocialRow = {
   id: string;
@@ -209,10 +220,10 @@ socialPublicRouter.get('/instagram/callback', async (req, res) => {
     );
 
     // Suscribir la cuenta al webhook de Meta para recibir DMs y comentarios
-    fetch(
-      `https://graph.instagram.com/v19.0/me/subscribed_apps?subscribed_fields=messages%2Ccomments&access_token=${longToken}`,
-      { method: 'POST' },
-    ).catch(e => console.error('ig-subscribe error:', e));
+    await subscribeApps(
+      `https://graph.instagram.com/v21.0/me/subscribed_apps?subscribed_fields=messages%2Ccomments&access_token=${longToken}`,
+      `instagram ${igId}`,
+    );
 
     res.redirect(`${frontendBase}/settings/social?connected=instagram`);
   } catch (e) {
@@ -287,6 +298,13 @@ socialPublicRouter.get('/facebook/callback', async (req, res) => {
         [orgId, page.id, page.name, picture, pageToken, expiresAt],
       );
 
+      // Suscribir la página: Messenger, comentarios (feed) y Lead Ads. Los eventos de la
+      // cuenta IG vinculada llegan por la suscripción de la página.
+      await subscribeApps(
+        `${META_BASE}/${page.id}/subscribed_apps?subscribed_fields=messages%2Cfeed%2Cleadgen&access_token=${pageToken}`,
+        `page ${page.id}`,
+      );
+
       // Si la page tiene Instagram Business vinculado
       if (page.instagram_business_account?.id) {
         const igId = page.instagram_business_account.id;
@@ -311,12 +329,6 @@ socialPublicRouter.get('/facebook/callback', async (req, res) => {
              updated_at = NOW()`,
           [orgId, igId, igJson.name ?? page.name, igJson.profile_picture_url ?? picture, pageToken, expiresAt, igId],
         );
-
-        // Suscribir la cuenta IG vinculada a la página al webhook
-        fetch(
-          `${META_BASE}/${igId}/subscribed_apps?subscribed_fields=messages%2Ccomments&access_token=${pageToken}`,
-          { method: 'POST' },
-        ).catch(e => console.error('ig-subscribe (fb-linked) error:', e));
       }
     }
 
@@ -381,27 +393,38 @@ metaWebhookRouter.post('/webhook', express_json_check, async (req, res) => {
 
     for (const entry of body.entry ?? []) {
       const pageId = entry.id;
+      const kinds = [
+        ...(entry.messaging ?? []).map(m => m.message ? (m.message.is_echo ? 'echo' : 'message') : Object.keys(m).filter(k => !['sender', 'recipient', 'timestamp'].includes(k)).join('+')),
+        ...(entry.changes ?? []).map(c => c.field),
+      ];
+      console.log(`[meta-webhook] entry.id=${pageId} eventos=${kinds.join(',') || 'ninguno'}`);
 
-      const connRes = await pool.query<{ id: string; organization_id: string; platform: string; access_token: string; instagram_business_id: string | null }>(
-        `SELECT id, organization_id, platform, access_token, instagram_business_id FROM social_connections
-         WHERE page_id = $1 AND status = 'active' LIMIT 1`,
+      const connRes = await pool.query<{ id: string; organization_id: string; platform: string; access_token: string; instagram_business_id: string | null; page_id: string }>(
+        `SELECT id, organization_id, platform, access_token, instagram_business_id, page_id FROM social_connections
+         WHERE (page_id = $1 OR instagram_business_id = $1) AND status = 'active' LIMIT 1`,
         [pageId],
       );
-      if (!connRes.rows[0]) continue;
+      if (!connRes.rows[0]) {
+        console.warn(`[meta-webhook] sin conexión activa para entry.id=${pageId}`);
+        continue;
+      }
       const conn = connRes.rows[0];
       const orgId = conn.organization_id;
 
-      // ── Mensajes de Messenger (Facebook) ─────────────────────────────────
+      // ── Mensajes: Messenger (object=page) o Instagram DM (object=instagram) ──
+      // Con Instagram Login los DMs llegan en entry.messaging, igual que Messenger.
+      const dmChannel = body.object === 'instagram' ? 'instagram_dm' : 'facebook_dm';
+      const dmPrefix = body.object === 'instagram' ? 'ig' : 'fb';
       for (const messaging of entry.messaging ?? []) {
-        if (!messaging.message) continue;
-        // Ignorar ecos de mensajes enviados por la propia página
-        if (messaging.sender?.id === pageId) continue;
+        if (!messaging.message || messaging.message.is_echo) continue;
+        // Ignorar ecos de mensajes enviados por la propia cuenta
+        if (messaging.sender?.id === pageId || messaging.sender?.id === conn.instagram_business_id) continue;
 
         const senderId = messaging.sender?.id ?? '';
         const text = messaging.message.text ?? null;
         const mid = messaging.message.mid ?? senderId + '_' + messaging.timestamp;
 
-        await upsertSocialConversation(orgId, conn.id, 'facebook_dm', `fb_${senderId}`, senderId, text, mid, 'inbound');
+        await upsertSocialConversation(orgId, conn.id, dmChannel, `${dmPrefix}_${senderId}`, senderId, text, mid, 'inbound');
       }
 
       // ── Changes: mensajes de Instagram DM y comentarios ──────────────────
@@ -428,15 +451,7 @@ metaWebhookRouter.post('/webhook', express_json_check, async (req, res) => {
           // Ignorar respuestas propias
           if (comment.from?.id === pageId || comment.from?.id === conn.instagram_business_id) continue;
 
-          fireIgCommentTrigger(orgId, {
-            commentId: comment.id,
-            senderId: comment.from?.id ?? '',
-            senderName: comment.from?.name ?? '',
-            text: comment.text ?? '',
-            mediaId: comment.media?.id ?? '',
-            accessToken: conn.access_token,
-            igUserId: conn.instagram_business_id ?? pageId,
-          }).catch(e => console.error('fireIgCommentTrigger error:', e));
+          handleIgComment(conn, comment).catch(e => console.error('handleIgComment error:', e));
         }
 
         // Facebook Lead Ads
@@ -503,7 +518,7 @@ interface MetaWebhookBody {
     id: string;
     messaging?: Array<{
       sender?: { id: string };
-      message?: { mid: string; text?: string };
+      message?: { mid: string; text?: string; is_echo?: boolean };
       timestamp?: number;
     }>;
     changes?: Array<{
@@ -522,7 +537,7 @@ interface IgMessageChange {
 interface IgCommentChange {
   id: string;
   text?: string;
-  from?: { id: string; name?: string };
+  from?: { id: string; username?: string; name?: string };
   media?: { id: string };
   timestamp?: number;
 }
