@@ -100,7 +100,7 @@ const AREA_CODE_MAP: Record<string, string> = {
   // New York
   '212': 'New York', '315': 'New York', '332': 'New York', '347': 'New York', '363': 'New York',
   '516': 'New York', '518': 'New York', '585': 'New York', '607': 'New York', '631': 'New York',
-  '646': 'New York', '680': 'New York', '716': 'New York', '718': 'New York', '726': 'New York',
+  '646': 'New York', '680': 'New York', '716': 'New York', '718': 'New York',
   '845': 'New York', '914': 'New York', '917': 'New York', '929': 'New York', '934': 'New York',
   // North Carolina
   '252': 'North Carolina', '336': 'North Carolina', '472': 'North Carolina', '704': 'North Carolina',
@@ -561,8 +561,13 @@ interface StepDef {
   // send_whatsapp
   message?: string;
   // wait_for_reply — sin campos extra
+  to_phone?: string;
   // wait_before_appointment
   minutes_before?: number;
+  // wait_minutes
+  minutes?: number;
+  // ig_reply_comment — rotación circular de respuestas
+  messages?: string[];
 }
 
 // ── Iniciar automatización ───────────────────────────────────────────────────

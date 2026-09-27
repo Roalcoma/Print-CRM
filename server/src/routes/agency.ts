@@ -655,7 +655,7 @@ agencyRouter.post('/clients/:id/payments', requireAgencyAuth, async (req, res) =
     [req.params.id, Number(amountUsd), status ?? 'paid', method ?? null,
      periodStart ?? null, periodEnd ?? null, paidAt ?? null, notes ?? null],
   );
-  await logActivity(req.agencyAuth!.adminId, req.params.id, 'payment_recorded', { amount: amountUsd, status });
+  await logActivity(req.agencyAuth!.adminId, String(req.params.id), 'payment_recorded', { amount: amountUsd, status });
   res.status(201).json(payment);
 });
 
@@ -691,7 +691,7 @@ agencyRouter.patch('/clients/:id/courtesy', requireAgencyAuth, async (req, res) 
     [Number(courtesyExtraUsers ?? 0), Boolean(courtesyFullAccess ?? false), req.params.id],
   );
   if (!updated) return res.status(404).json({ error: 'Cuenta no encontrada' });
-  await logActivity(req.agencyAuth!.adminId, req.params.id, 'courtesy_updated',
+  await logActivity(req.agencyAuth!.adminId, String(req.params.id), 'courtesy_updated',
     { extraUsers: courtesyExtraUsers, fullAccess: courtesyFullAccess });
   res.json(updated);
 });

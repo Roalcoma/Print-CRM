@@ -254,7 +254,7 @@ conversationsRouter.get('/:id/timeline', async (req, res) => {
       for (const a of appts.rows) items.push({ type: 'appointment', ts: a.created_at, data: a });
 
       const opps = await pool.query(
-        `SELECT o.id, o.title, o.status, o.value, o.created_at, s.name AS stage_name, s.color AS stage_color, p.name AS pipeline_name
+        `SELECT o.id, o.pipeline_id, o.stage_id, o.title, o.status, o.value, o.created_at, s.name AS stage_name, s.color AS stage_color, p.name AS pipeline_name
          FROM opportunities o
          LEFT JOIN pipeline_stages s ON s.id = o.stage_id
          LEFT JOIN pipelines p ON p.id = o.pipeline_id

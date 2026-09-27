@@ -45,6 +45,9 @@ async function upsertContact(
   phone?: string | null,
 ): Promise<string | null> {
   const hasData = !!(name || email || phone);
+  // Un contact_id ajeno a la organización se ignora (evita enlazar contactos de otro tenant).
+  if (contactId && !(await queryOne('SELECT 1 FROM contacts WHERE id=$1 AND organization_id=$2', [contactId, orgId])))
+    contactId = null;
   if (contactId) {
     if (hasData)
       await query(
@@ -65,6 +68,20 @@ async function upsertContact(
     );
     return c.id;
   }
+  return null;
+}
+
+// Valida que pipeline/etapa/responsable pertenezcan al tenant y que la etapa sea del pipeline.
+// Devuelve un mensaje de error o null si todo es válido.
+async function invalidRefs(orgId: string, pipelineId: string, stageId: string, ownerId?: string | null): Promise<string | null> {
+  const ok = await queryOne(
+    `SELECT 1 FROM pipeline_stages s JOIN pipelines p ON p.id = s.pipeline_id
+     WHERE s.id = $1 AND p.id = $2 AND p.organization_id = $3`,
+    [stageId, pipelineId, orgId],
+  );
+  if (!ok) return 'Pipeline o etapa no válidos';
+  if (ownerId && !(await queryOne('SELECT 1 FROM users WHERE id=$1 AND organization_id=$2', [ownerId, orgId])))
+    return 'Responsable no válido';
   return null;
 }
 
@@ -155,6 +172,8 @@ opportunitiesRouter.post('/', async (req, res) => {
   const o = parsed.data;
   const orgId = req.auth!.organizationId;
   const actorId = req.auth!.userId;
+  const refError = await invalidRefs(orgId, o.pipeline_id, o.stage_id, o.owner_id);
+  if (refError) return res.status(400).json({ error: refError });
   const contactId = await upsertContact(orgId, o.contact_id ?? null, o.contact_name, o.contact_email, o.contact_phone);
 
   const [row] = await query(
@@ -191,9 +210,16 @@ opportunitiesRouter.patch('/:id', async (req, res) => {
   const orgId = req.auth!.organizationId;
   const actorId = req.auth!.userId;
 
-  const existing = await queryOne<{ contact_id: string | null; title: string; value: number; status: string; stage_id: string }>(
-    'SELECT contact_id, title, value, status, stage_id FROM opportunities WHERE id=$1 AND organization_id=$2', [req.params.id, orgId]);
+  const existing = await queryOne<{ contact_id: string | null; title: string; value: number; status: string; stage_id: string; pipeline_id: string }>(
+    'SELECT contact_id, title, value, status, stage_id, pipeline_id FROM opportunities WHERE id=$1 AND organization_id=$2', [req.params.id, orgId]);
   if (!existing) return res.status(404).json({ error: 'Oportunidad no encontrada' });
+  if ('pipeline_id' in data || 'stage_id' in data || data.owner_id) {
+    const refError = await invalidRefs(orgId,
+      (data.pipeline_id as string | undefined) ?? existing.pipeline_id,
+      (data.stage_id as string | undefined) ?? existing.stage_id,
+      data.owner_id as string | null | undefined);
+    if (refError) return res.status(400).json({ error: refError });
+  }
 
   // Contacto: actualiza/crea si vinieron campos de contacto.
   let contactId = existing.contact_id;

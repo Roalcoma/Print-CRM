@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS lead_form_configs (
   form_id                TEXT        NOT NULL,
   form_name              TEXT        NOT NULL DEFAULT '',
   pipeline_id            UUID        REFERENCES pipelines(id) ON DELETE SET NULL,
-  stage_id               UUID        REFERENCES stages(id)   ON DELETE SET NULL,
+  stage_id               UUID        REFERENCES pipeline_stages(id) ON DELETE SET NULL,
   field_map              JSONB       NOT NULL DEFAULT '{}',
   auto_create_contact    BOOLEAN     NOT NULL DEFAULT TRUE,
   auto_create_opportunity BOOLEAN    NOT NULL DEFAULT TRUE,

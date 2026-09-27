@@ -83,7 +83,7 @@ usersRouter.patch('/:id', requireAdmin, async (req, res) => {
   const target = await queryOne<{ role: string }>('SELECT role FROM users WHERE id=$1 AND organization_id=$2', [req.params.id, orgId]);
   if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
   const isSelf = req.auth!.userId === req.params.id;
-  const isAgency = (req.auth as Record<string, unknown>).impersonatedByAgency === true;
+  const isAgency = req.auth!.impersonatedByAgency === true;
   if (target.role === 'owner' && !isSelf && !isAgency) return res.status(403).json({ error: 'No se puede modificar al owner' });
 
   const sets: string[] = [];

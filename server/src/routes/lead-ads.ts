@@ -47,7 +47,7 @@ leadAdsRouter.get('/configs', requireAdmin, async (req, res) => {
        FROM lead_form_configs lfc
        LEFT JOIN social_connections sc ON sc.id = lfc.social_connection_id
        LEFT JOIN pipelines p ON p.id = lfc.pipeline_id
-       LEFT JOIN stages s ON s.id = lfc.stage_id
+       LEFT JOIN pipeline_stages s ON s.id = lfc.stage_id
        WHERE lfc.organization_id = $1
        ORDER BY lfc.created_at DESC`,
       [orgId],

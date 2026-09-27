@@ -108,7 +108,7 @@ waSettingsRouter.post('/instances', requireAdmin, async (req, res) => {
 waSettingsRouter.delete('/instances/:id', requireAdmin, async (req, res) => {
   try {
     const orgId = req.auth!.organizationId;
-    const { id } = req.params;
+    const id = String(req.params.id);
     const countRes = await pool.query<{ c: string }>(
       'SELECT COUNT(*) as c FROM wa_settings WHERE organization_id = $1',
       [orgId],
@@ -139,7 +139,7 @@ waSettingsRouter.delete('/instances/:id', requireAdmin, async (req, res) => {
 waSettingsRouter.post('/instances/:id/default', requireAdmin, async (req, res) => {
   try {
     const orgId = req.auth!.organizationId;
-    const { id } = req.params;
+    const id = String(req.params.id);
     const row = await getInstance(id, orgId);
     if (!row) return res.status(404).json({ error: 'Instancia no encontrada' });
     await pool.query('UPDATE wa_settings SET is_default = false WHERE organization_id = $1', [orgId]);
@@ -155,7 +155,7 @@ waSettingsRouter.post('/instances/:id/default', requireAdmin, async (req, res) =
 waSettingsRouter.post('/instances/:id/connect', requireAdmin, async (req, res) => {
   try {
     const orgId = req.auth!.organizationId;
-    const { id } = req.params;
+    const id = String(req.params.id);
     const row = await getInstance(id, orgId);
     if (!row) return res.status(404).json({ error: 'Instancia no encontrada' });
     if (!row.evo_api_key) return res.status(400).json({ error: 'Configura la API key primero' });
@@ -182,7 +182,7 @@ waSettingsRouter.post('/instances/:id/connect', requireAdmin, async (req, res) =
 waSettingsRouter.post('/instances/:id/disconnect', requireAdmin, async (req, res) => {
   try {
     const orgId = req.auth!.organizationId;
-    const { id } = req.params;
+    const id = String(req.params.id);
     const row = await getInstance(id, orgId);
     if (!row) return res.status(404).json({ error: 'Instancia no encontrada' });
     await buildClient(row).logout();
@@ -201,7 +201,7 @@ waSettingsRouter.post('/instances/:id/disconnect', requireAdmin, async (req, res
 // GET /wa/instances/:id/qr
 waSettingsRouter.get('/instances/:id/qr', requireAdmin, async (req, res) => {
   try {
-    const row = await getInstance(req.params.id, req.auth!.organizationId);
+    const row = await getInstance(String(req.params.id), req.auth!.organizationId);
     if (!row) return res.status(404).json({ error: 'Instancia no encontrada' });
     const data = await buildClient(row).getQR();
     res.json({ qr: data.base64, pairingCode: data.pairingCode });
@@ -218,7 +218,7 @@ waSettingsRouter.post('/instances/:id/pairing-code', requireAdmin, async (req, r
     if (!phoneNumber || !/^[0-9]{6,15}$/.test(phoneNumber)) {
       return res.status(400).json({ error: 'Número inválido. Solo dígitos en formato internacional, ej: 584141234567' });
     }
-    const row = await getInstance(req.params.id, req.auth!.organizationId);
+    const row = await getInstance(String(req.params.id), req.auth!.organizationId);
     if (!row) return res.status(404).json({ error: 'Instancia no encontrada' });
     const result = await buildClient(row).requestPairingCode(phoneNumber);
     res.json(result);
@@ -232,7 +232,7 @@ waSettingsRouter.post('/instances/:id/pairing-code', requireAdmin, async (req, r
 waSettingsRouter.post('/instances/:id/sync', requireAdmin, async (req, res) => {
   try {
     const orgId = req.auth!.organizationId;
-    const { id } = req.params;
+    const id = String(req.params.id);
     const row = await getInstance(id, orgId);
     if (!row) return res.status(404).json({ error: 'Instancia no encontrada' });
     if (!row.evo_url || !row.evo_api_key) return res.json({ status: row.session_status });
