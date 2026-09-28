@@ -7,6 +7,7 @@ import { broadcast } from './ws-manager.ts';
 import { EvolutionClient } from './evolution.ts';
 import { sendIgDm, sendIgPrivateReply, replyToIgComment } from './instagram.ts';
 import { upsertSocialConversation } from './social-inbox.ts';
+import { wantsInfo } from './ig-intent.ts';
 
 // ── Mapa de códigos de área de EE.UU. → Estado ──────────────────────────────
 
@@ -782,13 +783,30 @@ export async function fireIgCommentTrigger(
   commentData: IgCommentTriggerData,
 ): Promise<void> {
   try {
-    const rulesRes = await pool.query<{ id: string }>(
-      `SELECT id FROM automation_rules
+    const allRules = await pool.query<{ id: string; config: { intent_filter?: boolean; exclude_usernames?: string[] } | null }>(
+      `SELECT id, config FROM automation_rules
        WHERE organization_id = $1 AND trigger_type = 'ig_comment_received' AND enabled = true`,
       [orgId],
     );
-    if (!rulesRes.rows.length) {
+    if (!allRules.rows.length) {
       console.log(`[automation-engine] comentario IG ${commentData.commentId} ignorado: org ${orgId} sin regla ig_comment_received activa`);
+      return;
+    }
+
+    // Filtros: nunca las cuentas del propio equipo, y solo comentarios que piden información
+    const author = commentData.senderName.toLowerCase();
+    const team = (await pool.query<{ u: string }>(
+      `SELECT lower(username) AS u FROM social_connections WHERE organization_id = $1 AND username IS NOT NULL`, [orgId],
+    )).rows.map(r => r.u);
+    const rulesRes = {
+      rows: allRules.rows.filter(r => {
+        const excluded = (r.config?.exclude_usernames ?? []).map(u => u.toLowerCase().replace(/^@/, ''));
+        if (team.includes(author) || excluded.includes(author)) return false;
+        return r.config?.intent_filter === false || wantsInfo(commentData.text);
+      }),
+    };
+    if (!rulesRes.rows.length) {
+      console.log(`[automation-engine] comentario IG ${commentData.commentId} de @${author} ignorado: no pide información o es del equipo`);
       return;
     }
 

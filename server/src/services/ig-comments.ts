@@ -74,6 +74,9 @@ export async function pollIgComments(): Promise<void> {
       const t = conn.access_token;
       const owner = conn.instagram_business_id ?? conn.page_id;
       const me = await get<{ username?: string }>(`${base}/${t.startsWith('IG') ? 'me' : owner}?fields=username&access_token=${t}`);
+      if (me.username) {
+        await pool.query(`UPDATE social_connections SET username = $1 WHERE id = $2 AND username IS DISTINCT FROM $1`, [me.username, conn.id]);
+      }
       const media = await get<{ data?: { id: string; timestamp: string }[] }>(
         `${base}/${t.startsWith('IG') ? 'me' : owner}/media?fields=id,timestamp&limit=10&access_token=${t}`,
       );

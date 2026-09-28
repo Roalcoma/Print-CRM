@@ -208,16 +208,17 @@ socialPublicRouter.get('/instagram/callback', async (req, res) => {
 
     await pool.query(
       `INSERT INTO social_connections
-         (organization_id, platform, page_id, page_name, page_picture, access_token, token_expires_at, instagram_business_id, status)
-       VALUES ($1, 'instagram', $2, $3, $4, $5, $6, $7, 'active')
+         (organization_id, platform, page_id, page_name, page_picture, access_token, token_expires_at, instagram_business_id, status, username)
+       VALUES ($1, 'instagram', $2, $3, $4, $5, $6, $7, 'active', $8)
        ON CONFLICT (organization_id, platform, page_id) DO UPDATE SET
+         username = EXCLUDED.username,
          page_name = EXCLUDED.page_name,
          page_picture = EXCLUDED.page_picture,
          access_token = EXCLUDED.access_token,
          token_expires_at = EXCLUDED.token_expires_at,
          status = 'active',
          updated_at = NOW()`,
-      [orgId, igId, igName, meJson.profile_picture_url ?? null, longToken, expiresAt, igId],
+      [orgId, igId, igName, meJson.profile_picture_url ?? null, longToken, expiresAt, igId, meJson.username ?? null],
     );
 
     // Suscribir la cuenta al webhook de Meta para recibir DMs y comentarios
