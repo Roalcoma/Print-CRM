@@ -199,6 +199,7 @@ const bookSchema = z.object({
   phone:    z.string().optional().nullable(),
   notes:    z.string().optional().nullable(),
   start_at: z.string().datetime({ offset: true }),
+  contact_ref: z.string().uuid().optional().nullable(),
 });
 
 bookingRouter.post('/:slug', async (req, res) => {
@@ -237,13 +238,59 @@ bookingRouter.post('/:slug', async (req, res) => {
   );
   if (conflict) return res.status(409).json({ error: 'Ese horario ya no está disponible, elige otro' });
 
-  // Buscar o crear contacto
-  let contact = await queryOne<{ id: string }>(
-    'SELECT id FROM contacts WHERE email=$1 AND organization_id=$2',
-    [d.email, cal.organization_id],
-  );
+  // Buscar o crear contacto. Orden: enlace personalizado (?c=) → email → teléfono → nuevo.
+  const nameParts = d.name.trim().split(/\s+/);
+  const phoneDigits = d.phone?.replace(/\D/g, '') ?? '';
+  let contact: { id: string } | null = null;
+
+  if (d.contact_ref) {
+    const ref = await queryOne<{ id: string; email: string | null; phone: string | null; ig_sender_id: string | null }>(
+      'SELECT id, email, phone, ig_sender_id FROM contacts WHERE id=$1 AND organization_id=$2',
+      [d.contact_ref, cal.organization_id],
+    );
+    if (ref) {
+      // Completa lo que falte; si vino de Instagram su nombre era el usuario de IG → nombre real
+      await query(
+        `UPDATE contacts SET
+           email      = COALESCE(NULLIF(email, ''), $2),
+           phone      = COALESCE(NULLIF(phone, ''), $3),
+           first_name = CASE WHEN $4 THEN $5 ELSE first_name END,
+           last_name  = CASE WHEN $4 THEN $6 ELSE last_name END,
+           updated_at = NOW()
+         WHERE id = $1`,
+        [ref.id, d.email, d.phone ?? null, ref.ig_sender_id !== null, nameParts[0], nameParts.slice(1).join(' ') || null],
+      );
+      contact = ref;
+    }
+  }
   if (!contact) {
-    const nameParts = d.name.trim().split(' ');
+    contact = await queryOne<{ id: string }>(
+      'SELECT id FROM contacts WHERE lower(email)=lower($1) AND organization_id=$2 ORDER BY created_at LIMIT 1',
+      [d.email, cal.organization_id],
+    );
+  }
+  if (!contact && phoneDigits.length >= 7) {
+    // Compara por los últimos 10 dígitos para tolerar códigos de país y formatos distintos
+    const byPhone = await queryOne<{ id: string; ig_sender_id: string | null }>(
+      `SELECT id, ig_sender_id FROM contacts WHERE organization_id=$1
+         AND right(regexp_replace(phone, '\\D', '', 'g'), 10) = right($2, 10)
+       ORDER BY created_at LIMIT 1`,
+      [cal.organization_id, phoneDigits],
+    );
+    if (byPhone) {
+      await query(
+        `UPDATE contacts SET
+           email      = COALESCE(NULLIF(email, ''), $2),
+           first_name = CASE WHEN $3 THEN $4 ELSE first_name END,
+           last_name  = CASE WHEN $3 THEN $5 ELSE last_name END,
+           updated_at = NOW()
+         WHERE id = $1`,
+        [byPhone.id, d.email, byPhone.ig_sender_id !== null, nameParts[0], nameParts.slice(1).join(' ') || null],
+      );
+      contact = byPhone;
+    }
+  }
+  if (!contact) {
     const firstName = nameParts[0];
     const lastName  = nameParts.slice(1).join(' ') || null;
     const [newContact] = await query<{ id: string }>(

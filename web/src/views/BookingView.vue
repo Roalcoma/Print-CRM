@@ -6,6 +6,8 @@ import { ChevronLeft, ChevronRight, Clock, Calendar, CheckCircle, AlertCircle, G
 
 const route = useRoute();
 const slug  = route.params.slug as string;
+// ?c=<contactId>: enlace personalizado (p. ej. el DM de Instagram) para unificar el contacto
+const contactRef = typeof route.query.c === 'string' ? route.query.c : null;
 
 type Step = 'loading' | 'pick-date' | 'pick-time' | 'form' | 'success' | 'error' | 'disabled';
 
@@ -211,6 +213,7 @@ async function submit() {
         phone:    form.value.phone.trim() || null,
         notes:    form.value.notes.trim() || null,
         start_at: selTime.value, // ya es UTC ISO string
+        contact_ref: contactRef,
       }),
     });
     const data = await res.json();

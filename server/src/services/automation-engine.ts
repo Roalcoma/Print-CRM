@@ -200,6 +200,7 @@ export function interpolate(
       const ln = (contact.last_name as string) ?? '';
       return [fn, ln].filter(Boolean).join(' ');
     })
+    .replace(/\{\{contact\.id\}\}/g, () => (contact.id as string) ?? '')
     .replace(/\{\{contact\.first_name\}\}/g, () => (contact.first_name as string) ?? '')
     .replace(/\{\{contact\.last_name\}\}/g, () => (contact.last_name as string) ?? '')
     .replace(/\{\{contact\.email\}\}/g, () => (contact.email as string) ?? '')
