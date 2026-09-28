@@ -6,6 +6,7 @@ import { pool } from '../db.ts';
 import { broadcast } from './ws-manager.ts';
 import { EvolutionClient } from './evolution.ts';
 import { sendIgDm, sendIgPrivateReply, replyToIgComment } from './instagram.ts';
+import { upsertSocialConversation } from './social-inbox.ts';
 
 // ── Mapa de códigos de área de EE.UU. → Estado ──────────────────────────────
 
@@ -435,7 +436,10 @@ export async function executeRun(runId: string): Promise<void> {
         const message = messages.length ? messages[Math.floor(Math.random() * messages.length)] : (step.message as string ?? '');
         if (commentId && accessToken && message) {
           const interpolated = interpolate(message, contact, stepData);
-          await replyToIgComment(commentId, accessToken, interpolated);
+          const reply = await replyToIgComment(commentId, accessToken, interpolated);
+          const ig = stepData['__ig_comment__'] ?? {};
+          await logIgInbox(orgId, ig, contact, `💬 Comentó en tu publicación: "${ig.text ?? ''}"`, `igc_${commentId}`, 'inbound');
+          if (reply.id) await logIgInbox(orgId, ig, contact, `💬 Respuesta pública: ${interpolated}`, `igr_${reply.id}`, 'outbound');
         }
         stepData[step.id] = { replied: true };
         currentStep = i + 1;
@@ -461,6 +465,7 @@ export async function executeRun(runId: string): Promise<void> {
             result = await sendIgDm(igUserId, accessToken, senderId, message);
           }
         }
+        if (result.message_id) await logIgInbox(orgId, ig, contact, message, result.message_id, 'outbound');
         stepData[step.id] = { sent: Boolean(result.message_id), ...(result.error ? { error: result.error } : {}) };
         currentStep = i + 1;
         await persistRunProgress(runId, currentStep, stepData);
@@ -750,6 +755,26 @@ export interface IgCommentTriggerData {
   mediaId: string;
   accessToken: string;
   igUserId: string;
+  connectionId?: string;       // social_connections.id, para registrar la conversación
+}
+
+// Registra en la bandeja (conversación de IG del contacto) lo que pasa en el flujo de comentarios.
+async function logIgInbox(
+  orgId: string,
+  ig: Record<string, unknown>,
+  contact: Record<string, unknown>,
+  text: string,
+  mid: string,
+  direction: 'inbound' | 'outbound',
+) {
+  const peerId = ig.senderId as string | undefined;
+  const connectionId = ig.connectionId as string | undefined;
+  if (!peerId || !connectionId) return;
+  const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || (ig.senderName as string) || peerId;
+  await upsertSocialConversation({
+    orgId, socialAccountId: connectionId, channel: 'instagram_dm', chatId: `ig_${peerId}`,
+    displayName: name, text, mid, direction, contactId: (contact.id as string) ?? null,
+  });
 }
 
 export async function fireIgCommentTrigger(

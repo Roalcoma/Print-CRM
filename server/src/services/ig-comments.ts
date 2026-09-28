@@ -41,6 +41,7 @@ export async function handleIgComment(conn: Conn, c: IgComment, mediaId?: string
     mediaId: mediaId ?? c.media?.id ?? '',
     accessToken: conn.access_token,
     igUserId: conn.instagram_business_id ?? conn.page_id,
+    connectionId: conn.id,
   });
   return true;
 }

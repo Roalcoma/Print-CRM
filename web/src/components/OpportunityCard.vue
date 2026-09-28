@@ -105,11 +105,11 @@ const nameInitials = (n: string) => n.split(' ').map(w => w[0]).slice(0, 2).join
 
     <!-- Fila de acciones rápidas (estilo GHL) -->
     <div class="mt-2.5 flex items-center gap-0.5 border-t border-slate-100 pt-2 text-slate-400">
-      <!-- WhatsApp: visible cuando la oportunidad tiene contact_id y viene de WhatsApp o tiene teléfono -->
+      <!-- Conversación: visible si la oportunidad tiene contacto y viene de WhatsApp/Instagram o tiene teléfono -->
       <button
-        v-if="opp.contact_id && (opp.source === 'whatsapp' || opp.contact_phone)"
+        v-if="opp.contact_id && (opp.source === 'whatsapp' || opp.source?.startsWith('instagram') || opp.contact_phone)"
         class="cursor-pointer rounded-md p-1.5 transition-colors hover:bg-emerald-50 hover:text-emerald-600"
-        title="Ver conversación de WhatsApp"
+        title="Ver conversación"
         @click.stop="emit('openConversation', opp.contact_id)"
       >
         <MessageCircle class="h-4 w-4" />

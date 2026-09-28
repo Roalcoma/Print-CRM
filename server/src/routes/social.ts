@@ -7,6 +7,7 @@ import { requireAdmin } from '../auth/perms.ts';
 import { env } from '../env.ts';
 import { broadcast } from '../services/ws-manager.ts';
 import { handleIgComment, captureIgPhone, findIgContact } from '../services/ig-comments.ts';
+import { upsertSocialConversation } from '../services/social-inbox.ts';
 
 export const socialRouter = Router();
 export const socialPublicRouter = Router(); // callback OAuth (sin auth)
@@ -416,20 +417,24 @@ metaWebhookRouter.post('/webhook', express_json_check, async (req, res) => {
       const dmChannel = body.object === 'instagram' ? 'instagram_dm' : 'facebook_dm';
       const dmPrefix = body.object === 'instagram' ? 'ig' : 'fb';
       for (const messaging of entry.messaging ?? []) {
-        if (!messaging.message || messaging.message.is_echo) continue;
-        // Ignorar ecos de mensajes enviados por la propia cuenta
-        if (messaging.sender?.id === pageId || messaging.sender?.id === conn.instagram_business_id) continue;
+        if (!messaging.message) continue;
+        // Eco = mensaje enviado por la propia cuenta (bot, CRM o app de Instagram): va como saliente
+        const isEcho = Boolean(messaging.message.is_echo);
+        const peerId = (isEcho ? messaging.recipient?.id : messaging.sender?.id) ?? '';
+        if (!peerId || peerId === pageId || peerId === conn.instagram_business_id) continue;
 
-        const senderId = messaging.sender?.id ?? '';
         const text = messaging.message.text ?? null;
-        const mid = messaging.message.mid ?? senderId + '_' + messaging.timestamp;
+        const mid = messaging.message.mid ?? peerId + '_' + messaging.timestamp;
 
-        // Si viene de alguien que comentó, la conversación muestra su nombre y no el IGSID
-        const igContact = dmChannel === 'instagram_dm' ? await findIgContact(orgId, senderId) : null;
-        const displayName = igContact ? [igContact.first_name, igContact.last_name].filter(Boolean).join(' ') || senderId : senderId;
-        await upsertSocialConversation(orgId, conn.id, dmChannel, `${dmPrefix}_${senderId}`, displayName, text, mid, 'inbound');
-        if (dmChannel === 'instagram_dm' && text) {
-          captureIgPhone(orgId, senderId, text).catch(e => console.error('captureIgPhone error:', e));
+        // Si viene de alguien que comentó, se vincula a su contacto y muestra su nombre
+        const igContact = dmChannel === 'instagram_dm' ? await findIgContact(orgId, peerId) : null;
+        const displayName = igContact ? [igContact.first_name, igContact.last_name].filter(Boolean).join(' ') || peerId : peerId;
+        await upsertSocialConversation({
+          orgId, socialAccountId: conn.id, channel: dmChannel, chatId: `${dmPrefix}_${peerId}`,
+          displayName, text, mid, direction: isEcho ? 'outbound' : 'inbound', contactId: igContact?.id,
+        });
+        if (!isEcho && dmChannel === 'instagram_dm' && text) {
+          captureIgPhone(orgId, peerId, text).catch(e => console.error('captureIgPhone error:', e));
         }
       }
 
@@ -447,7 +452,13 @@ metaWebhookRouter.post('/webhook', express_json_check, async (req, res) => {
           const text = msg.message.text ?? null;
           const mid = msg.message.mid ?? senderId + '_' + msg.timestamp;
 
-          await upsertSocialConversation(orgId, conn.id, 'instagram_dm', `ig_${senderId}`, senderId, text, mid, 'inbound');
+          const igContact = await findIgContact(orgId, senderId);
+          const displayName = igContact ? [igContact.first_name, igContact.last_name].filter(Boolean).join(' ') || senderId : senderId;
+          await upsertSocialConversation({
+            orgId, socialAccountId: conn.id, channel: 'instagram_dm', chatId: `ig_${senderId}`,
+            displayName, text, mid, direction: 'inbound', contactId: igContact?.id,
+          });
+          if (text) captureIgPhone(orgId, senderId, text).catch(e => console.error('captureIgPhone error:', e));
         }
 
         // Instagram Comentario en post
@@ -473,46 +484,6 @@ metaWebhookRouter.post('/webhook', express_json_check, async (req, res) => {
   }
 });
 
-// ── Upsert de conversación social (IG DM / FB Messenger) ─────────────────────
-async function upsertSocialConversation(
-  orgId: string,
-  socialAccountId: string,
-  channel: 'instagram_dm' | 'facebook_dm',
-  chatId: string,
-  displayName: string,
-  text: string | null,
-  mid: string,
-  direction: 'inbound' | 'outbound',
-) {
-  try {
-    const convRes = await pool.query<{ id: string }>(
-      `INSERT INTO conversations
-         (organization_id, wa_chat_id, display_name, channel, social_account_id, last_message_at, last_message_preview, unread_count)
-       VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7)
-       ON CONFLICT (organization_id, wa_chat_id) DO UPDATE SET
-         last_message_at      = NOW(),
-         last_message_preview = EXCLUDED.last_message_preview,
-         unread_count         = conversations.unread_count + EXCLUDED.unread_count,
-         updated_at           = NOW()
-       RETURNING id`,
-      [orgId, chatId, displayName, channel, socialAccountId, text?.slice(0, 100) ?? null, direction === 'inbound' ? 1 : 0],
-    );
-    const convId = convRes.rows[0].id;
-
-    await pool.query(
-      `INSERT INTO conv_messages (conversation_id, organization_id, wa_message_id, direction, msg_type, body)
-       VALUES ($1, $2, $3, $4, 'text', $5)
-       ON CONFLICT (wa_message_id) DO NOTHING`,
-      [convId, orgId, mid, direction, text],
-    );
-
-    broadcast(orgId, 'message:new', { conversationId: convId });
-    const convFull = await pool.query('SELECT * FROM conversations WHERE id = $1', [convId]);
-    broadcast(orgId, 'conversation:update', convFull.rows[0]);
-  } catch (e) {
-    console.error('upsertSocialConversation error:', e);
-  }
-}
 
 // express.json() ya está montado globalmente, este middleware es solo un placeholder
 function express_json_check(_req: unknown, _res: unknown, next: () => void) { next(); }
@@ -524,6 +495,7 @@ interface MetaWebhookBody {
     id: string;
     messaging?: Array<{
       sender?: { id: string };
+      recipient?: { id: string };
       message?: { mid: string; text?: string; is_echo?: boolean };
       timestamp?: number;
     }>;
