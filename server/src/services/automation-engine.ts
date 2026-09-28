@@ -429,13 +429,13 @@ export async function executeRun(runId: string): Promise<void> {
         const commentId = (stepData['__ig_comment__']?.commentId as string | undefined) ?? '';
         const accessToken = (stepData['__ig_comment__']?.accessToken as string | undefined) ?? '';
         const messages: string[] = (step.messages as string[] | undefined) ?? [];
-        const runCount = Number(stepData['__ig_reply_count__']?.count ?? 0);
-        const message = messages.length ? messages[runCount % messages.length] : (step.message as string ?? '');
+        // Aleatorio: cada comentario abre una ejecución nueva, así que un contador por run
+        // siempre elegía el primer mensaje (respuestas idénticas = patrón de spam para IG).
+        const message = messages.length ? messages[Math.floor(Math.random() * messages.length)] : (step.message as string ?? '');
         if (commentId && accessToken && message) {
           const interpolated = interpolate(message, contact, stepData);
           await replyToIgComment(commentId, accessToken, interpolated);
         }
-        stepData['__ig_reply_count__'] = { count: runCount + 1 };
         stepData[step.id] = { replied: true };
         currentStep = i + 1;
         await persistRunProgress(runId, currentStep, stepData);
@@ -775,6 +775,16 @@ export async function fireIgCommentTrigger(
     let contactId: string;
     if (existingContact.rows[0]) {
       contactId = existingContact.rows[0].id;
+      // Una persona que comenta en varios posts recibe el flujo (DM + lead) una sola vez por semana
+      const recent = await pool.query(
+        `SELECT 1 FROM automation_runs WHERE contact_id = $1 AND automation_id = ANY($2::uuid[])
+           AND created_at > NOW() - INTERVAL '7 days' LIMIT 1`,
+        [contactId, rulesRes.rows.map(r => r.id)],
+      );
+      if (recent.rowCount) {
+        console.log(`[automation-engine] comentario IG ${commentData.commentId} ignorado: el contacto ${contactId} ya recibió el flujo esta semana`);
+        return;
+      }
     } else {
       const parts = commentData.senderName.trim().split(/\s+/);
       const created = await pool.query<{ id: string }>(
