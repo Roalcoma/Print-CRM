@@ -6,7 +6,7 @@ import { pool } from '../db.ts';
 import { requireAdmin } from '../auth/perms.ts';
 import { env } from '../env.ts';
 import { broadcast } from '../services/ws-manager.ts';
-import { handleIgComment } from '../services/ig-comments.ts';
+import { handleIgComment, captureIgPhone, findIgContact } from '../services/ig-comments.ts';
 
 export const socialRouter = Router();
 export const socialPublicRouter = Router(); // callback OAuth (sin auth)
@@ -424,7 +424,13 @@ metaWebhookRouter.post('/webhook', express_json_check, async (req, res) => {
         const text = messaging.message.text ?? null;
         const mid = messaging.message.mid ?? senderId + '_' + messaging.timestamp;
 
-        await upsertSocialConversation(orgId, conn.id, dmChannel, `${dmPrefix}_${senderId}`, senderId, text, mid, 'inbound');
+        // Si viene de alguien que comentó, la conversación muestra su nombre y no el IGSID
+        const igContact = dmChannel === 'instagram_dm' ? await findIgContact(orgId, senderId) : null;
+        const displayName = igContact ? [igContact.first_name, igContact.last_name].filter(Boolean).join(' ') || senderId : senderId;
+        await upsertSocialConversation(orgId, conn.id, dmChannel, `${dmPrefix}_${senderId}`, displayName, text, mid, 'inbound');
+        if (dmChannel === 'instagram_dm' && text) {
+          captureIgPhone(orgId, senderId, text).catch(e => console.error('captureIgPhone error:', e));
+        }
       }
 
       // ── Changes: mensajes de Instagram DM y comentarios ──────────────────
@@ -473,7 +479,7 @@ async function upsertSocialConversation(
   socialAccountId: string,
   channel: 'instagram_dm' | 'facebook_dm',
   chatId: string,
-  senderId: string,
+  displayName: string,
   text: string | null,
   mid: string,
   direction: 'inbound' | 'outbound',
@@ -489,7 +495,7 @@ async function upsertSocialConversation(
          unread_count         = conversations.unread_count + EXCLUDED.unread_count,
          updated_at           = NOW()
        RETURNING id`,
-      [orgId, chatId, senderId, channel, socialAccountId, text?.slice(0, 100) ?? null, direction === 'inbound' ? 1 : 0],
+      [orgId, chatId, displayName, channel, socialAccountId, text?.slice(0, 100) ?? null, direction === 'inbound' ? 1 : 0],
     );
     const convId = convRes.rows[0].id;
 
