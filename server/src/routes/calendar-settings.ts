@@ -184,7 +184,7 @@ calendarPublicRouter.get('/google/callback', async (req, res) => {
     // Las citas agendadas mientras Google estaba desconectado reciben ahora su Meet
     repairPendingMeets(userId, orgId).catch(e => console.error('repairPendingMeets error:', e));
 
-    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5175';
+    const frontendUrl = process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'http://localhost:5175';
     res.redirect(`${frontendUrl}/settings/calendar?connected=google`);
   } catch (err) {
     console.error('Google OAuth callback error:', err);
@@ -238,7 +238,7 @@ calendarPublicRouter.get('/zoom/callback', async (req, res) => {
       [userId, orgId, tokens.refresh_token, tokens.zoom_user_id],
     );
 
-    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5175';
+    const frontendUrl = process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'http://localhost:5175';
     res.redirect(`${frontendUrl}/settings/calendar?connected=zoom`);
   } catch (err) {
     console.error('Zoom OAuth callback error:', err);
