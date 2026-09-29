@@ -7,7 +7,7 @@ import { broadcast } from './ws-manager.ts';
 import { EvolutionClient } from './evolution.ts';
 import { sendIgDm, sendIgPrivateReply, replyToIgComment } from './instagram.ts';
 import { upsertSocialConversation } from './social-inbox.ts';
-import { wantsInfo } from './ig-intent.ts';
+import { wantsInfo, captionKeywords, matchesKeyword } from './ig-intent.ts';
 
 // ── Mapa de códigos de área de EE.UU. → Estado ──────────────────────────────
 
@@ -755,6 +755,7 @@ export interface IgCommentTriggerData {
   senderName: string;
   text: string;
   mediaId: string;
+  caption?: string;            // caption del post: de ahí sale su palabra clave ("Comenta CAMBIO")
   accessToken: string;
   igUserId: string;
   connectionId?: string;       // social_connections.id, para registrar la conversación
@@ -799,15 +800,17 @@ export async function fireIgCommentTrigger(
     const team = (await pool.query<{ u: string }>(
       `SELECT lower(username) AS u FROM social_connections WHERE organization_id = $1 AND username IS NOT NULL`, [orgId],
     )).rows.map(r => r.u);
+    const keywords = captionKeywords(commentData.caption ?? '');
+    const asksInfo = wantsInfo(commentData.text) || matchesKeyword(commentData.text, keywords);
     const rulesRes = {
       rows: allRules.rows.filter(r => {
         const excluded = (r.config?.exclude_usernames ?? []).map(u => u.toLowerCase().replace(/^@/, ''));
         if (team.includes(author) || excluded.includes(author)) return false;
-        return r.config?.intent_filter === false || wantsInfo(commentData.text);
+        return r.config?.intent_filter === false || asksInfo;
       }),
     };
     if (!rulesRes.rows.length) {
-      console.log(`[automation-engine] comentario IG ${commentData.commentId} de @${author} ignorado: no pide información o es del equipo`);
+      console.log(`[automation-engine] comentario IG ${commentData.commentId} de @${author} ignorado: no pide información o es del equipo (texto: "${commentData.text.slice(0, 60)}", palabras clave del post: ${keywords.join(', ') || 'ninguna'})`);
       return;
     }
 

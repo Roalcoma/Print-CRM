@@ -103,3 +103,34 @@ export function wantsInfo(raw: string): boolean {
   if (text.includes('?') && words.filter(w => w !== '?').length >= 2) return true;
   return false;
 }
+
+// Palabra clave que pide el propio post: 'Comenta la palabra "CAMBIO"', 'Comenta VIRTUAL si…',
+// 'escribe YO', 'comment INFO'. Toma la palabra entre comillas o en MAYÚSCULAS tras el verbo.
+// El verbo y los rellenos ignoran mayúsculas; la palabra clave sin comillas debe ir en MAYÚSCULAS.
+const ACCENTED: Record<string, string> = { a: 'áÁ', e: 'éÉ', i: 'íÍ', o: 'óÓ', u: 'úÚ' };
+const ci = (w: string) => [...w].map(ch => /[a-z]/.test(ch) ? `[${ch}${ch.toUpperCase()}${ACCENTED[ch] ?? ''}]` : ch).join('');
+const CTA_VERBS = ['comenta', 'comentame', 'comentanos', 'comentar', 'escribe', 'escribeme', 'escribenos', 'escribir',
+  'envia', 'enviame', 'envianos', 'enviar', 'manda', 'mandame', 'responde', 'pon', 'deja', 'dejame',
+  'comment', 'type', 'write', 'reply', 'drop'];
+const CTA_FILLERS = ['la', 'una', 'un', 'el', 'the', 'a', 'word', 'palabra', 'frase', 'con', 'aqui', 'abajo', 'below', 'comentario'];
+const CTA_RE = new RegExp(
+  `(?<![\\p{L}])(?:${CTA_VERBS.map(ci).join('|')})(?![\\p{L}])\\s+(?:(?:${CTA_FILLERS.map(ci).join('|')})\\s+){0,5}` +
+  `(?:["“”'‘’«»]\\s*([^"“”'‘’«»\\n]{1,30}?)\\s*["“”'‘’«»]|([A-ZÁÉÍÓÚÑ0-9]{2,}(?:\\s+[A-ZÁÉÍÓÚÑ0-9]{2,})?)(?![\\p{L}]))`,
+  'gu',
+);
+
+export function captionKeywords(caption: string): string[] {
+  const out = new Set<string>();
+  for (const m of (caption ?? '').matchAll(CTA_RE)) {
+    const kw = normalize(m[1] ?? m[2] ?? '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (kw) out.add(kw);
+  }
+  return [...out];
+}
+
+// ¿El comentario contiene alguna de las palabras clave del post? (palabra completa)
+export function matchesKeyword(text: string, keywords: string[]): boolean {
+  if (!text || !keywords.length) return false;
+  const t = ` ${normalize(text).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()} `;
+  return keywords.some(k => t.includes(` ${k} `));
+}

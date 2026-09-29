@@ -22,6 +22,23 @@ export type IgComment = {
   media?: { id: string };
 };
 
+// Caption del post (para su palabra clave "Comenta CAMBIO…"). Caché en memoria: los captions casi no cambian.
+const captionCache = new Map<string, { caption: string; at: number }>();
+async function mediaCaption(conn: Conn, mediaId: string): Promise<string> {
+  if (!mediaId) return '';
+  const hit = captionCache.get(mediaId);
+  if (hit && Date.now() - hit.at < 6 * 60 * 60_000) return hit.caption;
+  try {
+    const r = await get<{ caption?: string }>(`${igBase(conn.access_token)}/${mediaId}?fields=caption&access_token=${conn.access_token}`);
+    if (r.error) throw new Error(r.error.message);
+    captionCache.set(mediaId, { caption: r.caption ?? '', at: Date.now() });
+    return r.caption ?? '';
+  } catch (e) {
+    console.error(`[ig-comments] no se pudo leer el caption de ${mediaId}: ${(e as Error).message}`);
+    return '';
+  }
+}
+
 // Devuelve true si el comentario era nuevo y se disparó el trigger.
 export async function handleIgComment(conn: Conn, c: IgComment, mediaId?: string): Promise<boolean> {
   const ins = await pool.query(
@@ -32,13 +49,15 @@ export async function handleIgComment(conn: Conn, c: IgComment, mediaId?: string
   if (!ins.rowCount) return false;
 
   const username = c.from?.username ?? c.username ?? c.from?.name ?? '';
+  const media = mediaId ?? c.media?.id ?? '';
   console.log(`[ig-comments] nuevo comentario ${c.id} de @${username} (org ${conn.organization_id})`);
   await fireIgCommentTrigger(conn.organization_id, {
     commentId: c.id,
     senderId: c.from?.id ?? '',
     senderName: username,
     text: c.text ?? '',
-    mediaId: mediaId ?? c.media?.id ?? '',
+    mediaId: media,
+    caption: await mediaCaption(conn, media),
     accessToken: conn.access_token,
     igUserId: conn.instagram_business_id ?? conn.page_id,
     connectionId: conn.id,
