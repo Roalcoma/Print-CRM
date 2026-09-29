@@ -212,19 +212,42 @@ const railSections: { id: RailSection; icon: typeof UserCircle2; label: string }
 ];
 
 // ── Carga ────────────────────────────────────────────────────────────────────
+const PAGE_SIZE = 100;
+const totalConversations = ref(0);
+const loadingMore = ref(false);
+
+function listParams(offset = 0) {
+  const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
+  if (inboxTab.value === 'unread')   { params.set('unread', 'true'); params.set('status', 'all'); }
+  else if (inboxTab.value === 'starred') params.set('starred', 'true');
+  else if (inboxTab.value === 'all')  params.set('status', 'all');
+  else                               params.set('status', 'open'); // 'recent'
+  if (q.value) params.set('q', q.value);
+  return params;
+}
+
 async function loadConversations() {
   loading.value = true;
   try {
-    const params = new URLSearchParams({ limit: '100' });
-    if (inboxTab.value === 'unread')   { params.set('unread', 'true'); params.set('status', 'all'); }
-    else if (inboxTab.value === 'starred') params.set('starred', 'true');
-    else if (inboxTab.value === 'all')  params.set('status', 'all');
-    else                               params.set('status', 'open'); // 'recent'
-    if (q.value) params.set('q', q.value);
-    const data = await api.get<{ conversations: Conversation[] }>(`/conversations?${params}`);
+    const data = await api.get<{ conversations: Conversation[]; total: number }>(`/conversations?${listParams()}`);
     conversations.value = data.conversations;
+    totalConversations.value = data.total;
   } finally {
     loading.value = false;
+  }
+}
+
+// Solo se cargan PAGE_SIZE conversaciones; las más antiguas llegan con "Cargar más"
+async function loadMoreConversations() {
+  if (loadingMore.value) return;
+  loadingMore.value = true;
+  try {
+    const data = await api.get<{ conversations: Conversation[]; total: number }>(`/conversations?${listParams(conversations.value.length)}`);
+    const seen = new Set(conversations.value.map(c => c.id));
+    conversations.value.push(...data.conversations.filter(c => !seen.has(c.id)));
+    totalConversations.value = data.total;
+  } finally {
+    loadingMore.value = false;
   }
 }
 
@@ -266,7 +289,13 @@ onMounted(async () => {
   // Si llegamos desde una oportunidad/contacto con contact_id, auto-seleccionar (o crear) conversación
   const contactIdParam = route.query.contact_id as string | undefined;
   if (contactIdParam) {
-    const conv = conversations.value.find(c => c.contact_id === contactIdParam);
+    let conv = conversations.value.find(c => c.contact_id === contactIdParam);
+    if (!conv) {
+      // Puede ser una conversación antigua que no entró en la primera página
+      const data = await api.get<{ conversations: Conversation[] }>(`/conversations?status=all&limit=1&contact_id=${encodeURIComponent(contactIdParam)}`).catch(() => null);
+      conv = data?.conversations[0];
+      if (conv) conversations.value.unshift(conv);
+    }
     if (conv) {
       await selectConversation(conv.id);
     } else {
@@ -725,6 +754,12 @@ async function syncNames() {
             <Trash2 class="h-4 w-4" />
           </button>
         </div>
+        <button v-if="!loading && conversations.length < totalConversations"
+          class="flex w-full cursor-pointer items-center justify-center gap-2 py-3 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800 disabled:cursor-wait"
+          :disabled="loadingMore" @click="loadMoreConversations">
+          <Spinner v-if="loadingMore" :size="14" />
+          Cargar más ({{ totalConversations - conversations.length }})
+        </button>
       </div>
     </aside>
 

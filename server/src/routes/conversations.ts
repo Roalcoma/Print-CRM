@@ -26,7 +26,7 @@ async function getWACfg(orgId: string): Promise<WASetting | null> {
 conversationsRouter.get('/', async (req, res) => {
   try {
     const orgId = req.auth!.organizationId;
-    const { status = 'open', q, limit = '50', offset = '0', unread, starred } = req.query as Record<string, string>;
+    const { status = 'open', q, limit = '50', offset = '0', unread, starred, contact_id } = req.query as Record<string, string>;
 
     let where = `WHERE c.organization_id = $1 AND c.wa_chat_id NOT LIKE '%@g.us' AND c.wa_chat_id NOT LIKE '%@newsletter' AND (c.channel IS NULL OR c.channel IN ('whatsapp','instagram_dm','facebook_dm'))`;
     const vals: unknown[] = [orgId];
@@ -38,6 +38,7 @@ conversationsRouter.get('/', async (req, res) => {
       where += ` AND c.status = $${i++}`; vals.push(status);
     }
     if (unread === 'true') { where += ` AND c.unread_count > 0`; }
+    if (contact_id) { where += ` AND c.contact_id = $${i++}`; vals.push(contact_id); }
     if (q) { where += ` AND (c.display_name ILIKE $${i} OR c.phone ILIKE $${i})`; vals.push(`%${q}%`); i++; }
 
     const result = await pool.query(
