@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
+import { repairPendingMeets } from '../services/google-meet.ts';
 import { requireAdmin } from '../auth/perms.ts';
 import {
   getGoogleAuthUrl,
@@ -179,6 +180,9 @@ calendarPublicRouter.get('/google/callback', async (req, res) => {
        ON CONFLICT (user_id, organization_id) DO UPDATE SET google_refresh_token=$3, updated_at=now()`,
       [userId, orgId, tokens.refresh_token],
     );
+
+    // Las citas agendadas mientras Google estaba desconectado reciben ahora su Meet
+    repairPendingMeets(userId, orgId).catch(e => console.error('repairPendingMeets error:', e));
 
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5175';
     res.redirect(`${frontendUrl}/settings/calendar?connected=google`);

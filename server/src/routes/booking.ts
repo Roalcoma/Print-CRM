@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
-import { getGoogleFreebusy, createGoogleEvent } from '../integrations/google-calendar.ts';
+import { getGoogleFreebusy } from '../integrations/google-calendar.ts';
+import { ensureGoogleMeet } from '../services/google-meet.ts';
 import { fireAppointmentBookedTrigger } from '../services/automation-engine.ts';
 
 export const bookingRouter = Router();
@@ -324,55 +325,7 @@ bookingRouter.post('/:slug', async (req, res) => {
   );
 
   // Crear evento en Google Meet si está configurado
-  let meetLink: string | null = null;
-  if (cal.location_type === 'google_meet') {
-    // Obtener todos los miembros del calendario
-    const calMembers = await query<{ user_id: string; email: string; is_primary: boolean }>(
-      `SELECT cm.user_id, u.email, cm.is_primary
-       FROM calendar_members cm JOIN users u ON u.id = cm.user_id
-       WHERE cm.calendar_id = $1`,
-      [cal.id],
-    );
-    // Usar el miembro primario para autenticar con Google (o caer al user_id del calendario)
-    const primaryMember = calMembers.find(m => m.is_primary) ?? calMembers[0];
-    const googleUserId  = primaryMember?.user_id ?? cal.user_id;
-
-    const gcSettings = await queryOne<{
-      google_refresh_token: string | null;
-      google_calendar_id: string | null;
-    }>('SELECT google_refresh_token, google_calendar_id FROM calendar_settings WHERE user_id=$1 AND organization_id=$2', [googleUserId, cal.organization_id]);
-
-    if (gcSettings?.google_refresh_token) {
-      // Incluir al cliente + todos los miembros del calendario como invitados
-      const allAttendeeEmails = [
-        d.email,
-        ...calMembers.map(m => m.email).filter(Boolean),
-      ];
-
-      try {
-        const gEvent = await createGoogleEvent({
-          refreshToken: gcSettings.google_refresh_token,
-          calendarId:   gcSettings.google_calendar_id ?? 'primary',
-          title:        `Reunión con ${d.name}`,
-          description:  d.notes ?? undefined,
-          startAt:      startAt,
-          endAt:        endAt,
-          timezone:     cal.timezone,
-          attendeeEmails: allAttendeeEmails,
-          createMeet:   true,
-        });
-        meetLink = gEvent.meetLink ?? null;
-        // Actualizar appointment con provider_event_id y meeting_url
-        await query(
-          `UPDATE appointments SET provider='google', provider_event_id=$1, meeting_url=$2 WHERE id=$3`,
-          [gEvent.eventId, meetLink, appt.id],
-        );
-      } catch (err) {
-        console.error('Google Meet creation failed:', err);
-        // No fallar el booking si Google falla
-      }
-    }
-  }
+  const meetLink = await ensureGoogleMeet(appt.id);
 
   const locationNote = meetLink
     ? ` El enlace de la reunión es: ${meetLink}`

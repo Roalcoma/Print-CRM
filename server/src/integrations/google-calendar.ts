@@ -1,3 +1,6 @@
+import { query } from '../db.ts';
+import { broadcast } from '../services/ws-manager.ts';
+
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_CALENDAR_URL = 'https://www.googleapis.com/calendar/v3';
 
@@ -8,6 +11,32 @@ function getCredentials() {
     throw new Error('Google Calendar no configurado: faltan GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en .env');
   }
   return { clientId, clientSecret };
+}
+
+// Google revocó o caducó el permiso: se marca como desconectado (el CRM deja de fingir que
+// está conectado) y se avisa a los admins para que lo reconecten. Solo avisa una vez.
+async function markGoogleDisconnected(refreshToken: string): Promise<void> {
+  const [row] = await query<{ user_id: string; organization_id: string; name: string; email: string }>(
+    `UPDATE calendar_settings cs SET google_refresh_token = NULL, updated_at = now()
+     FROM users u WHERE u.id = cs.user_id AND cs.google_refresh_token = $1
+     RETURNING cs.user_id, cs.organization_id, u.name, u.email`,
+    [refreshToken],
+  );
+  if (!row) return;
+  console.error(`[google] permiso revocado/caducado para ${row.email}: Google Calendar marcado como desconectado`);
+  const admins = await query<{ id: string }>(
+    `SELECT id FROM users WHERE organization_id = $1 AND (role IN ('owner','admin') OR id = $2)`,
+    [row.organization_id, row.user_id],
+  );
+  for (const a of admins) {
+    await query(
+      `INSERT INTO notifications (organization_id, user_id, type, title, body)
+       VALUES ($1, $2, 'system', $3, $4)`,
+      [row.organization_id, a.id, 'Google Calendar se desconectó',
+       `Google rechazó el permiso de ${row.name} (${row.email}). Las citas nuevas no tendrán enlace de Meet hasta que se reconecte en Configuración → Calendarios. Al reconectar, las citas pendientes recibirán su Meet automáticamente.`],
+    );
+    broadcast(row.organization_id, 'notification:new', { userId: a.id });
+  }
 }
 
 export async function refreshGoogleToken(refreshToken: string): Promise<string> {
@@ -24,6 +53,7 @@ export async function refreshGoogleToken(refreshToken: string): Promise<string> 
   });
   if (!res.ok) {
     const err = await res.text();
+    if (err.includes('invalid_grant')) await markGoogleDisconnected(refreshToken).catch(console.error);
     throw new Error(`Google token refresh failed: ${err}`);
   }
   const data = await res.json() as { access_token: string };
