@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import { useWs } from '../composables/useWs';
 import { useRouter } from 'vue-router';
 import { useDialog } from '../composables/useDialog';
 import { Plus, Search, Filter, Download, Upload, X, Trash2, MoreVertical, ChevronDown, Check, UserRound, Briefcase, Kanban, StickyNote, UserPlus, Link2, SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-vue-next';
@@ -226,6 +227,14 @@ onMounted(async () => {
   }
 });
 watch(currentId, loadOpps);
+
+// Tiempo real: los leads que crean los bots/webhooks aparecen sin recargar la página
+const { on: onWs } = useWs();
+let wsReloadTimer: ReturnType<typeof setTimeout> | undefined;
+onWs('opportunity:new', () => {
+  clearTimeout(wsReloadTimer);
+  wsReloadTimer = setTimeout(loadOpps, 500);
+});
 
 // Nº de condiciones realmente aplicadas (con valor válido).
 const activeFilterCount = computed(() => conditions.value.filter(

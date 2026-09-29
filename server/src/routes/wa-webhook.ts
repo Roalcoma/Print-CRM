@@ -320,6 +320,7 @@ async function createLeadFlow(orgId: string, contactId: string | null, displayNa
     [orgId, pipelineId, stageId, contactId, `Lead WhatsApp — ${displayName}`],
   );
   const oppId = oppRes.rows[0].id;
+  broadcast(orgId, 'opportunity:new', { id: oppId });
 
   // Todos los usuarios de la org
   const usersRes = await pool.query<{ id: string }>(

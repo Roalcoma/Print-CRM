@@ -599,11 +599,12 @@ async function handleLeadgen(orgId: string, accessToken: string, event: LeadgenC
 
   // 5. Crear oportunidad en el pipeline configurado
   if (cfg.auto_create_opportunity && cfg.pipeline_id && cfg.stage_id) {
-    await pool.query(
-      `INSERT INTO opportunities (organization_id, name, pipeline_id, stage_id, contact_id)
-       VALUES ($1, $2, $3, $4, $5)`,
+    await pool.query<{ id: string }>(
+      `INSERT INTO opportunities (organization_id, title, pipeline_id, stage_id, contact_id)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
       [orgId, `Lead: ${firstName}`, cfg.pipeline_id, cfg.stage_id, contactId],
-    ).catch(e => console.error('handleLeadgen: error creando oportunidad', e));
+    ).then(r => broadcast(orgId, 'opportunity:new', { id: r.rows[0].id }))
+     .catch(e => console.error('handleLeadgen: error creando oportunidad', e));
   }
 
   console.log(`handleLeadgen: lead ${event.leadgen_id} procesado para org ${orgId} → contacto ${contactId}`);

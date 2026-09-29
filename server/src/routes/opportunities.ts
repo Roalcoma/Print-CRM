@@ -5,6 +5,7 @@ import { buildFilters, type Condition } from '../filters.ts';
 import { toCsv, parseCsv } from '../csv.ts';
 import { logActivity } from '../activity.ts';
 import { audit } from '../audit.ts';
+import { broadcast } from '../services/ws-manager.ts';
 
 export const opportunitiesRouter = Router();
 
@@ -185,6 +186,7 @@ opportunitiesRouter.post('/', async (req, res) => {
   );
   if (o.follower_ids) await syncFollowers(row.id, o.follower_ids, orgId);
   const full = await queryOne(`${BASE_SELECT} WHERE o.id = $1`, [row.id]);
+  broadcast(orgId, 'opportunity:new', { id: row.id });
 
   // Obtener nombre de la etapa para el meta
   const stageRow = await queryOne<{ name: string }>('SELECT name FROM pipeline_stages WHERE id=$1', [o.stage_id]);

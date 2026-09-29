@@ -20,7 +20,8 @@ function getWsUrl(): string {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const host = import.meta.env.VITE_API_URL
     ? new URL(import.meta.env.VITE_API_URL as string).host
-    : `${location.hostname}:3100`;
+    // En dev Vite (5175) y la API (3100) van por separado; en prod la API sirve la web y /ws en el mismo host
+    : import.meta.env.DEV ? `${location.hostname}:3100` : location.host;
   return `${proto}://${host}/ws?token=${token}`;
 }
 

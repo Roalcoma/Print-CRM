@@ -316,6 +316,7 @@ export async function executeRun(runId: string): Promise<void> {
           [orgId, pipelineId, stageId, run.contact_id ?? null, title, source || null],
         );
         stepData[step.id] = { opportunity_id: oppRes.rows[0].id };
+        broadcast(orgId, 'opportunity:new', { id: oppRes.rows[0].id });
         currentStep = i + 1;
         await persistRunProgress(runId, currentStep, stepData);
 
