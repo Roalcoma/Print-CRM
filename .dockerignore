@@ -9,3 +9,5 @@
 README.md
 deploy.sh
 docker-compose.yml
+.deploy-prev
+.deployed-commit
