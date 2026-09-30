@@ -40,7 +40,7 @@ async function copyId() {
             class="inline-flex cursor-pointer items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-[11px] text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700"
             @click.stop="copyId">
             <Check v-if="copied" class="h-3 w-3 text-emerald-500" /><Copy v-else class="h-3 w-3" />
-            ID {{ ad.source_id }}
+            {{ compact ? 'Copiar ID' : `ID ${ad.source_id}` }}
           </button>
         </div>
       </div>
