@@ -49,7 +49,8 @@ waWebhookRouter.post('/:secret', async (req, res) => {
       const direction = msg.key.fromMe ? 'outbound' : 'inbound';
       const waId = msg.key.id;
       const phone = phoneFromJid(chatId);
-      const senderName = msg.pushName?.trim() || undefined;
+      // En mensajes propios (fromMe) pushName es el nombre de la cuenta del negocio: no sirve para nombrar el chat
+      const senderName = direction === 'inbound' ? msg.pushName?.trim() || undefined : undefined;
       const displayName = senderName ?? phone;
       const timestamp = new Date((msg.messageTimestamp ?? Date.now() / 1000) * 1000);
 
