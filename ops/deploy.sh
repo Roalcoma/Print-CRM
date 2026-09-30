@@ -121,7 +121,7 @@ rssh bash -c '
 ' _ "${EXCLUDES[@]}" > "$TMP/prod.md5"
 
 DERIVA="$({ diff <(sort -k2 "$TMP/base.md5") <(sort -k2 "$TMP/prod.md5") || true; } | awk '
-  /^[<>]/ { f=substr($0, 38); if ($1=="<") b[f]=1; else p[f]=1 }
+  /^[<>]/ { f=substr($0, 37); if ($1=="<") b[f]=1; else p[f]=1 }
   END { for (f in b) print (f in p ? "  modificado en prod: " : "  borrado en prod:    ") f
         for (f in p) if (!(f in b)) print "  nuevo en prod:      " f }' | sort)"
 if [[ -z $DERIVA ]]; then
@@ -146,8 +146,8 @@ else
 fi
 
 # ── 3. Sincronización ────────────────────────────────────────────────────────
-# -c: compara contenido (git archive no conserva mtimes); sin -t para no reescribir fechas
-RSYNC=(rsync -rlpzc --delete --itemize-changes -e "ssh ${SSH_OPTS[*]}")
+# -c: compara contenido (git archive no conserva mtimes); sin -t ni -p para no tocar fechas ni permisos
+RSYNC=(rsync -rlzc --delete --itemize-changes -e "ssh ${SSH_OPTS[*]}")
 for e in "${EXCLUDES[@]}"; do RSYNC+=(--exclude="$e"); done
 SRC=(); for p in "${DEPLOY_PATHS[@]}"; do [[ -e $TMP/nuevo/$p ]] && SRC+=("$TMP/nuevo/$p"); done
 
