@@ -202,7 +202,7 @@ if ((!api || !web)); then
   echo "── Últimas líneas de crm_app ──"; rssh docker logs --since "$DESDE" --tail 30 crm_app 2>&1 || true
   revertir "la verificación de salud no pasó en ${HEALTH_TIMEOUT}s (api=$api, web=$web)"
 fi
-ERRORES="$(rssh docker logs --since "$DESDE" crm_app 2>&1 | grep -iE 'error|fatal' | tail -5 || true)"
+ERRORES="$(rssh docker logs --since "$DESDE" crm_app 2>&1 | grep -iE '\berror\b|fatal|exception' | grep -v '^\[alerts\]' | tail -5 || true)"
 [[ -z $ERRORES ]] || { aviso "Hay errores en los logs de arranque (no bloquean):"; echo "$ERRORES"; }
 
 WA_DESPUES="$(estado_whatsapp)"
