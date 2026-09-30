@@ -27,6 +27,19 @@ npm run dev            # http://localhost:5173
 
 Usuario de prueba (creado por el seed): `demo@crm.test` / `demo1234`.
 
+## Tests
+
+```bash
+cd server
+npm test               # levanta un servidor de pruebas en :3202, corre aislamiento + flujos y lo apaga
+```
+
+Usa la BD del `.env` local (crea organizaciones propias con registro público) y simula Evolution,
+Meta/Instagram y Google con un servidor falso en `:4202`: no se envía nada real. El servidor de
+pruebas arranca con `DISABLE_BACKGROUND_JOBS=true` y los overrides `EVOLUTION_URL`, `META_GRAPH_URL`,
+`IG_GRAPH_URL`, `GOOGLE_API_URL`, `GOOGLE_TOKEN_URL` (ver `server/test/run.ts`).
+`npm test -- test/flows.test.ts` corre solo un archivo.
+
 ## Estructura
 
 ```

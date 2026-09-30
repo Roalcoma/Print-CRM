@@ -8,7 +8,9 @@
     "start": "node --env-file=.env src/index.ts",
     "migrate": "node --env-file=.env src/migrate.ts",
     "typecheck": "tsc --noEmit",
-    "test:isolation": "TEST_BASE_URL=${TEST_BASE_URL:-http://localhost:3199} node --env-file=.env --test test/isolation.test.ts"
+    "test:isolation": "TEST_BASE_URL=${TEST_BASE_URL:-http://localhost:3199} node --env-file=.env --test test/isolation.test.ts",
+    "test": "node test/run.ts",
+    "test:flows": "TEST_BASE_URL=${TEST_BASE_URL:-http://localhost:3202} node --env-file=.env --test test/flows.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

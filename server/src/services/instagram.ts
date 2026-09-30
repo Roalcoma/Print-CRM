@@ -2,8 +2,9 @@
 // Los tokens de "Instagram Login" (prefijo IGAA) solo funcionan en graph.instagram.com;
 // los de páginas de Facebook (EAA…) en graph.facebook.com.
 
-const FB_BASE = 'https://graph.facebook.com/v21.0';
-const IG_BASE = 'https://graph.instagram.com/v21.0';
+// META_GRAPH_URL / IG_GRAPH_URL: overrides solo para los tests (Meta simulado)
+const FB_BASE = `${process.env.META_GRAPH_URL ?? 'https://graph.facebook.com'}/v21.0`;
+const IG_BASE = `${process.env.IG_GRAPH_URL ?? 'https://graph.instagram.com'}/v21.0`;
 
 export function igBase(accessToken: string): string {
   return accessToken.startsWith('IG') ? IG_BASE : FB_BASE;

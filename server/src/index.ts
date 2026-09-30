@@ -246,6 +246,8 @@ initWS(server);
 
 server.listen(env.port, () => {
   console.log(`API en http://localhost:${env.port} | WS en ws://localhost:${env.port}/ws`);
+  // Los tests arrancan sin tareas periódicas: recorren TODAS las orgs de la BD (compartida en local)
+  if (process.env.DISABLE_BACKGROUND_JOBS === 'true') return;
   // Revisar cada 60s si hay esperas temporizadas listas para reanudar
   setInterval(() => resumeTimedRuns(), 60_000);
   // Refrescar tokens de Instagram cada 30 días; también al arrancar para renovar de inmediato si toca

@@ -1,8 +1,9 @@
 import { query } from '../db.ts';
 import { broadcast } from '../services/ws-manager.ts';
 
-const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const GOOGLE_CALENDAR_URL = 'https://www.googleapis.com/calendar/v3';
+// Overrides por entorno solo para los tests (apuntan a un Google simulado)
+const GOOGLE_TOKEN_URL = process.env.GOOGLE_TOKEN_URL ?? 'https://oauth2.googleapis.com/token';
+const GOOGLE_CALENDAR_URL = `${process.env.GOOGLE_API_URL ?? 'https://www.googleapis.com'}/calendar/v3`;
 
 function getCredentials() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
