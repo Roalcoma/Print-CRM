@@ -1,9 +1,12 @@
 // Alertas a Telegram: todo error que el CRM registra (console.error), las promesas sin
 // capturar y los avisos explícitos (WhatsApp desconectado…) llegan al chat del admin.
-// Sin TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID no hace nada (entorno local).
+// Vía un webhook de n8n (ALERT_WEBHOOK_URL, workflow "Rocco CRM · Alertas" que reusa el bot de
+// Telegram) o directo con TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID. Sin ninguno no hace nada (local).
 
+const WEBHOOK = process.env.ALERT_WEBHOOK_URL ?? '';
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const CHAT  = process.env.TELEGRAM_CHAT_ID ?? '';
+const ENABLED = !!WEBHOOK || (!!TOKEN && !!CHAT);
 const REPEAT_WINDOW_MS = 30 * 60_000;   // el mismo error se avisa como mucho una vez cada 30 min
 const MAX_PER_HOUR = 15;                // tope global para no inundar el chat
 
@@ -12,15 +15,25 @@ let hourStart = Date.now();
 let sentThisHour = 0;
 
 export async function sendTelegram(text: string): Promise<void> {
-  if (!TOKEN || !CHAT) return;
+  if (!ENABLED) return;
+  const body = text.slice(0, 3900);
   try {
-    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: CHAT, text: text.slice(0, 3900), disable_web_page_preview: true }),
-      signal: AbortSignal.timeout(10_000),
-    });
-  } catch { /* sin red hacia Telegram: no hay a quién avisar */ }
+    if (WEBHOOK) {
+      await fetch(WEBHOOK, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: body }),
+        signal: AbortSignal.timeout(10_000),
+      });
+    } else {
+      await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: CHAT, text: body, disable_web_page_preview: true }),
+        signal: AbortSignal.timeout(10_000),
+      });
+    }
+  } catch { /* sin red hacia n8n/Telegram: no hay a quién avisar */ }
 }
 
 // Clave de agrupación: el mensaje sin ids, números ni fechas, para que el mismo fallo cuente como uno
@@ -53,7 +66,7 @@ function describe(args: unknown[]): string {
 }
 
 export function installErrorAlerts(): void {
-  if (!TOKEN || !CHAT) { console.log('[alerts] sin TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID: alertas desactivadas'); return; }
+  if (!ENABLED) { console.log('[alerts] sin ALERT_WEBHOOK_URL ni TELEGRAM_BOT_TOKEN: alertas desactivadas'); return; }
   const original = console.error.bind(console);
   console.error = (...args: unknown[]) => {
     original(...args);
@@ -62,5 +75,5 @@ export function installErrorAlerts(): void {
   };
   process.on('unhandledRejection', reason => { original('unhandledRejection:', reason); alert('promesa sin capturar', describe([reason])); });
   process.on('uncaughtException', err => { original('uncaughtException:', err); alert('excepción sin capturar', describe([err])); });
-  console.log('[alerts] alertas de errores a Telegram activadas');
+  console.log(`[alerts] alertas de errores a Telegram activadas (${WEBHOOK ? 'vía n8n' : 'bot directo'})`);
 }

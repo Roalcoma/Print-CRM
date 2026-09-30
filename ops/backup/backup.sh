@@ -13,12 +13,16 @@ KEEP_REMOTE_DAYS=30
 TS="$(date -u +%Y-%m-%d_%H%M)"
 mkdir -p "$OUT"
 # shellcheck disable=SC1091
-source "$DIR/.env"   # TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+source "$DIR/.env"   # ALERT_WEBHOOK_URL (n8n) o TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID
 
 notify() {
-  [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || return 0
-  curl -s -m 15 "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-    --data-urlencode chat_id="$TELEGRAM_CHAT_ID" --data-urlencode text="$1" >/dev/null || true
+  if [ -n "${ALERT_WEBHOOK_URL:-}" ]; then
+    curl -s -m 15 -X POST "$ALERT_WEBHOOK_URL" -H 'Content-Type: application/json' \
+      -d "$(jq -n --arg t "$1" '{text: $t}')" >/dev/null || true
+  elif [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
+    curl -s -m 15 "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+      --data-urlencode chat_id="$TELEGRAM_CHAT_ID" --data-urlencode text="$1" >/dev/null || true
+  fi
 }
 trap 'notify "❌ Backup del CRM FALLÓ ($TS) en la línea $LINENO: $BASH_COMMAND"; exit 1' ERR
 
