@@ -120,7 +120,7 @@ rssh bash -c '
     \( "${args[@]}" -false \) -prune -o -type f -printf "%p\0" 2>/dev/null | sort -z | xargs -0 -r md5sum
 ' _ "${EXCLUDES[@]}" > "$TMP/prod.md5"
 
-DERIVA="$(diff <(sort -k2 "$TMP/base.md5") <(sort -k2 "$TMP/prod.md5") | awk '
+DERIVA="$({ diff <(sort -k2 "$TMP/base.md5") <(sort -k2 "$TMP/prod.md5") || true; } | awk '
   /^[<>]/ { f=substr($0, 38); if ($1=="<") b[f]=1; else p[f]=1 }
   END { for (f in b) print (f in p ? "  modificado en prod: " : "  borrado en prod:    ") f
         for (f in p) if (!(f in b)) print "  nuevo en prod:      " f }' | sort)"
