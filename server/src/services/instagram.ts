@@ -16,8 +16,19 @@ async function post(url: string, body: Record<string, unknown>, label: string) {
     body: JSON.stringify(body),
   });
   const json = await res.json() as Record<string, unknown>;
-  if (json.error) console.error(`[instagram] ${label} error:`, JSON.stringify(json.error));
+  if (json.error) {
+    // Fuera de la ventana de mensajería es una regla de Meta, no un fallo del sistema: sin alerta
+    const log = isOutsideWindow(json.error) ? console.warn : console.error;
+    log(`[instagram] ${label} error:`, JSON.stringify(json.error));
+  }
   return json;
+}
+
+// Meta rechaza el DM porque la persona no ha escrito por DM en las últimas 24 h
+// (p. ej. solo comentó y ya se usó la respuesta privada de ese comentario).
+export function isOutsideWindow(error: unknown): boolean {
+  const e = error as { code?: number; error_subcode?: number } | undefined;
+  return e?.error_subcode === 2534022 || e?.error_subcode === 2018278;
 }
 
 // Con Instagram Login se envía desde /me; con token de página, desde el id de la cuenta IG.

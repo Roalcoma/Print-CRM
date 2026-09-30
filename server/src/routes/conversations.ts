@@ -4,7 +4,7 @@ import { Router } from 'express';
 import { pool } from '../db.ts';
 import { EvolutionClient } from '../services/evolution.ts';
 import { broadcast } from '../services/ws-manager.ts';
-import { sendIgDm } from '../services/instagram.ts';
+import { sendIgDm, isOutsideWindow } from '../services/instagram.ts';
 
 export const conversationsRouter = Router();
 
@@ -124,8 +124,14 @@ conversationsRouter.post('/:id/messages', async (req, res) => {
 
       const { access_token, instagram_business_id } = scRes.rows[0];
       const recipientId = chatId.replace(/^ig_/, '');
-      const result = await sendIgDm(instagram_business_id, access_token, recipientId, body) as { message_id?: string };
-      waId = result.message_id ?? null;
+      const result = await sendIgDm(instagram_business_id, access_token, recipientId, body);
+      if (result.error || !result.message_id) {
+        const error = isOutsideWindow(result.error)
+          ? 'Instagram no permite escribirle todavía: solo puedes responder dentro de las 24 h siguientes a su último mensaje por DM. Si solo comentó, podrás responderle cuando te escriba.'
+          : `Instagram rechazó el mensaje: ${(result.error as { message?: string } | undefined)?.message ?? 'error desconocido'}`;
+        return res.status(422).json({ error });
+      }
+      waId = result.message_id;
     } else {
       // Enviar vía WhatsApp / Evolution API
       const cfg = await getWACfg(orgId);

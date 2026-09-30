@@ -344,9 +344,12 @@ async function sendMessage() {
     // El WS que llega después usará el dedup por id para no duplicar.
     const idx = timeline.value.findIndex(i => i.data.id === optimistic.data.id);
     if (idx !== -1) timeline.value[idx].data = saved as unknown as Record<string, unknown>;
-  } catch {
+  } catch (e) {
     const idx = timeline.value.findIndex(i => i.data.id === optimistic.data.id);
-    if (idx !== -1) timeline.value[idx].data.status = 'failed';
+    if (idx !== -1) {
+      timeline.value[idx].data.status = 'failed';
+      timeline.value[idx].data.send_error = (e as Error).message;
+    }
   } finally {
     sending.value = false;
   }
@@ -970,6 +973,9 @@ async function syncNames() {
                       <X v-else-if="item.data.status === 'failed'" class="h-3 w-3 text-red-400" title="Error al enviar" />
                     </template>
                   </div>
+                  <p v-if="item.data.status === 'failed'" class="mt-1 border-t border-red-200 pt-1 text-[11px] font-medium text-red-600">
+                    No enviado{{ item.data.send_error ? `: ${item.data.send_error}` : '' }}
+                  </p>
                 </div>
               </div>
 
