@@ -3,6 +3,7 @@
 # (AES-256, clave en .passphrase) y subido a Google Drive con rclone. Avisa por Telegram si falla.
 # Instalación: ~/crm-backups/{backup.sh,.passphrase,.env,rclone/rclone.conf}; cron 07:00 UTC.
 set -Eeuo pipefail
+umask 077
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 OUT="$DIR/local"
