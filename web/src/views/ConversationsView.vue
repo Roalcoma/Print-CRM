@@ -9,10 +9,11 @@ import {
 } from 'lucide-vue-next';
 import { api, getToken } from '../api';
 import { useDialog } from '../composables/useDialog';
-import type { Conversation, ConvMessage, Contact, Pipeline, Stage } from '../types';
+import type { Conversation, ConvMessage, Contact, Pipeline, Stage, AdRef } from '../types';
 import { useWs } from '../composables/useWs';
 import LoadingState from '../components/LoadingState.vue';
 import Spinner from '../components/Spinner.vue';
+import AdSourceCard from '../components/AdSourceCard.vue';
 import BizSelect from '../components/BizSelect.vue';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -860,6 +861,11 @@ async function syncNames() {
                 <div class="flex-1 border-t border-[#d1c4ae]"></div>
               </div>
 
+              <!-- ── Anuncio del que vino el lead (click-to-WhatsApp) ── -->
+              <div v-if="item.type === 'message' && item.data.ad_ref" class="flex justify-start pb-1">
+                <AdSourceCard :ad="item.data.ad_ref as AdRef" class="w-full max-w-md shadow-sm" />
+              </div>
+
               <!-- ── Mensaje de WhatsApp ── -->
               <div v-if="item.type === 'message' && item.data.msg_type !== 'sticker'" class="flex" :class="item.data.direction === 'outbound' ? 'justify-end' : 'justify-start'">
                 <div class="max-w-xs rounded-2xl px-3 py-2 text-sm shadow lg:max-w-md"
@@ -1074,6 +1080,7 @@ async function syncNames() {
                     <Tag class="h-2.5 w-2.5" />{{ t }}
                   </span>
                 </div>
+                <AdSourceCard v-if="contactBundle.contact.ad_source" :ad="contactBundle.contact.ad_source" compact class="mt-3" />
               </div>
             </template>
           </template>

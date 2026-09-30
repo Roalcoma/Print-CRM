@@ -12,6 +12,20 @@ export interface User {
   createdAt?: string;
 }
 
+// Anuncio de Meta (click-to-WhatsApp) del que llegó un lead.
+export interface AdRef {
+  title: string | null;
+  body: string | null;
+  source_app: string | null;   // 'facebook' | 'instagram'
+  source_type: string | null;  // 'ad'
+  source_url: string | null;   // enlace al anuncio (fb.me/… o instagram.com/p/…)
+  source_id: string | null;    // ID del anuncio en Meta
+  media_url: string | null;
+  thumbnail: string | null;    // data URL
+  ctwa_clid: string | null;
+  greeting: string | null;
+}
+
 export interface Contact {
   id: string;
   first_name: string;
@@ -35,6 +49,7 @@ export interface Contact {
   avatar_color: string | null;
   tags: string[];
   notes: string | null;
+  ad_source?: AdRef | null;
   created_at: string;
   updated_at: string;
 }
@@ -96,6 +111,7 @@ export interface Opportunity {
   contact_last_name: string | null;
   contact_email: string | null;
   contact_phone: string | null;
+  contact_ad_source?: AdRef | null;
   stage_name?: string;
   pipeline_name?: string;
   stage_color?: string;

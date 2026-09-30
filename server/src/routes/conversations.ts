@@ -239,7 +239,7 @@ conversationsRouter.get('/:id/timeline', async (req, res) => {
     await pool.query('UPDATE conversations SET unread_count = 0 WHERE id = $1', [id]);
 
     const msgs = await pool.query(
-      `SELECT 'message' AS item_type, created_at AS ts, id, direction, msg_type, body, media_url, media_mime, media_filename, sender_name, status, wa_message_id
+      `SELECT 'message' AS item_type, created_at AS ts, id, direction, msg_type, body, media_url, media_mime, media_filename, sender_name, status, wa_message_id, ad_ref
        FROM conv_messages WHERE conversation_id = $1 ORDER BY created_at ASC`,
       [id],
     );

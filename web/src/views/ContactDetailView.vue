@@ -14,6 +14,7 @@ import ActivityFeed from '../components/ActivityFeed.vue';
 import AppointmentModal from '../components/AppointmentModal.vue';
 import Spinner from '../components/Spinner.vue';
 import Dropdown from '../components/Dropdown.vue';
+import AdSourceCard from '../components/AdSourceCard.vue';
 
 const { confirm } = useDialog();
 const route  = useRoute();
@@ -390,6 +391,8 @@ const tabs = [
               <ExternalLink class="h-3 w-3 flex-shrink-0 opacity-60" />
             </a>
           </section>
+
+          <AdSourceCard v-if="contact.ad_source" :ad="contact.ad_source" />
 
           <!-- Tags -->
           <section v-if="contact.tags?.length">

@@ -16,6 +16,7 @@ import CustomizeCardPanel from '../components/CustomizeCardPanel.vue';
 import ViewToggle from '../components/ViewToggle.vue';
 import StatusSelect from '../components/StatusSelect.vue';
 import BizSelect from '../components/BizSelect.vue';
+import AdSourceCard from '../components/AdSourceCard.vue';
 import { normalizeCardConfig, type CardConfig } from '../cardConfig';
 import { useAuthStore } from '../stores/auth';
 
@@ -128,6 +129,7 @@ const FIELDS = [
   { key: 'status', label: 'Estado', type: 'enum' },
   { key: 'stage', label: 'Etapa', type: 'stage' },
   { key: 'contact', label: 'Contacto', type: 'text' },
+  { key: 'ad', label: 'Anuncio de origen', type: 'text' },
   { key: 'created_at', label: 'Fecha de creación', type: 'date' },
 ] as const;
 const OPS_BY_TYPE: Record<string, FilterOp[]> = {
@@ -857,6 +859,7 @@ async function deleteNote(id: string) {
         <div class="flex-1 overflow-auto px-6 py-5">
           <!-- DETALLES -->
           <form v-show="modalTab === 'detalles'" class="space-y-6" @submit.prevent="saveForm">
+            <AdSourceCard v-if="editing?.contact_ad_source" :ad="editing.contact_ad_source" />
             <!-- Datos del contacto -->
             <section class="rounded-lg border border-slate-200 bg-slate-50/60 p-4 shadow-sm">
               <div class="mb-3 flex items-center justify-between">

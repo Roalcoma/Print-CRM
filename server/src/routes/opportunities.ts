@@ -12,7 +12,7 @@ export const opportunitiesRouter = Router();
 // SELECT base con contacto y responsable embebidos.
 const BASE_SELECT = `
   SELECT o.*, c.first_name AS contact_first_name, c.last_name AS contact_last_name,
-         c.email AS contact_email, c.phone AS contact_phone, u.name AS owner_name,
+         c.email AS contact_email, c.phone AS contact_phone, c.ad_source AS contact_ad_source, u.name AS owner_name,
          (SELECT count(*)::int FROM opportunity_notes n WHERE n.opportunity_id = o.id) AS notes_count,
          (SELECT coalesce(json_agg(json_build_object('id', fu.id, 'name', fu.name) ORDER BY fu.name), '[]')
           FROM opportunity_followers f JOIN users fu ON fu.id = f.user_id

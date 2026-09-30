@@ -11,6 +11,7 @@ const FIELDS: Record<string, { sql: string; type: FieldType }> = {
   stage:      { sql: 'o.stage_id', type: 'id' },
   contact:    { sql: "coalesce(c.first_name,'')||' '||coalesce(c.last_name,'')", type: 'text' },
   created_at: { sql: 'o.created_at', type: 'date' },
+  ad:         { sql: "coalesce(c.ad_source->>'title','')", type: 'text' },
 };
 
 // Operadores válidos por tipo → generador de fragmento SQL.

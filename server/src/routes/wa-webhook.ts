@@ -54,6 +54,7 @@ waWebhookRouter.post('/:secret', async (req, res) => {
       const timestamp = new Date((msg.messageTimestamp ?? Date.now() / 1000) * 1000);
 
       const { msgType, body, mediaUrl, mediaMime, mediaFilename } = parseMessage(msg);
+      const adRef = direction === 'inbound' ? extractAdRef(msg) : null;
 
       // Disparar motor de automatizaciones para mensajes entrantes
       if (direction === 'inbound') {
@@ -80,6 +81,10 @@ waWebhookRouter.post('/:secret', async (req, res) => {
       if (direction === 'inbound') {
         // Si no hay nombre, usar el teléfono como nombre para contactos desconocidos
         contactId = await linkContact(orgId, convId, phone, senderName || phone || displayName);
+        // Primer anuncio del que vino el contacto (no se pisa con clics posteriores)
+        if (contactId && adRef) {
+          await pool.query(`UPDATE contacts SET ad_source = $1 WHERE id = $2 AND ad_source IS NULL`, [adRef, contactId]);
+        }
       }
 
       // Disparar automatizaciones de nuevo mensaje WA
@@ -110,12 +115,12 @@ waWebhookRouter.post('/:secret', async (req, res) => {
 
       if (!finalMsgId) {
         const msgRes = await pool.query<{ id: string; created_at: string }>(
-          `INSERT INTO conv_messages (conversation_id, organization_id, wa_message_id, direction, msg_type, body, media_url, media_mime, media_filename, sender_name)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          `INSERT INTO conv_messages (conversation_id, organization_id, wa_message_id, direction, msg_type, body, media_url, media_mime, media_filename, sender_name, ad_ref)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
            ON CONFLICT (wa_message_id) DO NOTHING
            RETURNING id, created_at`,
           [convId, orgId, waId, direction, msgType, body ?? null,
-           mediaUrl ?? null, mediaMime ?? null, mediaFilename ?? null, senderName ?? null],
+           mediaUrl ?? null, mediaMime ?? null, mediaFilename ?? null, senderName ?? null, adRef],
         );
         if (!msgRes.rows[0]) return;
         finalMsgId = msgRes.rows[0].id;
@@ -128,7 +133,7 @@ waWebhookRouter.post('/:secret', async (req, res) => {
           id: finalMsgId, conversation_id: convId, wa_message_id: waId,
           direction, msg_type: msgType, body: body ?? null,
           media_url: mediaUrl ?? null, media_mime: mediaMime ?? null,
-          sender_name: senderName ?? null,
+          sender_name: senderName ?? null, ad_ref: adRef,
           status: direction === 'outbound' ? 'sent' : 'received',
           created_at: finalMsgCreatedAt,
         },
@@ -168,6 +173,7 @@ interface EvoMessage {
   messageTimestamp?: number;
   messageType?: string;
   message?: Record<string, unknown>;
+  contextInfo?: Record<string, unknown>;
 }
 
 interface EvoUpdate {
@@ -224,6 +230,37 @@ function parseMessage(msg: EvoMessage): ParsedMsg {
   }
 
   return { msgType: type, body: null, mediaUrl: null, mediaMime: null, mediaFilename: null };
+}
+
+export type AdRef = {
+  title: string | null; body: string | null; source_app: string | null; source_type: string | null;
+  source_url: string | null; source_id: string | null; media_url: string | null;
+  thumbnail: string | null; ctwa_clid: string | null; greeting: string | null;
+};
+
+// Datos del anuncio click-to-WhatsApp (externalAdReply) que trae el primer mensaje del lead.
+export function extractAdRef(msg: { message?: Record<string, unknown>; contextInfo?: Record<string, unknown> }): AdRef | null {
+  const inner = Object.values(msg.message ?? {}).find(
+    v => v && typeof v === 'object' && 'contextInfo' in (v as object),
+  ) as { contextInfo?: Record<string, unknown> } | undefined;
+  const ctx = msg.contextInfo ?? inner?.contextInfo;
+  const ad = ctx?.externalAdReply as Record<string, unknown> | undefined;
+  if (!ad) return null;
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v : null);
+  const thumb = str(ad.thumbnail);
+  return {
+    title:       str(ad.title),
+    body:        str(ad.body),
+    source_app:  str(ad.sourceApp),
+    source_type: str(ad.sourceType),
+    source_url:  str(ad.sourceUrl),
+    source_id:   str(ad.sourceId),
+    media_url:   str(ad.mediaUrl),
+    // Miniatura embebida (base64): las URLs de fbcdn caducan en días
+    thumbnail:   thumb && thumb.length < 200_000 ? `data:image/jpeg;base64,${thumb}` : null,
+    ctwa_clid:   str(ad.ctwaClid),
+    greeting:    str(ad.greetingMessageBody),
+  };
 }
 
 function previewText(msgType: string, body: string | null): string {
