@@ -22,11 +22,14 @@ const DEADLINE = new Date('2026-10-01T23:00:00Z');                   // jueves 7
 const GAP_MIN = 7 * 60_000, GAP_MAX = 9 * 60_000;
 const DRY = process.env.DRY_RUN === 'true';
 
-const WHEN = '*jueves 1 de octubre a las 8:00 p.m. (hora de Miami)*';
+// Mensaje elegido por VFS (versión 2): directo, personal y pide un SÍ para aumentar las respuestas.
+// "Mañana" el miércoles y "Hoy" el jueves (hora de Miami).
+function dayWord(d = new Date()): string {
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(d); // AAAA-MM-DD
+  return day === '2026-10-01' ? 'Hoy' : 'Mañana';
+}
 const variants = [
-  (h: string) => `${h} 👋 Te escribe Lendry Labrador, de Virtual Family Solutions. Este ${WHEN} tenemos una sesión informativa por Zoom sobre la oportunidad de unirte a nuestro equipo de agentes de seguros. ¡Nos encantaría que estuvieras! 🙌\n\nTe dejo el enlace: ${ZOOM}\n\n¿Te esperamos? 😊`,
-  (h: string) => `${h} 😊 Soy Lendry Labrador, de Virtual Family Solutions. Te invito a nuestra sesión informativa por Zoom este ${WHEN}, donde te contamos cómo unirte a nuestro equipo de agentes de seguros. ¡Nos encantaría verte ahí! 🙌\n\nEste es el enlace: ${ZOOM}\n\n¿Cuento contigo?`,
-  (h: string) => `${h} 👋 Te habla Lendry Labrador, de Virtual Family Solutions. Queremos invitarte a la sesión informativa por Zoom del ${WHEN} para que conozcas la oportunidad de ser parte de nuestro equipo de agentes de seguros 🙌\n\nAquí tienes el enlace: ${ZOOM}\n\n¿Te esperamos? 😊`,
+  (h: string) => `${h} Soy Lendry Labrador.\n\n${dayWord()} jueves a las *8:00 p.m. (hora de Miami)* hacemos una reunión por Zoom y quiero que estés 🔥 Te cuento cómo empezar en nuestro equipo de agentes de seguros, aunque no tengas experiencia.\n${ZOOM}\n\n¿Te aparto tu lugar? Respóndeme *SÍ* ✅`,
 ];
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -44,8 +47,8 @@ function miamiTime(d = new Date()): string {
 function greeting(firstName: string | null): string {
   const w = (firstName ?? '').trim().split(/\s+/)[0] ?? '';
   const bad = ['desconocido', 'usuario', 'cliente', 'lead', 'whatsapp', 'prospecto'];
-  if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ'.-]+$/.test(w) || bad.includes(w.toLowerCase())) return 'Hola';
-  return `Hola ${w[0].toUpperCase()}${w.slice(1).toLowerCase()}`;
+  if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ'.-]+$/.test(w) || bad.includes(w.toLowerCase())) return '¡Hola! 👋';
+  return `¡${w[0].toUpperCase()}${w.slice(1).toLowerCase()}! 👋`;
 }
 
 type Recipient = { contact_id: string; first_name: string | null; phone: string; stage: string };
