@@ -5,11 +5,12 @@ import {
   ArrowLeft, Building2, Mail, Phone, Globe, FileText, Edit3,
   Activity, CreditCard, X, Check, ExternalLink, RefreshCw,
   Copy, Eye, EyeOff, Plus, Gift, Trash2, ChevronDown,
-  ShieldCheck, Clock, User, Infinity,
+  ShieldCheck, Clock, User, Infinity, LayoutTemplate,
 } from 'lucide-vue-next';
 import { agencyApi } from '../../agencyApi';
 import BizSelect from '../../components/BizSelect.vue';
 import { useDialog } from '../../composables/useDialog';
+import TemplateApplyModal from './TemplateApplyModal.vue';
 
 
 interface AgencyClient {
@@ -149,6 +150,13 @@ const showProvisionModal = ref(false);
 const showProvPass = ref(false);
 const copiedProv = ref(false);
 
+// Plantillas de cuenta ya aplicadas; ?plantilla=1 abre el modal al entrar (desde "Nueva cuenta").
+const appliedTemplates = ref<{ template_key: string; name: string; applied_at: string }[]>([]);
+const showTemplates = ref(route.query.plantilla === '1');
+async function loadTemplates() {
+  appliedTemplates.value = await agencyApi.get(`/clients/${id}/templates`);
+}
+
 async function load() {
   loading.value = true;
   error.value = '';
@@ -178,6 +186,7 @@ async function load() {
     };
     const pmRes = await agencyApi.get<{ payments: Payment[] }>(`/clients/${id}/payments`);
     payments.value = pmRes.payments;
+    if (res.client.organization_id) await loadTemplates();
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Error al cargar';
   } finally {
@@ -356,6 +365,7 @@ function formatAction(action: string) {
     client_cancelled: 'Cliente cancelado',
     crm_provisioned: 'CRM provisionado',
     plan_changed: 'Plan cambiado',
+    template_applied: 'Plantilla aplicada',
   };
   return map[action] ?? action;
 }
@@ -579,6 +589,28 @@ function auditActionDot(action: string) {
                   <RefreshCw class="h-3 w-3" :class="provisioning ? 'animate-spin' : ''" />
                   Re-provisionar
                 </button>
+              </div>
+
+              <!-- Plantillas de cuenta -->
+              <div class="rounded-md border border-slate-200 p-3">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Plantillas de cuenta</p>
+                    <p class="text-xs text-slate-400 mt-0.5">Pipelines, calendario y automatizaciones de un sector en un clic.</p>
+                  </div>
+                  <button
+                    class="flex flex-shrink-0 items-center gap-1.5 rounded-md bg-[#13243D] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#1c3354] cursor-pointer"
+                    @click="showTemplates = true"
+                  >
+                    <LayoutTemplate class="h-3.5 w-3.5 text-[#F69008]" />
+                    Aplicar plantilla
+                  </button>
+                </div>
+                <div v-if="appliedTemplates.length" class="mt-2 flex flex-wrap gap-1.5">
+                  <span v-for="t in appliedTemplates" :key="t.template_key" class="flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">
+                    <Check class="h-3 w-3" />{{ t.name }} · {{ new Date(t.applied_at).toLocaleDateString('es') }}
+                  </span>
+                </div>
               </div>
 
               <!-- Users list -->
@@ -997,6 +1029,16 @@ function auditActionDot(action: string) {
       </div>
     </Teleport>
 
+    <TemplateApplyModal
+      v-if="showTemplates && client?.organization_id"
+      :client-id="id"
+      :empresa="client.company || client.name"
+      :remitente="client.name"
+      :applied="appliedTemplates.map(t => t.template_key)"
+      @applied="loadTemplates"
+      @close="showTemplates = false; router.replace({ query: {} })"
+    />
+
     <!-- Provision credentials modal -->
     <Teleport to="body">
       <div v-if="showProvisionModal && provisionCreds" class="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1034,6 +1076,14 @@ function auditActionDot(action: string) {
             </button>
             <button class="flex-1 rounded-lg bg-[#F69008] hover:bg-[#D97706] py-2 text-sm font-semibold text-white cursor-pointer" @click="showProvisionModal = false">Listo</button>
           </div>
+          <button
+            v-if="!appliedTemplates.length"
+            class="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-[#13243D]/20 py-2 text-xs font-semibold text-[#13243D] hover:bg-slate-50 cursor-pointer"
+            @click="showProvisionModal = false; showTemplates = true"
+          >
+            <LayoutTemplate class="h-3.5 w-3.5 text-[#F69008]" />
+            Configurar con una plantilla
+          </button>
         </div>
       </div>
     </Teleport>

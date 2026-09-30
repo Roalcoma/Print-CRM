@@ -50,6 +50,7 @@ const showModal = ref(false);
 const submitting = ref(false);
 const formError = ref('');
 const credentials = ref<Credentials | null>(null);
+const createdClientId = ref<string | null>(null);
 const showCredentials = ref(false);
 const showTempPass = ref(false);
 const copied = ref(false);
@@ -118,6 +119,7 @@ async function createClient() {
       trialDaysOverride,
     });
     credentials.value = res.credentials;
+    createdClientId.value = res.client.id;
     showCredentials.value = true;
     await load();
   } catch (e) {
@@ -131,6 +133,7 @@ function resetModal() {
   showModal.value = false;
   showCredentials.value = false;
   credentials.value = null;
+  createdClientId.value = null;
   showTempPass.value = false;
   copied.value = false;
   formError.value = '';
@@ -345,6 +348,13 @@ const totalPages = computed(() => Math.ceil(total.value / 20));
                 Listo
               </button>
             </div>
+            <button
+              v-if="createdClientId"
+              class="mt-2 w-full rounded-md border border-[#13243D]/20 py-2 text-xs font-semibold text-[#13243D] hover:bg-slate-50 transition-colors cursor-pointer"
+              @click="router.push(`/agency/clients/${createdClientId}?plantilla=1`)"
+            >
+              Configurar con una plantilla →
+            </button>
           </div>
 
           <!-- Form view -->

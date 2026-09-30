@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import { query, queryOne, pool } from '../db.ts';
 import { hashPassword, verifyPassword } from '../auth/password.ts';
 import { env } from '../env.ts';
+import { TEMPLATES, TemplateError, templateSummary, buildPlan, applyTemplate, appliedTemplates } from '../templates/index.ts';
 
 export const agencyRouter = Router();
 
@@ -820,4 +821,60 @@ agencyRouter.post('/clients/:id/provision', requireAgencyAuth, async (req, res) 
   } finally {
     dbClient.release();
   }
+});
+
+// ─── Plantillas de cuenta ────────────────────────────────────────────────────
+// Configuración de un clic: pipelines, calendario y automatizaciones de un sector.
+
+const templateVarsSchema = z.object({ variables: z.record(z.string(), z.string().max(1000)).default({}) });
+
+// Resuelve cliente + plantilla y responde el error si algo falta. Devuelve null si ya respondió.
+async function templateTarget(req: Request, res: Response) {
+  const t = TEMPLATES.find(x => x.key === req.params.key);
+  if (!t) { res.status(404).json({ error: 'Plantilla no encontrada' }); return null; }
+  const client = await queryOne<{ organization_id: string | null }>(
+    'SELECT organization_id FROM agency_clients WHERE id = $1', [req.params.id]);
+  if (!client) { res.status(404).json({ error: 'Cliente no encontrado' }); return null; }
+  if (!client.organization_id) { res.status(409).json({ error: 'Provisiona el CRM del cliente antes de aplicar una plantilla' }); return null; }
+  const parsed = templateVarsSchema.safeParse(req.body ?? {});
+  if (!parsed.success) { res.status(400).json({ error: 'Variables no válidas' }); return null; }
+  return { t, orgId: client.organization_id, vars: parsed.data.variables };
+}
+
+function templateErrorResponse(res: Response, e: unknown) {
+  if (e instanceof TemplateError) return res.status(e.status).json({ error: e.message });
+  throw e;
+}
+
+agencyRouter.get('/templates', requireAgencyAuth, (_req, res) => {
+  res.json(TEMPLATES.map(templateSummary));
+});
+
+// Plantillas ya aplicadas a la cuenta del cliente.
+agencyRouter.get('/clients/:id/templates', requireAgencyAuth, async (req, res) => {
+  const client = await queryOne<{ organization_id: string | null }>(
+    'SELECT organization_id FROM agency_clients WHERE id = $1', [req.params.id]);
+  if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
+  res.json(client.organization_id ? await appliedTemplates(client.organization_id) : []);
+});
+
+// Vista previa: lo que se crearía con estas variables (no escribe nada).
+agencyRouter.post('/clients/:id/templates/:key/preview', requireAgencyAuth, async (req, res) => {
+  const target = await templateTarget(req, res);
+  if (!target) return;
+  try {
+    const plan = await buildPlan(pool, target.orgId, target.t, target.vars);
+    const applied = (await appliedTemplates(target.orgId)).find(a => a.template_key === target.t.key);
+    res.json({ ...plan, appliedAt: applied?.applied_at ?? null });
+  } catch (e) { templateErrorResponse(res, e); }
+});
+
+agencyRouter.post('/clients/:id/templates/:key/apply', requireAgencyAuth, async (req, res) => {
+  const target = await templateTarget(req, res);
+  if (!target) return;
+  try {
+    const { plan, created } = await applyTemplate(target.orgId, target.t, target.vars, req.agencyAuth!.adminId);
+    await logActivity(req.agencyAuth!.adminId, req.params.id as string, 'template_applied', { template: target.t.key, ...created });
+    res.status(201).json({ plan, created });
+  } catch (e) { templateErrorResponse(res, e); }
 });
