@@ -229,6 +229,46 @@ async function getWaClient(orgId: string): Promise<EvolutionClient | null> {
 
 // ── Ejecución de un run ─────────────────────────────────────────────────────
 
+// Antes de continuar un run que esperaba "X minutos antes de la cita": si la cita se canceló, el run se
+// cancela (no salen recordatorios de citas canceladas); si se reagendó, se reprograma con la hora nueva.
+async function checkAppointmentWait(run: {
+  id: string; organization_id: string; current_step: number; step_data: Record<string, Record<string, unknown>>;
+}): Promise<'go' | 'stop'> {
+  const w = run.step_data?.['__appt_wait__'] as { appointment_id?: string | null; minutes_before?: number; resume_step?: number } | undefined;
+  if (!w?.appointment_id || run.current_step !== w.resume_step) return 'go';
+  const appt = (await pool.query<{ status: string; start_at: Date; timezone: string | null }>(
+    `SELECT a.status, a.start_at, c.timezone FROM appointments a LEFT JOIN calendars c ON c.id = a.calendar_id
+     WHERE a.id = $1 AND a.organization_id = $2`,
+    [w.appointment_id, run.organization_id],
+  )).rows[0];
+  if (!appt || appt.status !== 'scheduled') {
+    await pool.query(`UPDATE automation_runs SET status = 'cancelled', updated_at = NOW() WHERE id = $1`, [run.id]);
+    return 'stop';
+  }
+  const prev = run.step_data['__appointment__'] as Record<string, unknown> | undefined;
+  const start = new Date(appt.start_at);
+  if (!prev?.start_at || new Date(prev.start_at as string).getTime() === start.getTime()) return 'go';
+
+  // Reagendada: actualizar fecha/hora para los mensajes y recalcular cuándo toca el recordatorio
+  const tz = appt.timezone ?? 'America/Caracas';
+  run.step_data['__appointment__'] = {
+    ...prev,
+    start_at:   start.toISOString(),
+    start_date: start.toLocaleDateString('es', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+    start_time: start.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz }),
+  };
+  const resumeAt = new Date(start.getTime() - (w.minutes_before ?? 120) * 60_000);
+  if (resumeAt > new Date()) {
+    await pool.query(
+      `UPDATE automation_runs SET status = 'waiting_timed', step_data = $1, resume_at = $2, updated_at = NOW() WHERE id = $3`,
+      [JSON.stringify(run.step_data), resumeAt.toISOString(), run.id],
+    );
+    return 'stop';
+  }
+  await pool.query(`UPDATE automation_runs SET step_data = $1, updated_at = NOW() WHERE id = $2`, [JSON.stringify(run.step_data), run.id]);
+  return 'go';
+}
+
 export async function executeRun(runId: string): Promise<void> {
   // Cargar el run
   const runRes = await pool.query<{
@@ -246,6 +286,7 @@ export async function executeRun(runId: string): Promise<void> {
   );
   const run = runRes.rows[0];
   if (!run || run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') return;
+  if ((await checkAppointmentWait(run)) === 'stop') return;
 
   // Cargar la automatización
   const autoRes = await pool.query<{ config: { steps: StepDef[] } }>(
@@ -492,6 +533,8 @@ export async function executeRun(runId: string): Promise<void> {
         }
 
         currentStep = i + 1;
+        // Al reanudar se revisa la cita: si se canceló no sale el recordatorio; si se reagendó, se reprograma
+        stepData['__appt_wait__'] = { appointment_id: (apptData as { appointment_id?: string }).appointment_id ?? null, minutes_before: minutesBefore, resume_step: currentStep };
         await pool.query(
           `UPDATE automation_runs
            SET status = 'waiting_timed', current_step = $1, step_data = $2,
@@ -660,6 +703,7 @@ export async function fireWaNewMessageTrigger(
 // ── Disparador: cita agendada ────────────────────────────────────────────────
 
 export interface AppointmentTriggerData {
+  appointment_id?: string; // para revisar la cita antes de cada recordatorio
   start_at: string;       // ISO UTC
   start_date: string;     // "lunes, 18 de septiembre de 2026"
   start_time: string;     // "10:00"

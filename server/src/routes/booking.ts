@@ -335,6 +335,7 @@ bookingRouter.post('/:slug', async (req, res) => {
   if (contact?.id) {
     const publicUrl = process.env.PUBLIC_URL ?? '';
     fireAppointmentBookedTrigger(cal.organization_id, contact.id, {
+      appointment_id:  appt.id,
       start_at:        startAt.toISOString(),
       start_date:      startAt.toLocaleDateString('es', { timeZone: cal.timezone, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
       start_time:      formatTime(startAt, cal.timezone),
