@@ -7,7 +7,7 @@ export const reclutamientoSeguros: AccountTemplate = {
   key: 'reclutamiento_seguros',
   name: 'Reclutamiento de agentes de seguros',
   sector: 'Seguros de vida / IUL',
-  description: 'Basada en el embudo real de Virtual Family Solutions: lead por WhatsApp o Instagram, 4 preguntas de perfil, sesión informativa por Google Meet con recordatorio, y seguimiento hasta licenciarse.',
+  description: 'Basada en un embudo real de reclutamiento que ya funciona: lead por WhatsApp o Instagram, 4 preguntas de perfil, sesión informativa por Google Meet con recordatorio, y seguimiento hasta licenciarse.',
   variables: [
     V.empresa, V.remitente,
     { key: 'ciudad', label: 'Ciudad de la agencia', required: true, placeholder: 'Orlando, FL', help: 'Se menciona en los mensajes de Instagram.' },
