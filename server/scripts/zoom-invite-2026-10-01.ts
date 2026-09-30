@@ -15,6 +15,7 @@ const ORG = '6939defb-6d23-4ca6-a9da-a7bba81556ad';               // Virtual Fam
 const STAGES = ['Seguimiento', 'Reagendar', 'Sí Contestó', 'No respondió'];
 const ZOOM = 'https://us06web.zoom.us/j/7583966227?pwd=Sl3F8auD2Ck7gfi2CoVLLKOseBb6zH.1';
 const ZOOM_MARK = '7583966227';                                      // para detectar quién ya la recibió
+const TAG = 'invitado-zoom-01oct';                                   // etiqueta para filtrar a los invitados
 const TZ = 'America/New_York';                                       // hora de Miami
 const WINDOW_START = 7, WINDOW_END = 20;                             // horas locales de envío
 const DEADLINE = new Date('2026-10-01T23:00:00Z');                   // jueves 7:00 p.m. Miami: ya no se invita
@@ -97,6 +98,21 @@ async function recordInvite(r: Recipient, jid: string, text: string, waId: strin
     `INSERT INTO conv_messages (conversation_id, organization_id, wa_message_id, direction, msg_type, body, status, created_at)
      VALUES ($1, $2, $3, 'outbound', 'text', $4, 'sent', $5) ON CONFLICT (wa_message_id) DO NOTHING`,
     [conv.id, ORG, waId, text, at],
+  );
+  await tagInvited(r.contact_id);
+}
+
+// Etiqueta al contacto y a sus leads abiertos para poder filtrarlos en Contactos y en Leads
+async function tagInvited(contactId: string) {
+  await pool.query(
+    `UPDATE contacts SET tags = array_append(coalesce(tags, '{}'), $1), updated_at = NOW()
+     WHERE id = $2 AND organization_id = $3 AND NOT ($1 = ANY(coalesce(tags, '{}')))`,
+    [TAG, contactId, ORG],
+  );
+  await pool.query(
+    `UPDATE opportunities SET tags = array_append(coalesce(tags, '{}'), $1), updated_at = NOW()
+     WHERE contact_id = $2 AND organization_id = $3 AND status = 'open' AND NOT ($1 = ANY(coalesce(tags, '{}')))`,
+    [TAG, contactId, ORG],
   );
 }
 

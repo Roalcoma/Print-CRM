@@ -12,6 +12,12 @@ const FIELDS: Record<string, { sql: string; type: FieldType }> = {
   contact:    { sql: "coalesce(c.first_name,'')||' '||coalesce(c.last_name,'')", type: 'text' },
   created_at: { sql: 'o.created_at', type: 'date' },
   ad:         { sql: "coalesce(c.ad_source->>'title','')", type: 'text' },
+  // Filtros rápidos de Leads (antes se ignoraban por no estar en esta lista)
+  owner_id:      { sql: 'o.owner_id', type: 'id' },
+  source:        { sql: "coalesce(o.source,'')", type: 'text' },
+  business_name: { sql: "coalesce(o.business_name,'')", type: 'text' },
+  // Etiquetas del lead y de su contacto
+  tags:          { sql: "coalesce(array_to_string(o.tags, ','),'') || ',' || coalesce(array_to_string(c.tags, ','),'')", type: 'text' },
 };
 
 // Operadores válidos por tipo → generador de fragmento SQL.
