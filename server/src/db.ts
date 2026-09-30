@@ -1,8 +1,28 @@
 import pg from 'pg';
 import { env } from './env.ts';
+import { decryptRows } from './secrets.ts';
 
 // Un pool para toda la app. `query` es un helper tipado fino sobre pg.
 export const pool = new pg.Pool({ connectionString: env.databaseUrl });
+
+// Las credenciales de terceros se guardan cifradas (secrets.ts): se descifran aquí al leer,
+// tanto en pool.query como en los clientes de transacciones (pool.connect).
+type Queryable = { query: (...args: any[]) => any };
+function decryptOnRead(target: Queryable) {
+  const original = target.query.bind(target);
+  target.query = (...args: any[]) => {
+    const result = original(...args);
+    if (result && typeof result.then === 'function') {
+      return result.then((r: pg.QueryResult | pg.QueryResult[]) => {
+        for (const one of Array.isArray(r) ? r : [r]) if (one?.rows) decryptRows(one.rows);
+        return r;
+      });
+    }
+    return result;
+  };
+}
+decryptOnRead(pool);
+pool.on('connect', client => decryptOnRead(client));
 
 export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,

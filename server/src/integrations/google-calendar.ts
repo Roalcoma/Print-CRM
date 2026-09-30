@@ -16,11 +16,17 @@ function getCredentials() {
 // Google revocó o caducó el permiso: se marca como desconectado (el CRM deja de fingir que
 // está conectado) y se avisa a los admins para que lo reconecten. Solo avisa una vez.
 async function markGoogleDisconnected(refreshToken: string): Promise<void> {
+  // Los tokens se guardan cifrados (IV aleatorio): se busca comparando ya descifrados
+  const all = await query<{ user_id: string; organization_id: string; google_refresh_token: string }>(
+    'SELECT user_id, organization_id, google_refresh_token FROM calendar_settings WHERE google_refresh_token IS NOT NULL',
+  );
+  const match = all.find(r => r.google_refresh_token === refreshToken);
+  if (!match) return;
   const [row] = await query<{ user_id: string; organization_id: string; name: string; email: string }>(
     `UPDATE calendar_settings cs SET google_refresh_token = NULL, updated_at = now()
-     FROM users u WHERE u.id = cs.user_id AND cs.google_refresh_token = $1
+     FROM users u WHERE u.id = cs.user_id AND cs.user_id = $1 AND cs.organization_id = $2
      RETURNING cs.user_id, cs.organization_id, u.name, u.email`,
-    [refreshToken],
+    [match.user_id, match.organization_id],
   );
   if (!row) return;
   console.error(`[google] permiso revocado/caducado para ${row.email}: Google Calendar marcado como desconectado`);

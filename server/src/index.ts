@@ -6,6 +6,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { env } from './env.ts';
+import { installErrorAlerts } from './services/alerts.ts';
+import { checkWhatsappConnections } from './services/wa-monitor.ts';
 import { requireAuth } from './auth/middleware.ts';
 import { requireModule } from './auth/perms.ts';
 import { authRouter } from './routes/auth.ts';
@@ -43,7 +45,11 @@ const { version: APP_VERSION } = JSON.parse(
   readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../package.json'), 'utf-8'),
 ) as { version: string };
 
+installErrorAlerts();
+
 const app = express();
+// Detrás de Cloudflare: la IP real del cliente viene en X-Forwarded-For (lo necesita el rate limit)
+app.set('trust proxy', 1);
 
 // Seguridad: headers HTTP (XSS, clickjacking, MIME sniffing, etc.)
 app.use(helmet({
@@ -240,4 +246,7 @@ server.listen(env.port, () => {
   // Polling de comentarios IG: con Standard Access Meta no envía webhooks de `comments`.
   pollIgComments();
   setInterval(() => pollIgComments(), 2 * 60_000);
+  // Conexión de los WhatsApp: aviso por Telegram si alguno se cae
+  checkWhatsappConnections().catch(e => console.error('wa-monitor:', e));
+  setInterval(() => checkWhatsappConnections().catch(e => console.error('wa-monitor:', e)), 5 * 60_000);
 });

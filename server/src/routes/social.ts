@@ -3,6 +3,7 @@
 
 import { Router } from 'express';
 import { pool } from '../db.ts';
+import { encryptSecret } from '../secrets.ts';
 import { requireAdmin } from '../auth/perms.ts';
 import { env } from '../env.ts';
 import { broadcast } from '../services/ws-manager.ts';
@@ -34,7 +35,7 @@ export async function refreshInstagramTokens(): Promise<void> {
           : null;
         await pool.query(
           `UPDATE social_connections SET access_token = $1, token_expires_at = $2, updated_at = NOW() WHERE id = $3`,
-          [json.access_token, expiresAt, row.id],
+          [encryptSecret(json.access_token), expiresAt, row.id],
         );
         console.log(`ig-refresh: token renovado para conexión ${row.id}, vence ${expiresAt}`);
       } catch (e) {
@@ -218,7 +219,7 @@ socialPublicRouter.get('/instagram/callback', async (req, res) => {
          token_expires_at = EXCLUDED.token_expires_at,
          status = 'active',
          updated_at = NOW()`,
-      [orgId, igId, igName, meJson.profile_picture_url ?? null, longToken, expiresAt, igId, meJson.username ?? null],
+      [orgId, igId, igName, meJson.profile_picture_url ?? null, encryptSecret(longToken), expiresAt, igId, meJson.username ?? null],
     );
 
     // Suscribir la cuenta al webhook de Meta para recibir DMs y comentarios
@@ -297,7 +298,7 @@ socialPublicRouter.get('/facebook/callback', async (req, res) => {
            token_expires_at = EXCLUDED.token_expires_at,
            status = 'active',
            updated_at = NOW()`,
-        [orgId, page.id, page.name, picture, pageToken, expiresAt],
+        [orgId, page.id, page.name, picture, encryptSecret(pageToken), expiresAt],
       );
 
       // Suscribir la página: Messenger, comentarios (feed) y Lead Ads. Los eventos de la
@@ -329,7 +330,7 @@ socialPublicRouter.get('/facebook/callback', async (req, res) => {
              instagram_business_id = EXCLUDED.instagram_business_id,
              status = 'active',
              updated_at = NOW()`,
-          [orgId, igId, igJson.name ?? page.name, igJson.profile_picture_url ?? picture, pageToken, expiresAt, igId],
+          [orgId, igId, igJson.name ?? page.name, igJson.profile_picture_url ?? picture, encryptSecret(pageToken), expiresAt, igId],
         );
       }
     }

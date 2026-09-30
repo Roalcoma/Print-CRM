@@ -4,6 +4,7 @@
 
 import { Router } from 'express';
 import { pool } from '../db.ts';
+import { encryptSecret } from '../secrets.ts';
 import { requireAdmin } from '../auth/perms.ts';
 import { EvolutionClient } from '../services/evolution.ts';
 import { env } from '../env.ts';
@@ -95,7 +96,7 @@ waSettingsRouter.post('/instances', requireAdmin, async (req, res) => {
     const newRow = await pool.query<Row>(
       `INSERT INTO wa_settings (organization_id, evo_url, evo_api_key, instance_name, display_name, is_default)
        VALUES ($1, $2, $3, $4, $5, false) RETURNING *`,
-      [orgId, evo_url, evo_api_key, instance_name, display_name],
+      [orgId, evo_url, encryptSecret(evo_api_key), instance_name, display_name],
     );
     res.json({ instance: safeInstance(newRow.rows[0]) });
   } catch (e) {
@@ -282,7 +283,7 @@ waSettingsRouter.patch('/api-config', requireAdmin, async (req, res) => {
     const vals: unknown[] = [];
     let i = 1;
     if (evo_url !== undefined)     { fields.push(`evo_url = $${i++}`);     vals.push(evo_url); }
-    if (evo_api_key !== undefined) { fields.push(`evo_api_key = $${i++}`); vals.push(evo_api_key); }
+    if (evo_api_key !== undefined) { fields.push(`evo_api_key = $${i++}`); vals.push(encryptSecret(evo_api_key)); }
     if (!fields.length) return res.status(400).json({ error: 'Nada que actualizar' });
     fields.push(`updated_at = NOW()`);
     vals.push(orgId);
@@ -332,7 +333,7 @@ waSettingsRouter.patch('/settings', requireAdmin, async (req, res) => {
     const vals: unknown[] = [];
     let i = 1;
     if (evo_url !== undefined)       { fields.push(`evo_url = $${i++}`);       vals.push(evo_url); }
-    if (evo_api_key !== undefined)   { fields.push(`evo_api_key = $${i++}`);   vals.push(evo_api_key); }
+    if (evo_api_key !== undefined)   { fields.push(`evo_api_key = $${i++}`);   vals.push(encryptSecret(evo_api_key)); }
     if (instance_name !== undefined) { fields.push(`instance_name = $${i++}`); vals.push(instance_name); }
     if (!fields.length) return res.status(400).json({ error: 'Nada que actualizar' });
     fields.push(`updated_at = NOW()`);

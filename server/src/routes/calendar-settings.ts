@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
+import { encryptSecret } from '../secrets.ts';
 import { repairPendingMeets } from '../services/google-meet.ts';
 import { requireAdmin } from '../auth/perms.ts';
 import {
@@ -178,7 +179,7 @@ calendarPublicRouter.get('/google/callback', async (req, res) => {
       `INSERT INTO calendar_settings (user_id, organization_id, google_refresh_token, updated_at)
        VALUES ($1, $2, $3, now())
        ON CONFLICT (user_id, organization_id) DO UPDATE SET google_refresh_token=$3, updated_at=now()`,
-      [userId, orgId, tokens.refresh_token],
+      [userId, orgId, encryptSecret(tokens.refresh_token)],
     );
 
     // Las citas agendadas mientras Google estaba desconectado reciben ahora su Meet
@@ -235,7 +236,7 @@ calendarPublicRouter.get('/zoom/callback', async (req, res) => {
       `INSERT INTO calendar_settings (user_id, organization_id, zoom_refresh_token, zoom_user_id, updated_at)
        VALUES ($1, $2, $3, $4, now())
        ON CONFLICT (user_id, organization_id) DO UPDATE SET zoom_refresh_token=$3, zoom_user_id=$4, updated_at=now()`,
-      [userId, orgId, tokens.refresh_token, tokens.zoom_user_id],
+      [userId, orgId, encryptSecret(tokens.refresh_token), tokens.zoom_user_id],
     );
 
     const frontendUrl = process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'http://localhost:5175';
