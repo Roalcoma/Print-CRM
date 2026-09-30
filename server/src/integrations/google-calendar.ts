@@ -258,8 +258,9 @@ export function getGoogleAuthUrl(redirectUri: string, state: string): string {
     redirect_uri: redirectUri,
     response_type: 'code',
     scope: [
+      // Mínimos necesarios (verificación de Google): eventos que crea el CRM + solo ocupado/libre
       'https://www.googleapis.com/auth/calendar.events',
-      'https://www.googleapis.com/auth/calendar.readonly',
+      'https://www.googleapis.com/auth/calendar.events.freebusy',
     ].join(' '),
     access_type: 'offline',
     prompt: 'consent',

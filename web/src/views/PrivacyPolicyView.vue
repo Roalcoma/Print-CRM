@@ -146,7 +146,7 @@
           <p>Cuando una organización registra usuarios en la plataforma, recopilamos:</p>
           <ul>
             <li><strong>Identidad:</strong> nombre completo, dirección de correo electrónico.</li>
-            <li><strong>Credenciales:</strong> contraseña cifrada (bcrypt, nunca en texto claro).</li>
+            <li><strong>Credenciales:</strong> contraseña protegida con hash (scrypt), nunca en texto claro.</li>
             <li><strong>Configuración:</strong> preferencias de interfaz, zona horaria, idioma.</li>
             <li><strong>Metadatos de sesión:</strong> dirección IP, tipo de navegador, timestamps de inicio/cierre de sesión.</li>
             <li><strong>Actividad interna:</strong> acciones realizadas en la plataforma (registros de auditoría).</li>
@@ -290,7 +290,7 @@
           <div class="space-y-4 mt-4">
             <ThirdPartyCard
               name="Meta Platforms (Facebook / Instagram)"
-              purpose="Recepción y envío de mensajes vía Instagram Direct y Facebook Messenger a través de Meta Graph API v19.0. Procesamiento de comentarios de Instagram."
+              purpose="Recepción y envío de mensajes vía Instagram Direct y Facebook Messenger a través de Meta Graph API. Procesamiento de comentarios de Instagram."
               data="ID de usuario de Instagram/Facebook, contenido de mensajes, tokens de acceso OAuth (cifrados en reposo)."
               policy="https://www.facebook.com/privacy/policy/" />
 
@@ -302,8 +302,8 @@
 
             <ThirdPartyCard
               name="Google Calendar API"
-              purpose="Sincronización bidireccional de citas entre el calendario de Rocco CRM y Google Calendar cuando la organización lo habilita."
-              data="Título de eventos, fecha/hora, asistentes (correo electrónico), enlace de reunión. Tokens OAuth almacenados cifrados."
+              purpose="Crear en Google Calendar las citas que se agendan en Rocco CRM (con su enlace de Google Meet) y consultar la disponibilidad del calendario, solo cuando un usuario conecta su cuenta de Google."
+              data="Título, fecha/hora, descripción y asistentes (correo) de las citas creadas por Rocco CRM; bloques de ocupado/libre del calendario. Tokens OAuth almacenados cifrados. Ver sección 6.1."
               policy="https://policies.google.com/privacy" />
 
             <ThirdPartyCard
@@ -324,6 +324,39 @@
             <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-primary hover:underline">rodrigoalfonzo97@gmail.com</a>.
             La Empresa notificará con al menos <strong>30 días de antelación</strong> cualquier
             incorporación de nuevos sub-encargados relevantes.
+          </p>
+
+          <!-- 6.1 Datos de usuario de Google (requisito de verificación de Google) -->
+          <h3 id="google" class="mt-10">6.1 Datos de usuario de Google</h3>
+          <p>Cuando un usuario conecta su cuenta de Google Calendar a Rocco CRM, solicitamos únicamente estos permisos:</p>
+          <ul>
+            <li><strong>calendar.events</strong> — crear, actualizar y cancelar en su Google Calendar las citas y tareas con fecha que se registran en Rocco CRM (incluido el enlace de Google Meet e invitaciones a los asistentes), y mostrar al propio usuario, dentro del calendario del CRM, los eventos de su Google Calendar para que vea toda su agenda en un solo lugar. Esos eventos se consultan al abrir el calendario y no se guardan en nuestra base de datos.</li>
+            <li><strong>calendar.events.freebusy</strong> — consultar solo si un horario está ocupado o libre, para no ofrecer en la página de reservas pública horarios en los que el usuario ya tiene compromisos. La página de reservas nunca muestra el contenido de sus eventos, solo horarios libres.</li>
+          </ul>
+          <p>
+            <strong>Uso:</strong> estos datos se usan exclusivamente para la función de agenda que el usuario activa.
+            No se venden, no se usan para publicidad, no se transfieren a terceros (salvo lo necesario para prestar la
+            función o cuando lo exija la ley) y ninguna persona los consulta sin el consentimiento del usuario, salvo por
+            motivos de seguridad o para cumplir la ley. Tampoco se usan para entrenar modelos de inteligencia artificial.
+          </p>
+          <p>
+            <strong>Almacenamiento y eliminación:</strong> guardamos cifrado el token de acceso de Google y, en cada cita,
+            el identificador del evento y el enlace de Meet. Si el usuario desconecta Google Calendar desde su perfil, el
+            token se elimina de inmediato; también puede revocar el acceso en
+            <a href="https://myaccount.google.com/permissions" class="text-primary hover:underline" target="_blank" rel="noopener">myaccount.google.com/permissions</a>.
+          </p>
+          <p lang="en" class="rounded-md border border-gray-200 bg-gray-50 p-4 text-sm">
+            <strong>Google user data (English).</strong> Rocco CRM requests only the <em>calendar.events</em> scope (to create,
+            update and cancel the appointments and dated tasks recorded in Rocco CRM in the user's Google Calendar, with a Google Meet link and
+            invitations to attendees, and to show the user their own Google Calendar events inside the CRM calendar view, fetched on
+            demand and not stored) and the <em>calendar.events.freebusy</em> scope (to check busy/free time so the public booking
+            page never offers slots when the user is unavailable; the booking page never reveals event details). Google user data is used only to provide this user-facing
+            scheduling feature; it is not sold, not used for advertising, not transferred to third parties except as needed to
+            provide the feature or to comply with law, not used to train AI models, and not read by humans without the user's
+            consent. The OAuth token is stored encrypted and deleted when the user disconnects Google Calendar.
+            <strong>Rocco CRM's use and transfer to any other app of information received from Google APIs will adhere to the
+            <a href="https://developers.google.com/terms/api-services-user-data-policy" class="text-primary hover:underline" target="_blank" rel="noopener">Google API Services User Data Policy</a>,
+            including the Limited Use requirements.</strong>
           </p>
         </div>
       </section>
@@ -438,7 +471,7 @@
 
           <h3>9.2 Seguridad en reposo</h3>
           <ul>
-            <li>Las contraseñas de usuarios se almacenan con hash <strong>bcrypt</strong> con factor de coste ≥ 12.</li>
+            <li>Las contraseñas de usuarios se almacenan con hash <strong>scrypt</strong> y sal aleatoria por usuario.</li>
             <li>Los tokens de acceso OAuth (Instagram, Google) se almacenan cifrados en la base de datos.</li>
             <li>Las claves API de terceros (Evolution API) se almacenan en variables de entorno del servidor, no en el código fuente.</li>
             <li>El disco del servidor de base de datos está cifrado a nivel de sistema operativo.</li>
