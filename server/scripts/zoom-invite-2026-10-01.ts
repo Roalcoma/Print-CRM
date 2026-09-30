@@ -78,6 +78,28 @@ async function alreadyInvited(jid: string, contactId: string): Promise<boolean> 
   return rows.length > 0;
 }
 
+// Guarda la invitación en la conversación del contacto: los envíos por la API de Evolution no llegan
+// al webhook del CRM (solo messages.upsert), así que sin esto no se verían en la bandeja.
+async function recordInvite(r: Recipient, jid: string, text: string, waId: string | null, at: Date) {
+  const conv = (await pool.query<{ id: string }>(
+    `INSERT INTO conversations (organization_id, wa_chat_id, display_name, phone, contact_id, last_message_at, last_message_preview)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (organization_id, wa_chat_id) DO UPDATE SET
+       contact_id = COALESCE(conversations.contact_id, EXCLUDED.contact_id),
+       last_message_preview = CASE WHEN conversations.last_message_at IS NULL OR EXCLUDED.last_message_at >= conversations.last_message_at
+                                   THEN EXCLUDED.last_message_preview ELSE conversations.last_message_preview END,
+       last_message_at = GREATEST(conversations.last_message_at, EXCLUDED.last_message_at),
+       updated_at = NOW()
+     RETURNING id`,
+    [ORG, jid, r.first_name?.trim() || r.phone, r.phone, r.contact_id, at, text.slice(0, 100)],
+  )).rows[0];
+  await pool.query(
+    `INSERT INTO conv_messages (conversation_id, organization_id, wa_message_id, direction, msg_type, body, status, created_at)
+     VALUES ($1, $2, $3, 'outbound', 'text', $4, 'sent', $5) ON CONFLICT (wa_message_id) DO NOTHING`,
+    [conv.id, ORG, waId, text, at],
+  );
+}
+
 async function main() {
   const wa = (await pool.query(
     `SELECT evo_url, evo_api_key, instance_name FROM wa_settings WHERE organization_id = $1 AND session_status = 'connected' ORDER BY is_default DESC LIMIT 1`,
@@ -96,6 +118,22 @@ async function main() {
   };
 
   const list = await recipients();
+
+  // Modo único: registrar en el CRM invitaciones ya enviadas (BACKFILL='[{"n":1,"last4":"1234","at":"ISO"}]')
+  if (process.env.BACKFILL) {
+    const sentLog = JSON.parse(process.env.BACKFILL) as { n: number; last4: string; at: string; stage: string }[];
+    for (const s of sentLog) {
+      const r = list.find(x => x.stage === s.stage && x.phone.endsWith(s.last4));
+      if (!r) { log(`backfill: no encontré …${s.last4}`); continue; }
+      const jid = `${r.phone}@s.whatsapp.net`;
+      if (await alreadyInvited(jid, r.contact_id)) { log(`backfill: …${s.last4} ya registrado`); continue; }
+      await recordInvite(r, jid, variants[(s.n - 1) % variants.length](greeting(r.first_name)), null, new Date(s.at));
+      log(`backfill: registrado #${s.n} …${s.last4}`);
+    }
+    await pool.end();
+    return;
+  }
+
   const byStage = STAGES.map(s => `${s}: ${list.filter(r => r.stage === s).length}`).join(', ');
   log(`destinatarios: ${list.length} (${byStage})${DRY ? ' · MODO PRUEBA, no se envía nada' : ''}`);
   if (!DRY) await sendTelegram(`📣 Campaña Zoom VFS lista: ${list.length} destinatarios en cola (${byStage}). Envía 1 mensaje cada 7-9 min entre 7:00 y 20:00 hora de Miami, hasta el jueves 7:00 p.m.`);
@@ -134,8 +172,9 @@ async function main() {
     if (await alreadyInvited(hit.jid, r.contact_id)) { skipped++; continue; }
 
     const text = variants[v++ % variants.length](greeting(r.first_name));
-    await evo('/message/sendText', { number: hit.jid.split('@')[0], text, delay: Math.round(rand(3000, 6000)) });
+    const res = await evo('/message/sendText', { number: hit.jid.split('@')[0], text, delay: Math.round(rand(3000, 6000)) }) as { key?: { id?: string } };
     sent++;
+    await recordInvite(r, hit.jid, text, res?.key?.id ?? null, new Date()).catch(e => log('no se pudo registrar en el CRM:', (e as Error).message));
     log(`enviado #${sent}: ${r.stage} · …${r.phone.slice(-4)} · ${miamiTime()} Miami`);
     if (sent % 20 === 0) await sendTelegram(`📣 Campaña Zoom VFS: ${sent} invitaciones enviadas (última: ${miamiTime()} Miami).`);
     await sleep(rand(GAP_MIN, GAP_MAX));
