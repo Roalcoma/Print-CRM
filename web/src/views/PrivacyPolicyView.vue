@@ -482,7 +482,7 @@
             <li><strong>Aislamiento multi-tenant:</strong> cada organización tiene su propio espacio lógico. Las consultas a la base de datos incluyen obligatoriamente el filtro <code>organization_id</code> para impedir el acceso cruzado entre tenants.</li>
             <li><strong>Control de roles:</strong> los usuarios tienen roles diferenciados (Administrador, Agente) con permisos granulares por módulo.</li>
             <li><strong>Autenticación por JWT:</strong> tokens firmados con clave secreta rotada periódicamente, con expiración configurable.</li>
-            <li><strong>Acceso SSH restringido:</strong> el servidor de producción solo admite acceso SSH mediante red privada virtual (Tailscale/VPN).</li>
+            <li><strong>Acceso administrativo restringido:</strong> la administración del servidor de producción se hace por SSH únicamente a través de canales cifrados: la red privada virtual (Tailscale) o el túnel de Cloudflare. El acceso está limitado al equipo administrador y utiliza llaves SSH personales.</li>
             <li><strong>Principio de mínimo privilegio:</strong> el usuario de la base de datos en producción tiene permisos limitados a las operaciones necesarias.</li>
           </ul>
 

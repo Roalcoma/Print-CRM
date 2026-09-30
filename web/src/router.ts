@@ -5,6 +5,8 @@ import { useAuthStore } from './stores/auth';
 
 const routes = [
   { path: '/login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
+  // Página pública de Rocco (inicio para visitantes; la revisa Google para verificar la app)
+  { path: '/inicio', component: () => import('./views/HomePublicView.vue'), meta: { public: true } },
   { path: '/privacy', component: () => import('./views/PrivacyPolicyView.vue'), meta: { public: true } },
   { path: '/terms', component: () => import('./views/TermsView.vue'), meta: { public: true } },
   { path: '/book/:slug', component: () => import('./views/BookingView.vue'), meta: { public: true } },
@@ -28,7 +30,7 @@ const routes = [
     path: '/',
     component: () => import('./layouts/AppLayout.vue'),
     children: [
-      { path: '', redirect: '/dashboard' },
+      { path: '', redirect: () => (getToken() ? '/dashboard' : '/inicio') },
       { path: 'dashboard', component: () => import('./views/DashboardView.vue'), meta: { title: 'Dashboard' } },
       { path: 'contacts', component: () => import('./views/ContactsView.vue'), meta: { title: 'Contactos', module: 'contacts' } },
       { path: 'contacts/:id', component: () => import('./views/ContactDetailView.vue'), meta: { title: 'Contacto', module: 'contacts' } },
