@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 import { env } from './env.ts';
 import { installErrorAlerts } from './services/alerts.ts';
 import { checkWhatsappConnections } from './services/wa-monitor.ts';
+import { resolveEvo } from './services/evolution.ts';
 import { requireAuth } from './auth/middleware.ts';
 import { requireModule } from './auth/perms.ts';
 import { authRouter } from './routes/auth.ts';
@@ -139,6 +140,7 @@ app.get('/api/media/:msgId', async (req, res) => {
     );
     const r = rowRes.rows[0];
     if (!r) return res.status(404).end();
+    const evo = resolveEvo(r);
 
     // Camino 1: data URI cacheado
     if (r.media_url?.startsWith('data:')) {
@@ -152,7 +154,7 @@ app.get('/api/media/:msgId', async (req, res) => {
     // Camino 2: URL HTTP directa (por si Evolution entrega URL pública)
     if (r.media_url?.startsWith('http')) {
       const upstream = await fetch(r.media_url, {
-        headers: r.evo_api_key ? { 'apikey': r.evo_api_key } : {},
+        headers: evo.apiKey ? { 'apikey': evo.apiKey } : {},
       }).catch(() => null);
       if (upstream?.ok) {
         const mime = r.media_mime || upstream.headers.get('content-type') || 'application/octet-stream';
@@ -163,13 +165,13 @@ app.get('/api/media/:msgId', async (req, res) => {
     }
 
     // Camino 3: descargar via Evolution API getBase64FromMediaMessage
-    if (!r.wa_message_id || !r.evo_url || !r.evo_api_key) return res.status(404).end();
+    if (!r.wa_message_id || !evo.url || !evo.apiKey) return res.status(404).end();
 
     const evoRes = await fetch(
-      `${r.evo_url}/message/getBase64FromMediaMessage/${r.instance_name}`,
+      `${evo.url}/message/getBase64FromMediaMessage/${r.instance_name}`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': r.evo_api_key },
+        headers: { 'Content-Type': 'application/json', 'apikey': evo.apiKey },
         body: JSON.stringify({ message: { key: { id: r.wa_message_id } }, convertToMp4: false }),
       },
     ).catch(() => null);

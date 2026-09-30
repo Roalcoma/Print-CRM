@@ -4,7 +4,7 @@
 
 import { pool } from '../db.ts';
 import { broadcast } from './ws-manager.ts';
-import { EvolutionClient } from './evolution.ts';
+import { evolutionFor, type EvolutionClient } from './evolution.ts';
 import { sendIgDm, sendIgPrivateReply, replyToIgComment } from './instagram.ts';
 import { upsertSocialConversation } from './social-inbox.ts';
 import { wantsInfo, captionKeywords, matchesKeyword } from './ig-intent.ts';
@@ -220,12 +220,11 @@ async function getWaClient(orgId: string): Promise<EvolutionClient | null> {
     `SELECT evo_url, evo_api_key, instance_name
      FROM wa_settings
      WHERE organization_id = $1 AND session_status = 'connected'
-     ORDER BY created_at LIMIT 1`,
+     ORDER BY is_default DESC, created_at LIMIT 1`,
     [orgId],
   );
   if (!res.rows[0]) return null;
-  const { evo_url, evo_api_key, instance_name } = res.rows[0];
-  return new EvolutionClient({ url: evo_url, apiKey: evo_api_key, instanceName: instance_name });
+  return evolutionFor(res.rows[0]);
 }
 
 // ── Ejecución de un run ─────────────────────────────────────────────────────

@@ -1,12 +1,12 @@
 // Gestión de instancias WhatsApp (Evolution API) por organización.
-// Soporta hasta 2 instancias por CRM. La config interna (evo_url, api_key)
-// se gestiona vía /wa/api-config y no se expone en la UI de cliente.
+// Soporta hasta 2 instancias por CRM. Cada instancia tiene un nombre único (nunca compartido
+// entre clientes) y usa el Evolution del servidor: el cliente solo conecta y escanea el QR.
+// La URL y la API key de Evolution (llave maestra de todas las instancias) no se exponen ni se editan.
 
 import { Router } from 'express';
 import { pool } from '../db.ts';
-import { encryptSecret } from '../secrets.ts';
 import { requireAdmin } from '../auth/perms.ts';
-import { EvolutionClient } from '../services/evolution.ts';
+import { EvolutionClient, evolutionFor, newInstanceName } from '../services/evolution.ts';
 import { env } from '../env.ts';
 import { broadcast } from '../services/ws-manager.ts';
 
@@ -46,7 +46,28 @@ async function getInstance(id: string, orgId: string): Promise<Row | null> {
 }
 
 function buildClient(row: Row): EvolutionClient {
-  return new EvolutionClient({ url: row.evo_url, apiKey: row.evo_api_key, instanceName: row.instance_name });
+  const client = evolutionFor(row);
+  if (!client) throw new Error('Evolution API no configurado en el servidor (EVOLUTION_URL / EVOLUTION_API_KEY)');
+  return client;
+}
+
+// Crea la instancia de una organización con un nombre propio.
+async function createInstanceRow(orgId: string, displayName: string, isDefault: boolean): Promise<Row> {
+  const r = await pool.query<Row>(
+    `INSERT INTO wa_settings (organization_id, evo_url, evo_api_key, instance_name, display_name, is_default)
+     VALUES ($1, '', '', $2, $3, $4) RETURNING *`,
+    [orgId, newInstanceName(orgId), displayName, isDefault],
+  );
+  return r.rows[0];
+}
+
+// Segunda barrera: nunca operar una instancia de Evolution que otra organización también tenga.
+async function sharedWithOtherOrg(row: Row): Promise<boolean> {
+  const r = await pool.query(
+    'SELECT 1 FROM wa_settings WHERE instance_name = $1 AND organization_id <> $2 LIMIT 1',
+    [row.instance_name, row.organization_id],
+  );
+  return (r.rowCount ?? 0) > 0;
 }
 
 // ─── Lista de instancias ────────────────────────────────────────────────────
@@ -59,11 +80,8 @@ waSettingsRouter.get('/instances', requireAdmin, async (req, res) => {
       [orgId],
     );
     if (!rows.rows.length) {
-      const newRow = await pool.query<Row>(
-        `INSERT INTO wa_settings (organization_id, display_name, is_default) VALUES ($1, 'WhatsApp #1', true) RETURNING *`,
-        [orgId],
-      );
-      return res.json({ instances: [safeInstance(newRow.rows[0])] });
+      const newRow = await createInstanceRow(orgId, 'WhatsApp #1', true);
+      return res.json({ instances: [safeInstance(newRow)] });
     }
     res.json({ instances: rows.rows.map(safeInstance) });
   } catch (e) {
@@ -83,22 +101,9 @@ waSettingsRouter.post('/instances', requireAdmin, async (req, res) => {
     if (parseInt(countRes.rows[0].c) >= 2) {
       return res.status(400).json({ error: 'Máximo 2 instancias por organización' });
     }
-    const existing = await pool.query<Row>(
-      'SELECT * FROM wa_settings WHERE organization_id = $1 ORDER BY created_at LIMIT 1',
-      [orgId],
-    );
-    const evo_url    = existing.rows[0]?.evo_url    ?? 'http://localhost:8080';
-    const evo_api_key = existing.rows[0]?.evo_api_key ?? '';
-    const baseInstance = existing.rows[0]?.instance_name ?? 'crm';
-    const instance_name = `${baseInstance}-2`;
-    const display_name  = (req.body.display_name as string | undefined) ?? 'WhatsApp #2';
-
-    const newRow = await pool.query<Row>(
-      `INSERT INTO wa_settings (organization_id, evo_url, evo_api_key, instance_name, display_name, is_default)
-       VALUES ($1, $2, $3, $4, $5, false) RETURNING *`,
-      [orgId, evo_url, encryptSecret(evo_api_key), instance_name, display_name],
-    );
-    res.json({ instance: safeInstance(newRow.rows[0]) });
+    const display_name = (req.body.display_name as string | undefined)?.trim() || 'WhatsApp #2';
+    const newRow = await createInstanceRow(orgId, display_name, false);
+    res.json({ instance: safeInstance(newRow) });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Error al crear instancia' });
@@ -119,8 +124,8 @@ waSettingsRouter.delete('/instances/:id', requireAdmin, async (req, res) => {
     }
     const row = await getInstance(id, orgId);
     if (!row) return res.status(404).json({ error: 'Instancia no encontrada' });
-    if (row.evo_api_key && row.session_status !== 'disconnected') {
-      await buildClient(row).logout().catch(() => {});
+    if (row.session_status !== 'disconnected' && !(await sharedWithOtherOrg(row))) {
+      await evolutionFor(row)?.logout().catch(() => {});
     }
     await pool.query('DELETE FROM wa_settings WHERE id = $1', [id]);
     if (row.is_default) {
@@ -159,7 +164,7 @@ waSettingsRouter.post('/instances/:id/connect', requireAdmin, async (req, res) =
     const id = String(req.params.id);
     const row = await getInstance(id, orgId);
     if (!row) return res.status(404).json({ error: 'Instancia no encontrada' });
-    if (!row.evo_api_key) return res.status(400).json({ error: 'Configura la API key primero' });
+    if (await sharedWithOtherOrg(row)) return res.status(409).json({ error: 'Esta instancia de WhatsApp está asignada a otra cuenta. Contacta a soporte.' });
 
     const client = buildClient(row);
     await client.ensureInstance();
@@ -186,6 +191,7 @@ waSettingsRouter.post('/instances/:id/disconnect', requireAdmin, async (req, res
     const id = String(req.params.id);
     const row = await getInstance(id, orgId);
     if (!row) return res.status(404).json({ error: 'Instancia no encontrada' });
+    if (await sharedWithOtherOrg(row)) return res.status(409).json({ error: 'Esta instancia de WhatsApp está asignada a otra cuenta. Contacta a soporte.' });
     await buildClient(row).logout();
     await pool.query(
       `UPDATE wa_settings SET session_status = 'disconnected', updated_at = NOW() WHERE id = $1`,
@@ -236,9 +242,7 @@ waSettingsRouter.post('/instances/:id/sync', requireAdmin, async (req, res) => {
     const id = String(req.params.id);
     const row = await getInstance(id, orgId);
     if (!row) return res.status(404).json({ error: 'Instancia no encontrada' });
-    if (!row.evo_url || !row.evo_api_key) return res.json({ status: row.session_status });
-
-    const remote = await buildClient(row).getConnectionState().catch(() => null);
+    const remote = await evolutionFor(row)?.getConnectionState().catch(() => null);
     if (!remote) return res.json({ status: row.session_status });
 
     const stateMap: Record<string, string> = { open: 'connected', close: 'disconnected', connecting: 'connecting' };
@@ -266,36 +270,17 @@ waSettingsRouter.get('/api-config', requireAdmin, async (req, res) => {
       'SELECT * FROM wa_settings WHERE organization_id = $1 ORDER BY created_at LIMIT 1',
       [req.auth!.organizationId],
     );
-    if (!row.rows[0]) return res.json({ evo_url: 'http://localhost:8080', has_api_key: false });
-    res.json({ evo_url: row.rows[0].evo_url, has_api_key: !!row.rows[0].evo_api_key });
+    res.json({ managed: true, configured: !!(row.rows[0] && evolutionFor(row.rows[0])) });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Error al cargar config' });
   }
 });
 
-// PATCH /wa/api-config — actualiza evo_url y api_key en TODAS las instancias del org
-waSettingsRouter.patch('/api-config', requireAdmin, async (req, res) => {
-  try {
-    const { evo_url, evo_api_key } = req.body as { evo_url?: string; evo_api_key?: string };
-    const orgId = req.auth!.organizationId;
-    const fields: string[] = [];
-    const vals: unknown[] = [];
-    let i = 1;
-    if (evo_url !== undefined)     { fields.push(`evo_url = $${i++}`);     vals.push(evo_url); }
-    if (evo_api_key !== undefined) { fields.push(`evo_api_key = $${i++}`); vals.push(encryptSecret(evo_api_key)); }
-    if (!fields.length) return res.status(400).json({ error: 'Nada que actualizar' });
-    fields.push(`updated_at = NOW()`);
-    vals.push(orgId);
-    await pool.query(
-      `UPDATE wa_settings SET ${fields.join(', ')} WHERE organization_id = $${i}`,
-      vals,
-    );
-    res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Error al guardar config' });
-  }
+// PATCH /wa/api-config y /wa/settings — ya no se pueden editar: cambiar el nombre de instancia,
+// la URL o la API key permitiría a un cliente tomar el WhatsApp de otro.
+waSettingsRouter.patch('/api-config', requireAdmin, (_req, res) => {
+  res.status(403).json({ error: 'La conexión con WhatsApp la gestiona Rocco: solo tienes que conectar y escanear el QR.' });
 });
 
 // ─── Rutas legacy (backward compat) — operan sobre la instancia default ────
@@ -306,57 +291,28 @@ async function getDefaultOrCreate(orgId: string): Promise<Row> {
     [orgId],
   );
   if (res.rows[0]) return res.rows[0];
-  const ins = await pool.query<Row>(
-    `INSERT INTO wa_settings (organization_id, display_name, is_default) VALUES ($1, 'WhatsApp #1', true) RETURNING *`,
-    [orgId],
-  );
-  return ins.rows[0];
+  return createInstanceRow(orgId, 'WhatsApp #1', true);
 }
 
 waSettingsRouter.get('/settings', requireAdmin, async (req, res) => {
   try {
     const row = await getDefaultOrCreate(req.auth!.organizationId);
-    const { evo_api_key: _, ...safe } = row;
-    res.json({ ...safe, has_api_key: !!row.evo_api_key });
+    res.json({ ...safeInstance(row), configured: !!evolutionFor(row) });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Error al cargar configuración' });
   }
 });
 
-waSettingsRouter.patch('/settings', requireAdmin, async (req, res) => {
-  try {
-    const { evo_url, evo_api_key, instance_name } = req.body as Record<string, string | undefined>;
-    const orgId = req.auth!.organizationId;
-    await getDefaultOrCreate(orgId);
-    const fields: string[] = [];
-    const vals: unknown[] = [];
-    let i = 1;
-    if (evo_url !== undefined)       { fields.push(`evo_url = $${i++}`);       vals.push(evo_url); }
-    if (evo_api_key !== undefined)   { fields.push(`evo_api_key = $${i++}`);   vals.push(encryptSecret(evo_api_key)); }
-    if (instance_name !== undefined) { fields.push(`instance_name = $${i++}`); vals.push(instance_name); }
-    if (!fields.length) return res.status(400).json({ error: 'Nada que actualizar' });
-    fields.push(`updated_at = NOW()`);
-    vals.push(orgId);
-    // Legacy: actualiza la primera instancia del org
-    await pool.query(
-      `UPDATE wa_settings SET ${fields.join(', ')} WHERE id = (
-         SELECT id FROM wa_settings WHERE organization_id = $${i} ORDER BY is_default DESC, created_at LIMIT 1
-       )`,
-      vals,
-    );
-    res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Error al guardar configuración' });
-  }
+waSettingsRouter.patch('/settings', requireAdmin, (_req, res) => {
+  res.status(403).json({ error: 'La conexión con WhatsApp la gestiona Rocco: solo tienes que conectar y escanear el QR.' });
 });
 
 waSettingsRouter.post('/connect', requireAdmin, async (req, res) => {
   try {
     const orgId = req.auth!.organizationId;
     const row = await getDefaultOrCreate(orgId);
-    if (!row.evo_api_key) return res.status(400).json({ error: 'Configura la API key primero' });
+    if (await sharedWithOtherOrg(row)) return res.status(409).json({ error: 'Esta instancia de WhatsApp está asignada a otra cuenta. Contacta a soporte.' });
     const client = buildClient(row);
     await client.ensureInstance();
     const webhookUrl = `${env.publicUrl}/api/wa/webhook/${row.webhook_secret}`;
@@ -378,6 +334,7 @@ waSettingsRouter.post('/disconnect', requireAdmin, async (req, res) => {
   try {
     const orgId = req.auth!.organizationId;
     const row = await getDefaultOrCreate(orgId);
+    if (await sharedWithOtherOrg(row)) return res.status(409).json({ error: 'Esta instancia de WhatsApp está asignada a otra cuenta. Contacta a soporte.' });
     await buildClient(row).logout();
     await pool.query(
       `UPDATE wa_settings SET session_status = 'disconnected', updated_at = NOW() WHERE id = $1`,
@@ -431,8 +388,7 @@ waSettingsRouter.post('/sync', requireAdmin, async (req, res) => {
   try {
     const orgId = req.auth!.organizationId;
     const row = await getDefaultOrCreate(orgId);
-    if (!row.evo_url || !row.evo_api_key) return res.json({ status: row.session_status });
-    const remote = await buildClient(row).getConnectionState().catch(() => null);
+    const remote = await evolutionFor(row)?.getConnectionState().catch(() => null);
     if (!remote) return res.json({ status: row.session_status });
     const stateMap: Record<string, string> = { open: 'connected', close: 'disconnected', connecting: 'connecting' };
     const status = stateMap[remote.instance.state] ?? 'disconnected';

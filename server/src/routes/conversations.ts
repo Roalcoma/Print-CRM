@@ -2,7 +2,7 @@
 
 import { Router } from 'express';
 import { pool } from '../db.ts';
-import { EvolutionClient } from '../services/evolution.ts';
+import { evolutionFor } from '../services/evolution.ts';
 import { broadcast } from '../services/ws-manager.ts';
 import { sendIgDm, isOutsideWindow } from '../services/instagram.ts';
 
@@ -16,7 +16,7 @@ type WASetting = {
 
 async function getWACfg(orgId: string): Promise<WASetting | null> {
   const res = await pool.query<WASetting>(
-    'SELECT evo_url, evo_api_key, instance_name FROM wa_settings WHERE organization_id = $1',
+    'SELECT evo_url, evo_api_key, instance_name FROM wa_settings WHERE organization_id = $1 ORDER BY is_default DESC, created_at LIMIT 1',
     [orgId],
   );
   return res.rows[0] ?? null;
@@ -137,7 +137,8 @@ conversationsRouter.post('/:id/messages', async (req, res) => {
       const cfg = await getWACfg(orgId);
       if (!cfg) return res.status(503).json({ error: 'WhatsApp no configurado' });
 
-      const client = new EvolutionClient({ url: cfg.evo_url, apiKey: cfg.evo_api_key, instanceName: cfg.instance_name });
+      const client = evolutionFor(cfg);
+      if (!client) return res.status(503).json({ error: 'WhatsApp no configurado' });
       const number = chatId.replace(/@\S+/, '');
 
       if (type === 'text' && body) {

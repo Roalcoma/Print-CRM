@@ -28,6 +28,9 @@ services:
       ZOOM_CLIENT_ID:            ${ZOOM_CLIENT_ID:-}
       ZOOM_CLIENT_SECRET:        ${ZOOM_CLIENT_SECRET:-}
       # Alertas de errores a Telegram y clave de cifrado de secretos en la BD
+      # Evolution API del servidor: las instancias nuevas de cada cliente se crean aquí
+      EVOLUTION_URL:             ${EVOLUTION_URL:-}
+      EVOLUTION_API_KEY:         ${EVOLUTION_API_KEY:-}
       ALERT_WEBHOOK_URL:         ${ALERT_WEBHOOK_URL:-}
       TELEGRAM_BOT_TOKEN:        ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID:          ${TELEGRAM_CHAT_ID:-}

@@ -118,3 +118,24 @@ export class EvolutionClient {
     ).catch(() => null);
   }
 }
+
+// ── Conexión de cada instancia ──────────────────────────────────────────────
+// Las instancias guardan su propia URL/API key solo si se configuraron a mano (p. ej. la de VFS);
+// las demás usan el Evolution del servidor (EVOLUTION_URL / EVOLUTION_API_KEY). La API key de
+// Evolution es la llave maestra de TODAS las instancias: nunca se pide ni se muestra al cliente.
+export function resolveEvo(row: { evo_url?: string | null; evo_api_key?: string | null }): { url: string; apiKey: string } {
+  const url = row.evo_url && !row.evo_url.includes('localhost:2785') ? row.evo_url : (process.env.EVOLUTION_URL ?? '');
+  const apiKey = row.evo_api_key || process.env.EVOLUTION_API_KEY || '';
+  return { url, apiKey };
+}
+
+export function evolutionFor(row: { evo_url?: string | null; evo_api_key?: string | null; instance_name: string }): EvolutionClient | null {
+  const { url, apiKey } = resolveEvo(row);
+  if (!url || !apiKey) return null;
+  return new EvolutionClient({ url, apiKey, instanceName: row.instance_name });
+}
+
+// Nombre único de instancia para una organización (nunca se comparte entre clientes).
+export function newInstanceName(orgId: string): string {
+  return `rocco-${orgId.slice(0, 8)}-${Math.random().toString(16).slice(2, 8)}`;
+}
