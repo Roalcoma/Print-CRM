@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
+import { orgUserIds } from '../tenant.ts';
 
 export const calendarsRouter = Router();
 
@@ -188,9 +189,10 @@ calendarsRouter.post('/', async (req, res) => {
   }
 
   // Insertar miembros: el creador es siempre primario; se pueden añadir más
-  const primaryId = d.primary_user_id ?? userId;
+  const allowed = await orgUserIds([...(d.member_ids ?? []), ...(d.primary_user_id ? [d.primary_user_id] : [])], orgId);
+  const primaryId = d.primary_user_id && allowed.has(d.primary_user_id) ? d.primary_user_id : userId;
   const memberSet = new Set<string>([userId]);
-  if (d.member_ids) d.member_ids.forEach(id => memberSet.add(id));
+  if (d.member_ids) d.member_ids.filter(id => allowed.has(id)).forEach(id => memberSet.add(id));
   for (const memberId of memberSet) {
     await query(
       `INSERT INTO calendar_members (calendar_id, user_id, is_primary)
@@ -280,6 +282,10 @@ calendarsRouter.patch('/:id', async (req, res) => {
 
   // Actualizar miembros si se envió member_ids o primary_user_id
   if (d.member_ids !== undefined || d.primary_user_id !== undefined) {
+    // Solo usuarios de esta organización pueden ser miembros o responsables del calendario
+    const allowed = await orgUserIds([...(d.member_ids ?? []), ...(d.primary_user_id ? [d.primary_user_id] : [])], orgId);
+    if (d.primary_user_id && !allowed.has(d.primary_user_id)) return res.status(400).json({ error: 'El responsable no pertenece a tu cuenta' });
+    if (d.member_ids) d.member_ids = d.member_ids.filter(id => allowed.has(id));
     // Obtener el estado actual para preservar al propietario original
     const currentMembers = await query<{ user_id: string; is_primary: boolean }>(
       'SELECT user_id, is_primary FROM calendar_members WHERE calendar_id=$1',

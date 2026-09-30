@@ -79,7 +79,13 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json({ limit: '4mb' }));
+// El webhook de Meta necesita el cuerpo exacto para verificar su firma (X-Hub-Signature-256)
+app.use(express.json({
+  limit: '4mb',
+  verify: (req, _res, buf) => {
+    if ((req as express.Request).originalUrl?.startsWith('/api/meta/')) (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+  },
+}));
 
 // Rate limiting en autenticación: máximo 15 intentos por IP cada 15 minutos
 const authLimiter = rateLimit({

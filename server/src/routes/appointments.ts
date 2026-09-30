@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
+import { foreignRef } from '../tenant.ts';
 import { logActivity } from '../activity.ts';
 import {
   createGoogleEvent,
@@ -256,6 +257,15 @@ appointmentsRouter.post('/', async (req, res) => {
   const d       = parsed.data;
   const orgId   = req.auth!.organizationId;
   const actorId = req.auth!.userId;
+  const bad = await foreignRef(orgId, [
+    ['contacts', d.contact_id, 'El contacto'], ['opportunities', d.opportunity_id, 'La oportunidad'],
+    ['calendars', d.calendar_id, 'El calendario'],
+    ...(d.attendees ?? []).flatMap(a => [
+      ['contacts', a.contact_id, 'Un asistente'] as ['contacts', string | null | undefined, string],
+      ['users', a.user_id, 'Un asistente'] as ['users', string | null | undefined, string],
+    ]),
+  ]);
+  if (bad) return res.status(400).json({ error: `${bad} no pertenece a tu cuenta` });
   const provider = d.provider ?? 'manual';
   const timezone = d.timezone ?? 'America/Caracas';
 
@@ -276,8 +286,8 @@ appointmentsRouter.post('/', async (req, res) => {
         if (contact?.email) attendeeEmails.push(contact.email);
       } else if (att.user_id) {
         const user = await queryOne<{ email: string }>(
-          'SELECT email FROM users WHERE id=$1',
-          [att.user_id],
+          'SELECT email FROM users WHERE id=$1 AND organization_id=$2',
+          [att.user_id, orgId],
         );
         if (user?.email) attendeeEmails.push(user.email);
       }
@@ -439,6 +449,11 @@ appointmentsRouter.patch('/:id', async (req, res) => {
     [req.params.id, orgId],
   );
   if (!existing) return res.status(404).json({ error: 'Cita no encontrada' });
+  const bad = await foreignRef(orgId, [
+    ['contacts', (d as { contact_id?: string | null }).contact_id, 'El contacto'],
+    ['opportunities', (d as { opportunity_id?: string | null }).opportunity_id, 'La oportunidad'],
+  ]);
+  if (bad) return res.status(400).json({ error: `${bad} no pertenece a tu cuenta` });
 
   const COLS = ['title','description','start_at','end_at','timezone','is_all_day','contact_id',
                 'opportunity_id','location','meeting_url','provider','status',

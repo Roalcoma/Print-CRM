@@ -18,7 +18,12 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ error: 'No autenticado' });
   }
   try {
-    req.auth = verifyToken(header.slice(7));
+    const claims = verifyToken(header.slice(7)) as AuthClaims & { type?: string };
+    // Un token de agencia no es una sesión del CRM: no tiene organización
+    if (claims.type === 'agency' || !claims.organizationId || !claims.userId) {
+      return res.status(401).json({ error: 'Token inválido o expirado' });
+    }
+    req.auth = claims;
     next();
   } catch {
     res.status(401).json({ error: 'Token inválido o expirado' });

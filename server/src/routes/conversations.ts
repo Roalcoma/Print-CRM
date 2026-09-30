@@ -2,6 +2,7 @@
 
 import { Router } from 'express';
 import { pool } from '../db.ts';
+import { belongsToOrg } from '../tenant.ts';
 import { evolutionFor } from '../services/evolution.ts';
 import { broadcast } from '../services/ws-manager.ts';
 import { sendIgDm, isOutsideWindow } from '../services/instagram.ts';
@@ -346,6 +347,9 @@ conversationsRouter.post('/', async (req, res) => {
   try {
     const orgId = req.auth!.organizationId;
     const { phone, display_name, contact_id } = req.body as { phone: string; display_name?: string; contact_id?: string };
+    if (!(await belongsToOrg('contacts', contact_id, req.auth!.organizationId))) {
+      return res.status(400).json({ error: 'El contacto no pertenece a tu cuenta' });
+    }
     if (!phone) return res.status(400).json({ error: 'Falta el número de teléfono' });
 
     // Formato chatId de WA: código de país + número + @s.whatsapp.net (sin +)

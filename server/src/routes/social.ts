@@ -1,7 +1,9 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 // Integración con Facebook Messenger e Instagram DM via Meta Graph API.
 // Requiere META_APP_ID y META_APP_SECRET en .env.
 
 import { Router } from 'express';
+import type express from 'express';
 import { pool } from '../db.ts';
 import { encryptSecret } from '../secrets.ts';
 import { requireAdmin } from '../auth/perms.ts';
@@ -386,7 +388,7 @@ metaWebhookRouter.get('/webhook', (req, res) => {
 });
 
 // POST /api/meta/webhook — recepción de mensajes y comentarios
-metaWebhookRouter.post('/webhook', express_json_check, async (req, res) => {
+metaWebhookRouter.post('/webhook', verifyMetaSignature, async (req, res) => {
   res.json({ ok: true }); // responder rápido a Meta
 
   try {
@@ -487,8 +489,33 @@ metaWebhookRouter.post('/webhook', express_json_check, async (req, res) => {
 });
 
 
-// express.json() ya está montado globalmente, este middleware es solo un placeholder
-function express_json_check(_req: unknown, _res: unknown, next: () => void) { next(); }
+// Meta firma cada notificación con el secreto de la app (X-Hub-Signature-256). Sin verificarla,
+// cualquiera que conozca el id público de una página podía inyectar comentarios, DMs o leads.
+// Hay dos apps (Facebook e Instagram Login): vale la firma de cualquiera de sus secretos.
+// META_WEBHOOK_ENFORCE_SIGNATURE=true rechaza lo no firmado; si no, solo lo registra (observación).
+function verifyMetaSignature(req: express.Request & { rawBody?: Buffer }, res: express.Response, next: express.NextFunction) {
+  const secrets: [string, string][] = [
+    ['meta', process.env.META_APP_SECRET ?? ''],
+    ['instagram', process.env.INSTAGRAM_APP_SECRET ?? ''],
+  ].filter(([, s]) => s) as [string, string][];
+  if (!secrets.length) return next();
+  const sig = req.get('x-hub-signature-256') ?? '';
+  const match = req.rawBody && sig.startsWith('sha256=')
+    ? secrets.find(([, s]) => {
+        const expected = Buffer.from('sha256=' + createHmac('sha256', s).update(req.rawBody!).digest('hex'));
+        const got = Buffer.from(sig);
+        return got.length === expected.length && timingSafeEqual(got, expected);
+      })
+    : undefined;
+  const enforce = process.env.META_WEBHOOK_ENFORCE_SIGNATURE === 'true';
+  if (match) {
+    console.log(`[meta-webhook] firma OK (secreto ${match[0]})`);
+    return next();
+  }
+  console.warn(`[meta-webhook] firma inválida o ausente (${enforce ? 'rechazado' : 'modo observación: se procesa igual'})`);
+  if (enforce) return res.status(401).end();
+  next();
+}
 
 // ─── Tipos Meta Webhook ─────────────────────────────────────────────────────
 interface MetaWebhookBody {

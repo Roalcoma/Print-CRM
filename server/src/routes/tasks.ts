@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
+import { foreignRef } from '../tenant.ts';
 import { logActivity } from '../activity.ts';
 import { audit } from '../audit.ts';
 import { createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from '../integrations/google-calendar.ts';
@@ -153,6 +154,8 @@ tasksRouter.post('/', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   const t = parsed.data;
   const orgId = req.auth!.organizationId;
+  const bad = await foreignRef(orgId, [['opportunities', t.opportunity_id, 'La oportunidad']]);
+  if (bad) return res.status(400).json({ error: `${bad} no pertenece a tu cuenta` });
   const actorId = req.auth!.userId;
   const [row] = await query<{ id: string }>(
     `INSERT INTO tasks (organization_id, title, description, opportunity_id, due_at, status, task_type, priority, reminder, created_by)
@@ -196,6 +199,8 @@ tasksRouter.patch('/:id', async (req, res) => {
     [req.params.id, orgId],
   );
   if (!existing) return res.status(404).json({ error: 'Tarea no encontrada' });
+  const bad = await foreignRef(orgId, [['opportunities', data.opportunity_id as string | null | undefined, 'La oportunidad']]);
+  if (bad) return res.status(400).json({ error: `${bad} no pertenece a tu cuenta` });
 
   if ('assignee_ids' in data) await syncAssignees(req.params.id, data.assignee_ids as string[], orgId);
 
