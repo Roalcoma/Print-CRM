@@ -669,7 +669,7 @@ function stepPreview(step: Step): string {
                     <label class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Mensajes rotativos</label>
                     <button class="text-[11px] font-semibold text-primary hover:text-primary-dark" @click="addIgMessage(selectedStep)">+ Añadir</button>
                   </div>
-                  <p class="mb-3 text-[11px] text-slate-400">Se alternan en orden circular para parecer más natural.</p>
+                  <p class="mb-3 text-[11px] text-slate-400">Se elige uno al azar en cada envío para parecer más natural.</p>
                   <div class="space-y-2.5">
                     <div v-for="(_, msgIdx) in selectedStep.messages" :key="msgIdx" class="flex gap-2">
                       <textarea

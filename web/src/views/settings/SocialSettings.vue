@@ -210,7 +210,7 @@ const brokenPics = reactive(new Set<string>());
               <Facebook class="h-6 w-6 text-slate-300" />
             </div>
             <p class="text-sm font-medium text-slate-500">Sin páginas conectadas</p>
-            <p class="text-xs text-slate-400 mt-1 max-w-xs">Haz clic en "Conectar cuenta" para vincular tus páginas de Facebook y empezar a recibir mensajes.</p>
+            <p class="text-xs text-slate-400 mt-1 max-w-xs">Haz clic en "Conectar Facebook" para vincular tus páginas de Facebook y empezar a recibir mensajes.</p>
             <button class="btn btn-primary mt-4" :disabled="connecting" @click="connectFacebook">
               <Loader2 v-if="connecting" class="h-4 w-4 animate-spin" />
               <Facebook v-else class="h-4 w-4" />

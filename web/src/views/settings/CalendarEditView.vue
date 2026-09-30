@@ -884,7 +884,7 @@ async function confirmDelete() {
                 <div v-else-if="form.location_type === 'google_meet'" class="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
                   <p class="text-xs text-emerald-700">
                     <span v-if="googleConnected">✓ Google Calendar conectado — se creará un enlace de Meet automáticamente al agendar.</span>
-                    <span v-else>⚠ Necesitas conectar Google Calendar en <a href="/settings/calendar" class="underline">Configuración → Calendario</a> para usar Google Meet.</span>
+                    <span v-else>⚠ Necesitas conectar Google Calendar en <a href="/settings/profile" class="underline">Mi Perfil → Conexiones</a> para usar Google Meet.</span>
                   </p>
                 </div>
                 <div v-else-if="form.location_type === 'phone'" class="mt-2">

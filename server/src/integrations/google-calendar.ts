@@ -40,7 +40,7 @@ async function markGoogleDisconnected(refreshToken: string): Promise<void> {
       `INSERT INTO notifications (organization_id, user_id, type, title, body)
        VALUES ($1, $2, 'system', $3, $4)`,
       [row.organization_id, a.id, 'Google Calendar se desconectó',
-       `Google rechazó el permiso de ${row.name} (${row.email}). Las citas nuevas no tendrán enlace de Meet hasta que se reconecte en Configuración → Calendarios. Al reconectar, las citas pendientes recibirán su Meet automáticamente.`],
+       `Google rechazó el permiso de ${row.name} (${row.email}). Las citas nuevas no tendrán enlace de Meet hasta que se reconecte en Mi Perfil → Conexiones → Google Calendar. Al reconectar, las citas pendientes recibirán su Meet automáticamente.`],
     );
     broadcast(row.organization_id, 'notification:new', { userId: a.id });
   }

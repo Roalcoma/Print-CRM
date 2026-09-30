@@ -186,7 +186,7 @@ calendarPublicRouter.get('/google/callback', async (req, res) => {
     repairPendingMeets(userId, orgId).catch(e => console.error('repairPendingMeets error:', e));
 
     const frontendUrl = process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'http://localhost:5175';
-    res.redirect(`${frontendUrl}/settings/calendar?connected=google`);
+    res.redirect(`${frontendUrl}/settings/profile?connected=google`);
   } catch (err) {
     console.error('Google OAuth callback error:', err);
     res.status(500).json({ error: 'Error al conectar Google Calendar' });
@@ -240,7 +240,7 @@ calendarPublicRouter.get('/zoom/callback', async (req, res) => {
     );
 
     const frontendUrl = process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'http://localhost:5175';
-    res.redirect(`${frontendUrl}/settings/calendar?connected=zoom`);
+    res.redirect(`${frontendUrl}/settings/profile?connected=zoom`);
   } catch (err) {
     console.error('Zoom OAuth callback error:', err);
     res.status(500).json({ error: 'Error al conectar Zoom' });

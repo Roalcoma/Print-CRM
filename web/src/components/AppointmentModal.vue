@@ -727,14 +727,14 @@ function close() { emit('update:modelValue', false); }
                 <AlertTriangle class="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
                 <p class="text-xs text-amber-700">
                   Google Calendar no conectado.
-                  <a href="/settings/calendar" target="_blank" class="underline font-medium">Conecta en Configuración</a>.
+                  <a href="/settings/profile" target="_blank" class="underline font-medium">Conéctalo en Mi Perfil → Conexiones</a>.
                 </p>
               </div>
               <div v-if="showZoomWarning" class="mt-2 flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 p-2.5">
                 <AlertTriangle class="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
                 <p class="text-xs text-amber-700">
                   Zoom no conectado.
-                  <a href="/settings/calendar" target="_blank" class="underline font-medium">Conecta en Configuración</a>.
+                  <a href="/settings/profile" target="_blank" class="underline font-medium">Conéctalo en Mi Perfil → Conexiones</a>.
                 </p>
               </div>
             </div>
