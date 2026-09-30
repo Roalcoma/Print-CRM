@@ -28,7 +28,14 @@ const registerSchema = z.object({
   password: z.string().min(8),
 });
 
+// Registro público cerrado mientras las cuentas se crean desde la agencia.
+// ALLOW_PUBLIC_SIGNUP=true lo vuelve a abrir (también se usa en local para el test de aislamiento).
+const signupOpen = () => process.env.ALLOW_PUBLIC_SIGNUP === 'true';
+
+authRouter.get('/signup', (_req, res) => res.json({ open: signupOpen() }));
+
 authRouter.post('/register', async (req, res) => {
+  if (!signupOpen()) return res.status(403).json({ error: 'El registro está cerrado. Pide acceso a tu administrador.' });
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   const { organizationName, name, email, password } = parsed.data;

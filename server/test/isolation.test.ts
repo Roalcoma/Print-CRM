@@ -2,7 +2,7 @@
 // B no puede leer, modificar, borrar ni enlazar datos de A por ninguna ruta de la API.
 // Uso: con el servidor corriendo contra una BD de pruebas,
 //   TEST_BASE_URL=http://localhost:3199 node --env-file=.env --test test/isolation.test.ts
-// NUNCA contra producción: crea cuentas y datos.
+// NUNCA contra producción: crea cuentas y datos. Necesita ALLOW_PUBLIC_SIGNUP=true en el .env local.
 
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';

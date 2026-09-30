@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { api } from '../api';
 import { useRouter } from 'vue-router';
 import { Mail, Lock, User, Building2, ArrowRight, Loader2, Zap, Calendar, MessageCircle, BarChart3 } from 'lucide-vue-next';
 import { useAuthStore } from '../stores/auth';
@@ -8,6 +9,9 @@ const auth = useAuthStore();
 const router = useRouter();
 
 const mode = ref<'login' | 'register'>('login');
+// El registro público puede estar cerrado (las cuentas las crea la agencia)
+const signupOpen = ref(false);
+api.get<{ open: boolean }>('/auth/signup').then(r => { signupOpen.value = r.open; }).catch(() => {});
 const email = ref('');
 const password = ref('');
 const name = ref('');
@@ -148,7 +152,10 @@ async function submit() {
           </button>
         </form>
 
-        <p class="mt-6 text-center text-sm text-slate-500">
+        <p v-if="!signupOpen && mode === 'login'" class="mt-6 text-center text-sm text-slate-500">
+          ¿No tienes cuenta? Pide acceso a tu administrador.
+        </p>
+        <p v-else class="mt-6 text-center text-sm text-slate-500">
           {{ mode === 'login' ? '¿No tienes cuenta?' : '¿Ya tienes cuenta?' }}
           <button
             class="ml-1 font-semibold text-[#F69008] hover:text-[#D97706] transition-colors cursor-pointer"
