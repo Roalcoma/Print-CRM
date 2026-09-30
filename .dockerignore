@@ -7,7 +7,7 @@
 .git
 .gitignore
 README.md
-deploy.sh
+ops
 docker-compose.yml
 .deploy-prev
 .deployed-commit
