@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
+import { useDragAutoScroll } from '../composables/useDragAutoScroll';
 import {
   Plus, Search, Pencil, Trash2, X, CalendarClock, Kanban,
   UserPlus, ChevronDown, Check, Calendar, Clock,
@@ -25,6 +26,9 @@ const loading = ref(true);
 const assigneeFilter = ref('');
 const search  = ref('');
 const dragId  = ref<string | null>(null);
+// Auto-scroll del tablero al arrastrar cerca de los bordes
+const boardEl = ref<HTMLElement | null>(null);
+const autoScroll = useDragAutoScroll(boardEl);
 const stats   = ref({ today: 0, overdue: 0, pending: 0, done: 0, total: 0, done_pct: 0 });
 
 // Vista tablero/lista (recordada en la cuenta).
@@ -262,7 +266,7 @@ async function remove(t: Task) {
     <LoadingState v-if="loading" label="Cargando tareas…" />
 
     <!-- ── Tablero kanban ───────────────────────────────────────────────────── -->
-    <div v-else-if="viewMode === 'board'" class="flex flex-1 gap-3 overflow-x-auto bg-slate-100/60 p-3 sm:gap-4 sm:p-6" style="scroll-snap-type: x mandatory;">
+    <div v-else-if="viewMode === 'board'" class="flex flex-1 gap-3 overflow-x-auto bg-slate-100/60 p-3 sm:gap-4 sm:p-6" style="scroll-snap-type: x mandatory;" ref="boardEl" @dragover="autoScroll.onDragOver" @drop="autoScroll.stop" @dragend="autoScroll.stop">
       <div v-for="col in TASK_STATUSES" :key="col.key" class="flex w-[calc(100vw-3.5rem)] flex-shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card sm:w-80" style="scroll-snap-align: start;" @dragover.prevent @drop="onDrop(col.key)">
         <!-- Column header — Flowlu style -->
         <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3 bg-white">

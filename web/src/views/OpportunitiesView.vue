@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import { useDragAutoScroll } from '../composables/useDragAutoScroll';
 import { useWs } from '../composables/useWs';
 import { useRouter } from 'vue-router';
 import { useDialog } from '../composables/useDialog';
@@ -27,6 +28,9 @@ const users = ref<User[]>([]);
 const currentId = ref<string>('');
 const opps = ref<Opportunity[]>([]);
 const dragId = ref<string | null>(null);
+// Auto-scroll del tablero al arrastrar cerca de los bordes
+const boardEl = ref<HTMLElement | null>(null);
+const autoScroll = useDragAutoScroll(boardEl);
 const { alert, confirm } = useDialog();
 const loading = ref(true);
 const reloading = ref(false);
@@ -728,7 +732,7 @@ async function deleteNote(id: string) {
 
     <!-- Tablero kanban -->
     <LoadingState v-if="loading" label="Cargando oportunidades…" />
-    <div v-else-if="viewMode === 'board'" class="flex flex-1 gap-3 overflow-x-auto bg-slate-100/60 p-3 sm:gap-4 sm:p-6">
+    <div v-else-if="viewMode === 'board'" class="flex flex-1 gap-3 overflow-x-auto bg-slate-100/60 p-3 sm:gap-4 sm:p-6" ref="boardEl" @dragover="autoScroll.onDragOver" @drop="autoScroll.stop" @dragend="autoScroll.stop">
       <div
         v-for="stage in current?.stages ?? []"
         :key="stage.id"
