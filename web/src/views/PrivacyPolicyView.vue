@@ -330,7 +330,7 @@
           <h3 id="google" class="mt-10">6.1 Datos de usuario de Google</h3>
           <p>Cuando un usuario conecta su cuenta de Google Calendar a Rocco CRM, solicitamos únicamente estos permisos:</p>
           <ul>
-            <li><strong>calendar.events</strong> — crear, actualizar y cancelar en su Google Calendar las citas y tareas con fecha que se registran en Rocco CRM (incluido el enlace de Google Meet e invitaciones a los asistentes), y mostrar al propio usuario, dentro del calendario del CRM, los eventos de su Google Calendar para que vea toda su agenda en un solo lugar. Esos eventos se consultan al abrir el calendario y no se guardan en nuestra base de datos.</li>
+            <li><strong>calendar.events.owned</strong> — en los calendarios de los que el usuario es dueño (su calendario principal): crear, actualizar y cancelar en su Google Calendar las citas y tareas con fecha que se registran en Rocco CRM (incluido el enlace de Google Meet e invitaciones a los asistentes), y mostrar al propio usuario, dentro del calendario del CRM, los eventos de su Google Calendar para que vea toda su agenda en un solo lugar. Esos eventos se consultan al abrir el calendario y no se guardan en nuestra base de datos.</li>
             <li><strong>calendar.events.freebusy</strong> — consultar solo si un horario está ocupado o libre, para no ofrecer en la página de reservas pública horarios en los que el usuario ya tiene compromisos. La página de reservas nunca muestra el contenido de sus eventos, solo horarios libres.</li>
           </ul>
           <p>
@@ -346,7 +346,7 @@
             <a href="https://myaccount.google.com/permissions" class="text-primary hover:underline" target="_blank" rel="noopener">myaccount.google.com/permissions</a>.
           </p>
           <p lang="en" class="rounded-md border border-gray-200 bg-gray-50 p-4 text-sm">
-            <strong>Google user data (English).</strong> Rocco CRM requests only the <em>calendar.events</em> scope (to create,
+            <strong>Google user data (English).</strong> Rocco CRM requests only the <em>calendar.events.owned</em> scope (on calendars the user owns, i.e. their primary calendar: to create,
             update and cancel the appointments and dated tasks recorded in Rocco CRM in the user's Google Calendar, with a Google Meet link and
             invitations to attendees, and to show the user their own Google Calendar events inside the CRM calendar view, fetched on
             demand and not stored) and the <em>calendar.events.freebusy</em> scope (to check busy/free time so the public booking
