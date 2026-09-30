@@ -157,6 +157,17 @@ async function main() {
   log(`destinatarios: ${list.length} (${byStage})${DRY ? ' · MODO PRUEBA, no se envía nada' : ''}`);
   if (!DRY) await sendTelegram(`📣 Campaña Zoom VFS lista: ${list.length} destinatarios en cola (${byStage}). Envía 1 mensaje cada 7-9 min entre 7:00 y 20:00 hora de Miami, hasta el jueves 7:00 p.m.`);
 
+  // Al relanzar, respetar el intervalo desde la última invitación enviada (no mandar dos seguidas)
+  if (!DRY) {
+    const last = (await pool.query<{ at: Date | null }>(
+      `SELECT max(m.created_at) AS at FROM conv_messages m JOIN conversations c ON c.id = m.conversation_id
+       WHERE c.organization_id = $1 AND m.direction = 'outbound' AND m.body LIKE '%' || $2 || '%'`,
+      [ORG, ZOOM_MARK],
+    )).rows[0]?.at;
+    const wait = last ? rand(GAP_MIN, GAP_MAX) - (Date.now() - new Date(last).getTime()) : 0;
+    if (wait > 0) { log(`esperando ${Math.round(wait / 60000)} min desde la última invitación`); await sleep(wait); }
+  }
+
   let sent = 0, skipped = 0, invalid = 0, v = 0;
   for (const r of list) {
     if (new Date() >= DEADLINE) break;
