@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { Plus, Trash2, CheckCircle2, WifiOff, Loader2, QrCode, Star, MessageCircle, Settings2 } from 'lucide-vue-next';
+import { Plus, Trash2, CheckCircle2, WifiOff, Loader2, QrCode, Star, MessageCircle, Settings2, Pencil } from 'lucide-vue-next';
 import { api } from '../../api';
 import { useDialog } from '../../composables/useDialog';
 import type { WAInstance } from '../../types';
@@ -55,6 +55,27 @@ async function deleteInstance(id: string) {
     await alert(e instanceof Error ? e.message : 'Error al eliminar');
   } finally {
     deletingId.value = null;
+  }
+}
+
+// Renombrar (solo la etiqueta visible; el nombre técnico de la instancia no cambia)
+const editingId = ref<string | null>(null);
+const editName = ref('');
+const vFocus = { mounted: (el: HTMLInputElement) => { el.focus(); el.select(); } };
+function startRename(inst: WAInstance) {
+  editingId.value = inst.id;
+  editName.value = inst.display_name;
+}
+async function saveRename(inst: WAInstance) {
+  if (editingId.value !== inst.id) return;
+  const name = editName.value.trim();
+  editingId.value = null;
+  if (!name || name === inst.display_name) return;
+  try {
+    const res = await api.patch<{ instance: WAInstance }>(`/wa/instances/${inst.id}`, { display_name: name });
+    inst.display_name = res.instance.display_name;
+  } catch (e: unknown) {
+    await alert(e instanceof Error ? e.message : 'Error al renombrar');
   }
 }
 
@@ -116,7 +137,27 @@ function statusInfo(s: string) {
         <!-- Info -->
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2 flex-wrap">
-            <p class="text-sm font-semibold text-slate-800">{{ inst.display_name }}</p>
+            <input
+              v-if="editingId === inst.id"
+              v-model="editName"
+              maxlength="40"
+              class="w-48 rounded-md border border-slate-300 px-2 py-0.5 text-sm font-semibold text-slate-800 outline-none focus:border-[#F69008]"
+              aria-label="Nombre del número"
+              v-focus
+              @keydown.enter="saveRename(inst)"
+              @keydown.esc="editingId = null"
+              @blur="saveRename(inst)"
+            />
+            <template v-else>
+              <p class="text-sm font-semibold text-slate-800">{{ inst.display_name }}</p>
+              <button
+                class="cursor-pointer rounded-md p-0.5 text-slate-400 hover:bg-slate-100 hover:text-[#13243D]"
+                title="Cambiar nombre"
+                @click="startRename(inst)"
+              >
+                <Pencil class="h-3.5 w-3.5" />
+              </button>
+            </template>
             <span
               class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
               :class="statusInfo(inst.session_status).cls"
