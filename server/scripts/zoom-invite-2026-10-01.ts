@@ -19,6 +19,8 @@ const TAG = 'invitado-zoom-01oct';                                   // etiqueta
 const TZ = 'America/New_York';                                       // hora de Miami
 const WINDOW_START = 7, WINDOW_END = 20;                             // horas locales de envío
 const DEADLINE = new Date('2026-10-01T23:00:00Z');                   // jueves 7:00 p.m. Miami: ya no se invita
+// Extensión puntual del horario (p. ej. EXTRA_UNTIL=2026-10-01T05:00:00Z = hasta la 1:00 a.m. Miami)
+const EXTRA_UNTIL = process.env.EXTRA_UNTIL ? new Date(process.env.EXTRA_UNTIL) : null;
 const GAP_MIN = 7 * 60_000, GAP_MAX = 9 * 60_000;
 const DRY = process.env.DRY_RUN === 'true';
 
@@ -155,7 +157,7 @@ async function main() {
 
   const byStage = STAGES.map(s => `${s}: ${list.filter(r => r.stage === s).length}`).join(', ');
   log(`destinatarios: ${list.length} (${byStage})${DRY ? ' · MODO PRUEBA, no se envía nada' : ''}`);
-  if (!DRY) await sendTelegram(`📣 Campaña Zoom VFS lista: ${list.length} destinatarios en cola (${byStage}). Envía 1 mensaje cada 7-9 min entre 7:00 y 20:00 hora de Miami, hasta el jueves 7:00 p.m.`);
+  if (!DRY) await sendTelegram(`📣 Campaña Zoom VFS lista: ${list.length} destinatarios en cola (${byStage}). Envía 1 mensaje cada 7-9 min entre 7:00 y 20:00 hora de Miami, hasta el jueves 7:00 p.m.${EXTRA_UNTIL ? ` Extensión de horario hasta ${miamiTime(EXTRA_UNTIL)} Miami.` : ''}`);
 
   // Al relanzar, respetar el intervalo desde la última invitación enviada (no mandar dos seguidas)
   if (!DRY) {
@@ -172,7 +174,7 @@ async function main() {
   for (const r of list) {
     if (new Date() >= DEADLINE) break;
     // Esperar a la ventana de envío (7:00-20:00 Miami)
-    while (!DRY && (miamiHour() < WINDOW_START || miamiHour() >= WINDOW_END)) {
+    while (!DRY && !(EXTRA_UNTIL && new Date() < EXTRA_UNTIL) && (miamiHour() < WINDOW_START || miamiHour() >= WINDOW_END)) {
       if (new Date() >= DEADLINE) break;
       await sleep(60_000);
     }
@@ -196,6 +198,8 @@ async function main() {
       await sleep(2 * 60_000);
     }
 
+    // Ya invitado por contacto: saltar sin consultar WhatsApp (evita ráfagas de consultas al relanzar)
+    if (await alreadyInvited('', r.contact_id)) { skipped++; continue; }
     const check = await evo('/chat/whatsappNumbers', { numbers: [r.phone] }).catch(() => null) as { exists: boolean; jid: string }[] | null;
     const hit = check?.[0];
     if (!hit?.exists) { invalid++; log(`sin WhatsApp: …${r.phone.slice(-4)} (${r.stage})`); continue; }
