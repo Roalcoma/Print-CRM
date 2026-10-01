@@ -111,7 +111,7 @@ contactsRouter.post('/import/csv', async (req, res) => {
       );
       if (!created) { results.skipped++; continue; }
       results.created++;
-      fireContactCreatedTrigger(orgId, created.id).catch(console.error);
+      // Las importaciones no disparan "Contacto creado": con una regla que envíe WhatsApp sería un envío masivo
     } catch {
       results.skipped++;
     }

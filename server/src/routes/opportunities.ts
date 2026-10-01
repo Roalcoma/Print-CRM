@@ -45,6 +45,7 @@ async function upsertContact(
   name?: string | null,
   email?: string | null,
   phone?: string | null,
+  fireTrigger = true,   // false en importaciones: no disparar "Contacto creado" en masa
 ): Promise<string | null> {
   const hasData = !!(name || email || phone);
   // Un contact_id ajeno a la organización se ignora (evita enlazar contactos de otro tenant).
@@ -68,7 +69,7 @@ async function upsertContact(
       'INSERT INTO contacts (organization_id, first_name, email, phone) VALUES ($1,$2,$3,$4) RETURNING id',
       [orgId, name || email || 'Sin nombre', email || null, phone || null],
     );
-    fireContactCreatedTrigger(orgId, c.id).catch(console.error);
+    if (fireTrigger) fireContactCreatedTrigger(orgId, c.id).catch(console.error);
     return c.id;
   }
   return null;
@@ -406,7 +407,7 @@ opportunitiesRouter.post('/import', async (req, res) => {
     const statusRaw = col(r, 'status');
     const status = ['open', 'won', 'lost'].includes(statusRaw) ? statusRaw : 'open';
     const stageId = stageByName.get(col(r, 'stage').toLowerCase()) ?? defaultStage;
-    const contactId = await upsertContact(orgId, null, col(r, 'contact_name'), col(r, 'contact_email'), col(r, 'contact_phone'));
+    const contactId = await upsertContact(orgId, null, col(r, 'contact_name'), col(r, 'contact_email'), col(r, 'contact_phone'), false);
 
     await query(
       `INSERT INTO opportunities (organization_id, pipeline_id, stage_id, contact_id, title, value, status, source, business_name)

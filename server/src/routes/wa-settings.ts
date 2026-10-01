@@ -4,6 +4,7 @@
 // La URL y la API key de Evolution (llave maestra de todas las instancias) no se exponen ni se editan.
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { pool } from '../db.ts';
 import { requireAdmin } from '../auth/perms.ts';
 import { EvolutionClient, evolutionFor, newInstanceName } from '../services/evolution.ts';
@@ -80,10 +81,16 @@ waSettingsRouter.get('/instances', requireAdmin, async (req, res) => {
       [orgId],
     );
     if (!rows.rows.length) {
+      if (req.query.nocreate) return res.json({ instances: [], in_use: false });   // banner: solo consulta
       const newRow = await createInstanceRow(orgId, 'WhatsApp #1', true);
-      return res.json({ instances: [safeInstance(newRow)] });
+      return res.json({ instances: [safeInstance(newRow)], in_use: false });
     }
-    res.json({ instances: rows.rows.map(safeInstance) });
+    // in_use: la organización ya recibió/envió por WhatsApp (el banner de "desconectado" solo
+    // tiene sentido si usan WhatsApp; a quien nunca lo conectó no se le insiste).
+    const used = await pool.query(
+      `SELECT 1 FROM conversations WHERE organization_id = $1 AND channel = 'whatsapp' LIMIT 1`, [orgId],
+    );
+    res.json({ instances: rows.rows.map(safeInstance), in_use: (used.rowCount ?? 0) > 0 });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Error al cargar instancias' });
@@ -101,7 +108,7 @@ waSettingsRouter.post('/instances', requireAdmin, async (req, res) => {
     if (parseInt(countRes.rows[0].c) >= 2) {
       return res.status(400).json({ error: 'Máximo 2 instancias por organización' });
     }
-    const display_name = (req.body.display_name as string | undefined)?.trim() || 'WhatsApp #2';
+    const display_name = String(req.body.display_name ?? '').trim().slice(0, 40) || 'WhatsApp #2';
     const newRow = await createInstanceRow(orgId, display_name, false);
     res.json({ instance: safeInstance(newRow) });
   } catch (e) {
@@ -138,6 +145,28 @@ waSettingsRouter.delete('/instances/:id', requireAdmin, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Error al eliminar instancia' });
+  }
+});
+
+// PATCH /wa/instances/:id — renombrar. SOLO cambia display_name (la etiqueta visible);
+// instance_name, evo_url y evo_api_key no se tocan nunca desde aquí (ver PATCH /settings).
+const renameSchema = z.object({ display_name: z.string().trim().min(1).max(40) }).strict();
+waSettingsRouter.patch('/instances/:id', requireAdmin, async (req, res) => {
+  try {
+    const parsed = renameSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'Solo se puede cambiar el nombre (de 1 a 40 caracteres)' });
+    const id = String(req.params.id);
+    if (!z.string().uuid().safeParse(id).success) return res.status(404).json({ error: 'Instancia no encontrada' });
+    const r = await pool.query<Row>(
+      `UPDATE wa_settings SET display_name = $1, updated_at = NOW()
+       WHERE id = $2 AND organization_id = $3 RETURNING *`,
+      [parsed.data.display_name, id, req.auth!.organizationId],
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Instancia no encontrada' });
+    res.json({ instance: safeInstance(r.rows[0]) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Error al renombrar instancia' });
   }
 });
 

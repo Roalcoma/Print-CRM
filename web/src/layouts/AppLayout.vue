@@ -14,6 +14,7 @@ const appVersion = APP_VERSION;
 import NotificationsDropdown from '../components/NotificationsDropdown.vue';
 import AccountSwitcher from '../components/AccountSwitcher.vue';
 import ForcePasswordChange from '../components/ForcePasswordChange.vue';
+import WaDownBanner from '../components/WaDownBanner.vue';
 
 const auth   = useAuthStore();
 const router = useRouter();
@@ -446,6 +447,8 @@ const s = computed(() => isDark.value
           </div>
         </div>
       </header>
+
+      <WaDownBanner v-if="auth.isAdmin" />
 
       <!-- Main content -->
       <main class="relative flex-1 overflow-auto">

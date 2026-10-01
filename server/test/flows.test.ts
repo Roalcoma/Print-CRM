@@ -12,6 +12,8 @@ import { createHmac } from 'node:crypto';
 import pg from 'pg';
 import { encryptSecret } from '../src/secrets.ts';
 import { wantsInfo, captionKeywords, matchesKeyword } from '../src/services/ig-intent.ts';
+import { checkWhatsappConnections } from '../src/services/wa-monitor.ts';
+import { pool as appPool } from '../src/db.ts';
 
 const BASE = process.env.TEST_BASE_URL ?? 'http://localhost:3202';
 const FAKE = new URL(process.env.TEST_FAKE_URL ?? 'http://localhost:4202');
@@ -28,12 +30,16 @@ type Call = { method: string; path: string; body: any };
 const calls: Call[] = [];
 const igRejected = new Set<string>();   // destinatarios de DM que Meta rechaza (fuera de ventana 24 h)
 const captions: Record<string, string> = {};
+const waState = new Map<string, string>();   // estado de conexión simulado por instancia (por defecto 'open')
 const MEET = 'https://meet.google.com/abc-defg-hij';
 
 function fakeReply(c: Call): [number, unknown] {
   const p = c.path;
   // Evolution API v2
-  if (p.startsWith('/evo/instance/connectionState/')) return [200, { instance: { instanceName: p.split('/').pop(), state: 'open' } }];
+  if (p.startsWith('/evo/instance/connectionState/')) {
+    const name = p.split('/').pop()!;
+    return [200, { instance: { instanceName: name, state: waState.get(name) ?? 'open' } }];
+  }
   if (p.startsWith('/evo/instance/connect/')) return [200, { pairingCode: null, code: 'qr', base64: 'data:image/png;base64,' }];
   if (p.startsWith('/evo/webhook/set/')) return [200, { ok: true }];
   if (p.startsWith('/evo/message/sendText/')) {
@@ -173,6 +179,7 @@ after(async () => {
   ws?.close();
   fake.close();
   await db.end();
+  await appPool.end();
 });
 
 // ── 1 + 6. Lead por WhatsApp → contacto, conversación, oportunidad, notificación, auto-respuesta, WS ──
@@ -552,4 +559,75 @@ test('Filtro de intención: acepta consultas de compra/servicio y de reclutamien
   // La palabra clave del post sigue funcionando
   assert.deepEqual(captionKeywords('Comenta la palabra "CAMBIO" y te cuento'), ['cambio']);
   assert.ok(matchesKeyword('CAMBIO', ['cambio']));
+// ── WhatsApp: renombrar la instancia (solo display_name, solo admins de la propia org) ──
+test('WhatsApp: renombrar la instancia solo cambia display_name, validado y de la propia organización', async () => {
+  const inst = (await api(org.token, 'GET', '/wa/instances')).data.instances[0];
+  const before = await one('SELECT instance_name, evo_url, evo_api_key FROM wa_settings WHERE id = $1', [inst.id]);
+
+  const ok = await api(org.token, 'PATCH', `/wa/instances/${inst.id}`, { display_name: '  Ventas Caracas  ' });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  assert.equal(ok.data.instance.display_name, 'Ventas Caracas');
+
+  // Intentar colar instance_name / evo_url / evo_api_key → 400 y nada cambia
+  for (const extra of [{ instance_name: 'rocco-ajena' }, { evo_url: 'http://evil' }, { evo_api_key: 'x' }]) {
+    const bad = await api(org.token, 'PATCH', `/wa/instances/${inst.id}`, { display_name: 'Hack', ...extra });
+    assert.equal(bad.status, 400, JSON.stringify(extra));
+  }
+  for (const name of ['', '   ', 'x'.repeat(41)]) {
+    assert.equal((await api(org.token, 'PATCH', `/wa/instances/${inst.id}`, { display_name: name })).status, 400);
+  }
+  const after = await one('SELECT display_name, instance_name, evo_url, evo_api_key FROM wa_settings WHERE id = $1', [inst.id]);
+  assert.equal(after.display_name, 'Ventas Caracas');
+  assert.equal(after.instance_name, before.instance_name);
+  assert.equal(after.evo_url, before.evo_url);
+  assert.equal(after.evo_api_key, before.evo_api_key);
+  // Las rutas de config siguen bloqueadas
+  assert.equal((await api(org.token, 'PATCH', '/wa/settings', { instance_name: 'x' })).status, 403);
+
+  // Instancia de otra organización → 404 y no se toca
+  const other = await one(`INSERT INTO organizations (name) VALUES ($1) RETURNING id`, [`Ajena ${stamp}`]);
+  try {
+    const foreign = await one(
+      `INSERT INTO wa_settings (organization_id, evo_url, evo_api_key, instance_name, display_name, is_default)
+       VALUES ($1, '', '', $2, 'Ajeno', true) RETURNING id`, [other.id, `rocco-test-${rnd()}`]);
+    assert.equal((await api(org.token, 'PATCH', `/wa/instances/${foreign.id}`, { display_name: 'Mío' })).status, 404);
+    assert.equal((await one('SELECT display_name FROM wa_settings WHERE id = $1', [foreign.id])).display_name, 'Ajeno');
+  } finally {
+    await db.query('DELETE FROM organizations WHERE id = $1', [other.id]);
+  }
+  assert.equal((await api(org.token, 'PATCH', '/wa/instances/no-es-uuid', { display_name: 'X' })).status, 404);
+  assert.equal((await api(null, 'PATCH', `/wa/instances/${inst.id}`, { display_name: 'X' })).status, 401);
+});
+
+// ── WhatsApp caído: el monitor avisa en la campanita a los admins (una vez) y al volver ──
+test('WhatsApp: caída y reconexión generan una notificación cada una para el admin y actualizan el estado', async () => {
+  const inst = (await api(org.token, 'GET', '/wa/instances')).data.instances[0];
+  const notifs = async () => (await db.query(
+    `SELECT title, body FROM notifications WHERE user_id = $1 AND entity_type = 'wa_instance' AND entity_id = $2 ORDER BY created_at`,
+    [org.userId, inst.id])).rows;
+
+  await checkWhatsappConnections(org.orgId);            // línea base (conectado)
+  waState.set(org.instance, 'close');
+  await checkWhatsappConnections(org.orgId);            // 1.ª lectura caída: aún sin aviso (puede ser un parpadeo)
+  assert.equal((await notifs()).length, 0);
+  await checkWhatsappConnections(org.orgId);            // 2.ª seguida: aviso
+  await checkWhatsappConnections(org.orgId);            // sigue caído: sin spam
+  let n = await notifs();
+  assert.equal(n.length, 1);
+  assert.equal(n[0].title, 'WhatsApp desconectado');
+  assert.match(n[0].body, /Ventas Caracas/);
+  assert.match(n[0].body, /no están entrando/);
+  assert.match(n[0].body, /Configuración → WhatsApp/);
+  assert.equal((await one('SELECT session_status FROM wa_settings WHERE id = $1', [inst.id])).session_status, 'disconnected');
+  assert.equal((await api(org.token, 'GET', '/wa/instances?nocreate=1')).data.in_use, true);   // el banner se mostraría
+
+  waState.delete(org.instance);                         // vuelve a 'open'
+  await checkWhatsappConnections(org.orgId);
+  await checkWhatsappConnections(org.orgId);
+  n = await notifs();
+  assert.equal(n.length, 2);
+  assert.equal(n[1].title, 'WhatsApp reconectado');
+  assert.equal((await one('SELECT session_status FROM wa_settings WHERE id = $1', [inst.id])).session_status, 'connected');
+  const list = (await api(org.token, 'GET', '/notifications')).data;
+  assert.ok(JSON.stringify(list).includes('WhatsApp reconectado'));
 });
