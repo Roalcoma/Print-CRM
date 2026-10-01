@@ -11,6 +11,7 @@ import http from 'node:http';
 import { createHmac } from 'node:crypto';
 import pg from 'pg';
 import { encryptSecret } from '../src/secrets.ts';
+import { wantsInfo, captionKeywords, matchesKeyword } from '../src/services/ig-intent.ts';
 
 const BASE = process.env.TEST_BASE_URL ?? 'http://localhost:3202';
 const FAKE = new URL(process.env.TEST_FAKE_URL ?? 'http://localhost:4202');
@@ -447,4 +448,108 @@ test('Bandeja: DM de Instagram rechazado por Meta (fuera de 24 h) devuelve 422 y
   assert.match(bad.data.error, /24 h/);
   const saved = await one('SELECT count(*)::int AS n FROM conv_messages WHERE conversation_id = $1 AND body = $2', [conv.id, 'Mensaje que Meta rechaza']);
   assert.equal(saved.n, 0);
+});
+
+// ── 7. Disparador "Contacto creado" ─────────────────────────────────────────
+test('Contacto creado: dispara la regla en alta manual, WhatsApp y oportunidad (una sola vez por contacto)', async () => {
+  const rule = await api(org.token, 'POST', '/automations', {
+    name: 'Bienvenida contacto', trigger_type: 'contact_created',
+    config: { steps: [{ id: 'c1', type: 'send_notification', notification_title: 'Contacto nuevo', notification_body: '{{contact.name}}' }] },
+  });
+  assert.equal(rule.status, 201);
+  const runsFor = async (contactId: string) => (await one(
+    'SELECT count(*)::int AS n FROM automation_runs WHERE automation_id = $1 AND contact_id = $2', [rule.data.id, contactId])).n;
+
+  // Alta manual
+  const c = await api(org.token, 'POST', '/contacts', { first_name: 'Lucía', last_name: 'Manual', email: `lucia-${stamp}@test.local` });
+  assert.equal(c.status, 201, JSON.stringify(c.data));
+  await until('run de contacto manual', async () => (await runsFor(c.data.id)) === 1);
+
+  // WhatsApp entrante: corren "contacto creado" y "nuevo mensaje de WhatsApp", cada uno una vez
+  const phone = `58416${rnd()}`;
+  await waInbound(phone, 'Hola');
+  const wa = await until('contacto de WhatsApp', () => one(
+    'SELECT id FROM contacts WHERE organization_id = $1 AND phone = $2', [org.orgId, phone]));
+  await until('run de contacto WA', async () => (await runsFor(wa.id)) === 1);
+  await waInbound(phone, 'Sigo por aquí');
+  await until('segundo mensaje', async () => (await one(
+    `SELECT count(*)::int AS n FROM conv_messages m JOIN conversations c ON c.id = m.conversation_id
+      WHERE c.organization_id = $1 AND c.wa_chat_id = $2 AND m.direction = 'inbound'`, [org.orgId, `${phone}@s.whatsapp.net`])).n >= 2);
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal(await runsFor(wa.id), 1, 'el segundo mensaje no vuelve a disparar "contacto creado"');
+  const waRuns = await one(
+    `SELECT count(*)::int AS n FROM automation_runs r JOIN automation_rules a ON a.id = r.automation_id
+      WHERE r.contact_id = $1 AND a.trigger_type = 'whatsapp_new_message'`, [wa.id]);
+  assert.equal(waRuns.n, 1, 'whatsapp_new_message corre una vez');
+
+  // Oportunidad con contacto nuevo
+  const opp = await api(org.token, 'POST', '/opportunities', {
+    title: 'Venta nueva', pipeline_id: org.pipeline, stage_id: org.stage, contact_name: 'Pedro Oportunidad',
+    contact_email: `pedro-${stamp}@test.local`,
+  });
+  assert.equal(opp.status, 201, JSON.stringify(opp.data));
+  const oppContact = await one('SELECT contact_id FROM opportunities WHERE id = $1', [opp.data.id]);
+  await until('run de contacto de oportunidad', async () => (await runsFor(oppContact.contact_id)) === 1);
+
+  // Editar un contacto existente no dispara
+  await api(org.token, 'PATCH', `/contacts/${c.data.id}`, { last_name: 'Editada' });
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal(await runsFor(c.data.id), 1);
+
+  await api(org.token, 'PATCH', `/automations/${rule.data.id}`, { enabled: false });
+});
+
+// ── 8. "Cita agendada" también con citas creadas a mano en el CRM ──────────
+test('Cita manual con contacto dispara "cita agendada" una vez (también si es recurrente) con appointment_id', async () => {
+  const rule = await api(org.token, 'POST', '/automations', {
+    name: 'Recordatorio cita', trigger_type: 'appointment_booked',
+    config: { steps: [{ id: 'a1', type: 'send_notification', notification_title: 'Cita', notification_body: '{{contact.name}}' }] },
+  });
+  assert.equal(rule.status, 201);
+  const contact = (await api(org.token, 'POST', '/contacts', { first_name: 'Rosa', last_name: 'Cita' })).data;
+  const runs = async () => (await one('SELECT count(*)::int AS n FROM automation_runs WHERE automation_id = $1', [rule.data.id])).n;
+
+  const start = new Date(Date.now() + 3 * 86_400_000);
+  start.setUTCHours(14, 0, 0, 0);
+  const appt = await api(org.token, 'POST', '/appointments', {
+    title: 'Consulta', contact_id: contact.id, start_at: start.toISOString(),
+    end_at: new Date(start.getTime() + 3_600_000).toISOString(), recurrence_type: 'weekly', recurrence_count: 3,
+  });
+  assert.equal(appt.status, 201, JSON.stringify(appt.data));
+  const run = await until('run de cita agendada', () => one(
+    'SELECT * FROM automation_runs WHERE automation_id = $1 AND contact_id = $2', [rule.data.id, contact.id]));
+  assert.equal(run.step_data.__appointment__.appointment_id, appt.data.id);
+  assert.equal(run.step_data.__appointment__.start_at, start.toISOString());
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal(await runs(), 1, 'solo la primera cita de la serie recurrente');
+
+  // Sin contacto (cita interna): no dispara
+  const internal = await api(org.token, 'POST', '/appointments', {
+    title: 'Interna', start_at: start.toISOString(), end_at: new Date(start.getTime() + 1_800_000).toISOString(),
+  });
+  assert.equal(internal.status, 201);
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal(await runs(), 1);
+
+  await api(org.token, 'PATCH', `/automations/${rule.data.id}`, { enabled: false });
+});
+
+// ── 9. Filtro de intención de Instagram para varios sectores ────────────────
+test('Filtro de intención: acepta consultas de compra/servicio y de reclutamiento; rechaza elogios', () => {
+  const yes = [
+    '¿Precio?', 'Cuánto cuesta la limpieza dental', '¿Hacen envíos a Valencia?', 'Tienen disponible en talla M',
+    'Dónde están ubicados', 'Horario de atención', 'Quedan cupos para el curso?', 'Quiero agendar una cita',
+    'Cuánto sale el apartamento', 'Está en venta o alquiler?', 'Catálogo por favor', 'How much?', 'Do you ship to Miami',
+    'Is it available', 'price please', 'Me interesa, ¿sin licencia se puede?', 'info', 'Sin papeles se puede?', 'yo',
+  ];
+  const no = [
+    'Qué bonito 😍', 'Felicidades!!', 'Felicitaciones por el nuevo local', 'Excelente servicio, recomendados',
+    'Buen curso, gracias', 'Excelente ubicación!', 'great job', '😍😍🔥', '@maria', 'Gracias por la atención',
+    'Buena información, gracias', 'Qué lindo', 'Te quiero mucho amiga',
+  ];
+  for (const t of yes) assert.ok(wantsInfo(t), `debería pedir info: "${t}"`);
+  for (const t of no) assert.ok(!wantsInfo(t), `no debería pedir info: "${t}"`);
+  // La palabra clave del post sigue funcionando
+  assert.deepEqual(captionKeywords('Comenta la palabra "CAMBIO" y te cuento'), ['cambio']);
+  assert.ok(matchesKeyword('CAMBIO', ['cambio']));
 });

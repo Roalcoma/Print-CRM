@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
 import { getGoogleFreebusy } from '../integrations/google-calendar.ts';
 import { ensureGoogleMeet } from '../services/google-meet.ts';
-import { fireAppointmentBookedTrigger } from '../services/automation-engine.ts';
+import { fireAppointmentBookedTrigger, fireContactCreatedTrigger } from '../services/automation-engine.ts';
 
 export const bookingRouter = Router();
 
@@ -300,6 +300,7 @@ bookingRouter.post('/:slug', async (req, res) => {
       [cal.organization_id, firstName, lastName, d.email, d.phone ?? null],
     );
     contact = newContact;
+    fireContactCreatedTrigger(cal.organization_id, newContact.id).catch(console.error);
   }
 
   // Crear la cita

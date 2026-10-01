@@ -1,5 +1,6 @@
 // ¿El comentario pide información? Filtro del flujo "comentario → DM" de Instagram.
-// Prioriza no perder leads: lista amplia (español, inglés, jerga, faltas de ortografía),
+// Prioriza no perder leads: lista amplia (español, inglés, jerga, faltas de ortografía) que cubre
+// reclutamiento y también intención de compra/servicio (precio, envíos, citas, cupos, ubicación…),
 // pero descarta felicitaciones y comentarios de solo emojis/menciones.
 
 // Normaliza: minúsculas, sin acentos, sin menciones, letras repetidas colapsadas ("infooo" → "info").
@@ -60,12 +61,31 @@ const INTEREST = [
   'papeles', 'sin papeles', 'permiso de trabajo', 'ssn', 'social security', 'itin',
   'agenda', 'agendar', 'cita', 'reunion', 'llamada', 'zoom', 'entrevista',
   'por favor', 'porfa', 'porfavor', 'xfa', 'pls', 'plis', 'please',
+  // compra / servicio (tiendas, clínicas, inmobiliarias, cursos)
+  'cuanto sale', 'cuanto me sale', 'en cuanto', 'cuanto cobran', 'cuanto cobras', 'que precio', 'tarifa', 'tarifas',
+  'presupuesto', 'cotizacion', 'cotizar', 'cotizame', 'formas de pago', 'metodos de pago', 'aceptan', 'pago movil',
+  'zelle', 'cuotas', 'financiamiento', 'a credito', 'al mayor', 'por mayor', 'mayoreo', 'promocion', 'descuento',
+  'disponible', 'disponibles', 'disponibilidad', 'hay stock', 'tienen stock', 'stock', 'existencia', 'quedan',
+  'envio', 'envios', 'hacen envios', 'envian', 'delivery', 'a domicilio', 'despacho', 'despachan',
+  'catalogo', 'talla', 'tallas', 'colores', 'medidas', 'comprar', 'compro', 'como compro', 'como pido', 'pedido',
+  'hacer un pedido', 'encargar', 'ordenar', 'apartar', 'reservar', 'reserva', 'venden', 'vendes',
+  'ubicacion', 'direccion', 'ubicados', 'horario', 'horarios', 'atienden', 'a que hora', 'abren', 'sucursal',
+  'consulta', 'consultas', 'turno', 'turnos', 'valoracion', 'evaluacion', 'tratamiento',
+  'alquiler', 'alquilan', 'arriendo', 'en venta', 'habitaciones', 'visitar', 'ver el inmueble',
+  'cupo', 'cupos', 'quedan cupos', 'hay cupos', 'matricula', 'inscripciones', 'cuando empieza', 'cuando inicia',
+  'cuando comienza', 'modalidad', 'presencial', 'clases', 'certificado',
   // inglés
   'information', 'interested', 'im interested', 'i am interested', 'more info', 'more information',
   'details', 'tell me more', 'how', 'how much', 'how do i', 'how can i', 'what do you do', 'what is this',
   'send me', 'send info', 'dm me', 'message me', 'text me', 'call me', 'contact me', 'join', 'i want',
   'i want in', 'apply', 'hiring', 'job', 'jobs', 'opportunity', 'license', 'salary', 'commission',
   'requirements', 'where', 'sign me up', 'count me in', 'me too', 'need a job',
+  'price', 'prices', 'pricing', 'cost', 'available', 'availability', 'in stock', 'shipping', 'do you ship',
+  'delivery', 'catalog', 'catalogue', 'what size', 'sizes', 'location', 'address', 'opening hours', 'your hours',
+  'what time', 'appointment', 'booking', 'book an appointment', 'can i book', 'how to book', 'schedule',
+  'enroll', 'enrollment', 'register', 'sign up', 'spots', 'buy', 'purchase', 'how to order', 'can i order',
+  'place an order', 'quote', 'for rent', 'for sale', 'consultation', 'payment plan', 'financing', 'discount',
+  'wholesale',
 ];
 
 // Respuestas cortas típicas a un "comenta YO/INFO si te interesa" (solo si el comentario es breve).
@@ -79,6 +99,11 @@ const PRAISE = [
   'buena informacion', 'excelente informacion', 'gran informacion', 'valiosa informacion', 'muy buena info',
   'gracias por la info', 'gracias por la informacion', 'que buena info', 'tremendo trabajo', 'buen trabajo',
   'excelente trabajo', 'gran trabajo', 'gran oportunidad', 'que oportunidad',
+  'excelente ubicacion', 'buena ubicacion', 'excelente servicio', 'buen servicio', 'excelente atencion',
+  'gracias por la atencion', 'excelente producto', 'buen producto', 'excelente curso', 'buen curso', 'gran curso',
+  'gracias por el curso', 'excelente tratamiento', 'gracias por la consulta', 'te quiero mucho', 'los quiero mucho',
+  'las quiero mucho', 'great info', 'thanks for the info', 'great job', 'great price', 'great location',
+  'great service', 'great course',
 ];
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

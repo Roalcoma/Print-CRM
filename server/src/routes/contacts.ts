@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
 import { logActivity } from '../activity.ts';
 import { audit } from '../audit.ts';
-import { fireTagTrigger } from '../services/automation-engine.ts';
+import { fireTagTrigger, fireContactCreatedTrigger } from '../services/automation-engine.ts';
 
 export const contactsRouter = Router();
 
@@ -88,11 +88,11 @@ contactsRouter.post('/import/csv', async (req, res) => {
     if (!firstName) { results.skipped++; continue; }
 
     try {
-      await query(
+      const [created] = await query<{ id: string }>(
         `INSERT INTO contacts (organization_id, first_name, last_name, email, phone,
            company, position, city, country, source, status, tags, notes, avatar_color)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,null)
-         ON CONFLICT DO NOTHING`,
+         ON CONFLICT DO NOTHING RETURNING id`,
         [
           orgId,
           firstName,
@@ -109,7 +109,9 @@ contactsRouter.post('/import/csv', async (req, res) => {
           (r['Notas']    ?? r['notes']     ?? '') || null,
         ],
       );
+      if (!created) { results.skipped++; continue; }
       results.created++;
+      fireContactCreatedTrigger(orgId, created.id).catch(console.error);
     } catch {
       results.skipped++;
     }
@@ -297,6 +299,7 @@ contactsRouter.post('/', async (req, res) => {
   const actor    = await queryOne<{ name: string }>('SELECT name FROM users WHERE id=$1', [actorId]);
   logActivity({ orgId, entityType: 'contact', entityId: row.id, actorId, actorName: actor?.name ?? null, eventType: 'contact_created', meta: { name: fullName } }).catch(console.error);
   audit({ req, action: 'contact.created', entityType: 'contact', entityId: row.id, entityName: fullName });
+  fireContactCreatedTrigger(orgId, row.id).catch(console.error);
   res.status(201).json(row);
 });
 

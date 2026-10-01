@@ -700,6 +700,26 @@ export async function fireWaNewMessageTrigger(
   }
 }
 
+// ── Disparador: contacto creado ──────────────────────────────────────────────
+// Se llama justo después de insertar un contacto nuevo (alta manual, CSV, WhatsApp,
+// reserva pública, Instagram, oportunidad, Lead Ads). Nunca lanza.
+
+export async function fireContactCreatedTrigger(orgId: string, contactId: string | null | undefined): Promise<void> {
+  if (!contactId) return;
+  try {
+    const rulesRes = await pool.query<{ id: string }>(
+      `SELECT id FROM automation_rules
+       WHERE organization_id = $1 AND trigger_type = 'contact_created' AND enabled = true`,
+      [orgId],
+    );
+    for (const rule of rulesRes.rows) {
+      await startAutomation(orgId, rule.id, contactId);
+    }
+  } catch (e) {
+    console.error('[automation-engine] fireContactCreatedTrigger error:', e);
+  }
+}
+
 // ── Disparador: cita agendada ────────────────────────────────────────────────
 
 export interface AppointmentTriggerData {
@@ -885,6 +905,7 @@ export async function fireIgCommentTrigger(
         [orgId, parts[0] || commentData.senderId, parts.slice(1).join(' ') || null, commentData.senderId || null],
       );
       contactId = created.rows[0].id;
+      fireContactCreatedTrigger(orgId, contactId).catch(console.error);
     }
 
     const extraStepData: Record<string, Record<string, unknown>> = {
