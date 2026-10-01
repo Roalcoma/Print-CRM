@@ -13,6 +13,7 @@ import { APP_VERSION } from '../version';
 const appVersion = APP_VERSION;
 import NotificationsDropdown from '../components/NotificationsDropdown.vue';
 import AccountSwitcher from '../components/AccountSwitcher.vue';
+import ForcePasswordChange from '../components/ForcePasswordChange.vue';
 
 const auth   = useAuthStore();
 const router = useRouter();
@@ -25,9 +26,9 @@ const navMain = [
   { to: '/tasks',         label: 'Tareas',       icon: ListChecks,     match: ['/tasks'],                       module: 'tasks' },
 ];
 const navTools = [
-  { to: '/calendar',      label: 'Calendario',      icon: CalendarDays,   match: ['/calendar'],        module: null as string | null },
-  { to: '/conversations', label: 'Mensajes',         icon: MessagesSquare, match: ['/conversations'],   module: null as string | null },
-  { to: '/automations',   label: 'Automatizaciones', icon: Zap,            match: ['/automations'],     module: null as string | null },
+  { to: '/calendar',      label: 'Calendario',      icon: CalendarDays,   match: ['/calendar'],        module: 'calendar' as string | null },
+  { to: '/conversations', label: 'Mensajes',         icon: MessagesSquare, match: ['/conversations'],   module: 'conversations' },
+  { to: '/automations',   label: 'Automatizaciones', icon: Zap,            match: ['/automations'],     module: 'automations' },
 ];
 
 const allNav       = [...navMain, ...navTools];
@@ -456,6 +457,9 @@ const s = computed(() => isDark.value
       </main>
     </div>
   </div>
+
+  <!-- Contraseña temporal: obliga a cambiarla (no aplica a la agencia impersonando) -->
+  <ForcePasswordChange v-if="auth.user?.mustChangePassword && !auth.isImpersonated" />
 
   <!-- Account switcher modal -->
   <Teleport to="body">

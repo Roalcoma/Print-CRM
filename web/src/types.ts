@@ -10,6 +10,7 @@ export interface User {
   created_at?: string;
   avatarColor?: string | null;
   createdAt?: string;
+  mustChangePassword?: boolean;
 }
 
 // Anuncio de Meta (click-to-WhatsApp) del que llegó un lead.

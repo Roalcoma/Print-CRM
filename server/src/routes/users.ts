@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
 import { hashPassword } from '../auth/password.ts';
@@ -15,6 +16,27 @@ interface UserRow {
 const publicUser = (u: UserRow) => ({
   id: u.id, name: u.name, email: u.email, role: u.role,
   permissions: u.permissions ?? [], created_at: u.created_at,
+});
+
+// Límite de usuarios según el plan asignado por la agencia. plans.max_users son usuarios
+// extra además del owner (>= 999 = ilimitado) + usuarios de cortesía. Sin plan → sin límite.
+export async function userLimit(orgId: string) {
+  const row = await queryOne<{ used: number; max_users: number | null; courtesy: number | null }>(
+    `SELECT (SELECT count(*)::int FROM users WHERE organization_id = $1) AS used,
+            p.max_users, ac.courtesy_extra_users AS courtesy
+     FROM (SELECT 1) x
+     LEFT JOIN agency_clients ac ON ac.organization_id = $1
+     LEFT JOIN plans p ON p.id = ac.plan_id
+     ORDER BY ac.created_at LIMIT 1`,
+    [orgId],
+  );
+  const used = row?.used ?? 0;
+  if (row?.max_users == null || row.max_users >= 999) return { used, max: null as number | null };
+  return { used, max: 1 + row.max_users + (row.courtesy ?? 0) };
+}
+
+usersRouter.get('/limit', async (req, res) => {
+  res.json(await userLimit(req.auth!.organizationId));
 });
 
 // Lista de usuarios de la organización (disponible para cualquier autenticado:
@@ -58,10 +80,19 @@ usersRouter.post('/', requireAdmin, async (req, res) => {
   const existing = await queryOne('SELECT id FROM users WHERE email = $1', [email]);
   if (existing) return res.status(409).json({ error: 'Ese email ya está registrado' });
 
+  // Aplica también a la agencia impersonando: el límite se amplía cambiando plan o cortesía.
+  const { used, max } = await userLimit(req.auth!.organizationId);
+  if (max !== null && used >= max) {
+    return res.status(409).json({
+      error: `Tu plan permite ${max} usuario${max === 1 ? '' : 's'} y ya tienes ${used}. Pide a tu agencia ampliar el plan para añadir más.`,
+    });
+  }
+
+  // La contraseña la define el admin: el usuario debe cambiarla al entrar.
   const hash = await hashPassword(password);
   const [u] = await query<UserRow>(
-    `INSERT INTO users (organization_id, name, email, password_hash, role, permissions)
-     VALUES ($1,$2,$3,$4,$5,$6::jsonb) RETURNING id, name, email, role, permissions, created_at`,
+    `INSERT INTO users (organization_id, name, email, password_hash, role, permissions, must_change_password)
+     VALUES ($1,$2,$3,$4,$5,$6::jsonb,true) RETURNING id, name, email, role, permissions, created_at`,
     [req.auth!.organizationId, name, email, hash, role, JSON.stringify(permissions ?? [])],
   );
   res.status(201).json(publicUser(u));
@@ -94,7 +125,11 @@ usersRouter.patch('/:id', requireAdmin, async (req, res) => {
     if (d.role !== undefined) { sets.push(`role = $${sets.length + 1}`); values.push(d.role); }
     if (d.permissions !== undefined) { sets.push(`permissions = $${sets.length + 1}::jsonb`); values.push(JSON.stringify(d.permissions)); }
   }
-  if (d.password !== undefined) { sets.push(`password_hash = $${sets.length + 1}`); values.push(await hashPassword(d.password)); }
+  if (d.password !== undefined) {
+    sets.push(`password_hash = $${sets.length + 1}`); values.push(await hashPassword(d.password));
+    // Si la cambia otro (admin/agencia), es temporal: obligar a cambiarla al entrar.
+    sets.push(`must_change_password = $${sets.length + 1}`); values.push(!isSelf);
+  }
   if (sets.length === 0) return res.status(400).json({ error: 'Nada que actualizar' });
 
   const [u] = await query<UserRow>(
@@ -103,6 +138,27 @@ usersRouter.patch('/:id', requireAdmin, async (req, res) => {
     [...values, req.params.id, orgId],
   );
   res.json(publicUser(u));
+});
+
+// ── Restablecer contraseña (solo admin) ───────────────────────────────────────
+// Define (o genera) una contraseña temporal, la devuelve UNA vez y obliga a cambiarla.
+// No hay correo: el admin se la pasa al usuario por su cuenta.
+const resetSchema = z.object({ password: z.string().min(8).optional() });
+
+usersRouter.post('/:id/reset-password', requireAdmin, async (req, res) => {
+  const parsed = resetSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+  const orgId = req.auth!.organizationId;
+  const target = await queryOne<{ role: string }>('SELECT role FROM users WHERE id=$1 AND organization_id=$2', [req.params.id, orgId]);
+  if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
+  if (req.params.id === req.auth!.userId) return res.status(400).json({ error: 'Cambia tu propia contraseña desde Mi perfil' });
+  if (target.role === 'owner' && req.auth!.impersonatedByAgency !== true) {
+    return res.status(403).json({ error: 'No se puede modificar al owner' });
+  }
+  const password = parsed.data.password ?? randomBytes(9).toString('base64url');
+  await query('UPDATE users SET password_hash=$1, must_change_password=true WHERE id=$2 AND organization_id=$3',
+    [await hashPassword(password), req.params.id, orgId]);
+  res.json({ password });
 });
 
 // ── Eliminar usuario (solo admin; no a sí mismo ni al owner) ──────────────────
