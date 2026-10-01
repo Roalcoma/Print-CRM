@@ -8,20 +8,21 @@ interface UserRow {
   id: string; name: string; email: string; role: string;
   organization_id: string; preferences: Record<string, unknown>; permissions: string[];
   avatar_color: string | null; created_at: string; password_hash: string;
-  org_name: string;
+  org_name: string; must_change_password?: boolean;
 }
 const publicUser = (u: UserRow) => ({
   id: u.id, name: u.name, email: u.email, role: u.role,
   organizationId: u.organization_id, preferences: u.preferences ?? {}, permissions: u.permissions ?? [],
   avatarColor: u.avatar_color ?? null, createdAt: u.created_at,
   orgName: u.org_name ?? null,
+  mustChangePassword: u.must_change_password === true,
 });
 
 // Datos del usuario logueado (rehidrata la sesión al recargar).
 meRouter.get('/', async (req, res) => {
   const u = await queryOne<UserRow>(
     `SELECT u.id, u.name, u.email, u.role, u.organization_id, u.preferences, u.permissions,
-            u.avatar_color, u.created_at, o.name AS org_name
+            u.avatar_color, u.created_at, u.must_change_password, o.name AS org_name
      FROM users u
      JOIN organizations o ON o.id = u.organization_id
      WHERE u.id = $1`,
@@ -91,9 +92,11 @@ meRouter.post('/password', async (req, res) => {
 
   const valid = await verifyPassword(current_password, u.password_hash);
   if (!valid) return res.status(401).json({ error: 'Contraseña actual incorrecta' });
+  if (current_password === new_password) return res.status(400).json({ error: 'La nueva contraseña debe ser distinta de la actual' });
 
+  // Al cambiarla uno mismo deja de ser temporal.
   const newHash = await hashPassword(new_password);
-  await query('UPDATE users SET password_hash=$1 WHERE id=$2', [newHash, req.auth!.userId]);
+  await query('UPDATE users SET password_hash=$1, must_change_password=false WHERE id=$2', [newHash, req.auth!.userId]);
 
   res.json({ ok: true });
 });

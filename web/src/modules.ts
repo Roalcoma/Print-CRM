@@ -15,6 +15,21 @@ export const MODULES = [
     label: 'Tareas',
     description: 'Crear, asignar y marcar como completadas las tareas del equipo.',
   },
+  {
+    key: 'calendar',
+    label: 'Calendario',
+    description: 'Ver y agendar citas, y gestionar sus calendarios de reservas.',
+  },
+  {
+    key: 'conversations',
+    label: 'Mensajes',
+    description: 'Leer y responder las conversaciones de WhatsApp, Instagram y Facebook.',
+  },
+  {
+    key: 'automations',
+    label: 'Automatizaciones',
+    description: 'Ver las automatizaciones configuradas (crearlas o editarlas requiere ser administrador).',
+  },
 ] as const;
 
 export type ModuleKey = (typeof MODULES)[number]['key'];

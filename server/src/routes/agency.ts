@@ -323,14 +323,14 @@ agencyRouter.post('/clients', requireAgencyAuth, async (req, res) => {
     );
     const orgId = orgResult.rows[0].id;
 
-    // Generar contraseña temporal
+    // Generar contraseña temporal (el owner debe cambiarla al entrar)
     const tempPassword = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6).toUpperCase();
     const hash = await hashPassword(tempPassword);
 
     // Crear usuario owner
     const userResult = await client.query<{ id: string }>(
-      `INSERT INTO users (organization_id, email, password_hash, name, role)
-       VALUES ($1, $2, $3, $4, 'owner') RETURNING id`,
+      `INSERT INTO users (organization_id, email, password_hash, name, role, must_change_password)
+       VALUES ($1, $2, $3, $4, 'owner', true) RETURNING id`,
       [orgId, d.email, hash, d.name],
     );
 
@@ -791,7 +791,7 @@ agencyRouter.post('/clients/:id/provision', requireAgencyAuth, async (req, res) 
     if (existingUser.rows.length > 0) {
       // Actualizar contraseña del owner existente
       await dbClient.query(
-        'UPDATE users SET password_hash = $1 WHERE id = $2',
+        'UPDATE users SET password_hash = $1, must_change_password = true WHERE id = $2',
         [hash, existingUser.rows[0].id],
       );
       userId = existingUser.rows[0].id;
@@ -799,8 +799,8 @@ agencyRouter.post('/clients/:id/provision', requireAgencyAuth, async (req, res) 
     } else {
       // Crear nuevo usuario owner
       const userResult = await dbClient.query<{ id: string }>(
-        `INSERT INTO users (organization_id, email, password_hash, name, role)
-         VALUES ($1, $2, $3, $4, 'owner') RETURNING id`,
+        `INSERT INTO users (organization_id, email, password_hash, name, role, must_change_password)
+         VALUES ($1, $2, $3, $4, 'owner', true) RETURNING id`,
         [orgId, client.email, hash, client.name],
       );
       userId = userResult.rows[0].id;

@@ -10,6 +10,7 @@ const router = useRouter();
 const email = ref('agency@crm.local');
 const password = ref('agency2024');
 const showPass = ref(false);
+const showForgot = ref(false);
 const error = ref('');
 const loading = ref(false);
 
@@ -108,6 +109,12 @@ async function submit() {
                 <EyeOff v-else class="h-4 w-4" />
               </button>
             </div>
+            <button type="button" class="mt-2 cursor-pointer text-xs font-medium text-[#F69008] hover:text-[#D97706] transition-colors" @click="showForgot = !showForgot">
+              ¿Olvidaste tu contraseña?
+            </button>
+            <p v-if="showForgot" class="mt-2 rounded-md border border-[#F69008]/30 bg-[#F69008]/10 px-3 py-2.5 text-xs leading-relaxed text-slate-700">
+              No hay recuperación por correo. Pide al administrador principal de la agencia que te la restablezca.
+            </p>
           </div>
 
           <div

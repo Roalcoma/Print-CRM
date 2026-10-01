@@ -18,6 +18,7 @@ const name = ref('');
 const organizationName = ref('');
 const error = ref('');
 const loading = ref(false);
+const showForgot = ref(false);
 
 async function submit() {
   error.value = '';
@@ -137,6 +138,17 @@ async function submit() {
               <Lock class="field-icon" />
               <input v-model="password" type="password" required placeholder="••••••••" class="field-input" />
             </div>
+          </div>
+
+          <div v-if="mode === 'login'" class="-mt-2">
+            <button type="button" class="text-xs font-medium text-[#F69008] hover:text-[#D97706] transition-colors cursor-pointer" @click="showForgot = !showForgot">
+              ¿Olvidaste tu contraseña?
+            </button>
+            <p v-if="showForgot" class="mt-2 rounded-md border border-[#F69008]/30 bg-[#F69008]/10 px-3 py-2.5 text-xs leading-relaxed text-slate-700">
+              Pide al administrador de tu cuenta que te la restablezca desde
+              <strong>Configuración → Equipo</strong>. Si eres el dueño de la cuenta, pídesela a tu agencia.
+              Recibirás una contraseña temporal que deberás cambiar al entrar.
+            </p>
           </div>
 
           <div v-if="error" class="error-box">

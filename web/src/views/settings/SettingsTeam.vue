@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import {
   Plus, Search, Copy, Check, ArrowLeft,
-  UserRound, Shield, Mail, Lock, Users, Trash2, Pencil,
+  UserRound, Shield, Mail, Lock, Users, Trash2, Pencil, KeyRound,
 } from 'lucide-vue-next';
 import { api } from '../../api';
 import { useDialog } from '../../composables/useDialog';
@@ -20,7 +20,16 @@ const loading = ref(true);
 const search = ref('');
 const roleFilter = ref('');
 
-async function load() { users.value = await api.get<User[]>('/users'); }
+// Límite de usuarios del plan (max = null → sin límite)
+const limit = ref<{ used: number; max: number | null }>({ used: 0, max: null });
+const atLimit = computed(() => limit.value.max !== null && limit.value.used >= limit.value.max);
+
+async function load() {
+  [users.value, limit.value] = await Promise.all([
+    api.get<User[]>('/users'),
+    api.get<{ used: number; max: number | null }>('/users/limit'),
+  ]);
+}
 onMounted(async () => { try { await load(); } finally { loading.value = false; } });
 
 const roleLabel: Record<string, string> = { owner: 'Owner', admin: 'Administrador', member: 'Miembro' };
@@ -69,6 +78,7 @@ const error   = ref('');
 const form    = ref({ name: '', email: '', password: '', role: 'member' as 'admin' | 'member', permissions: [] as string[] });
 
 function openCreate() {
+  if (atLimit.value) return;
   editing.value = null; error.value = '';
   form.value = { name: '', email: '', password: '', role: 'member', permissions: [] };
   view.value = 'form';
@@ -112,6 +122,26 @@ async function save() {
   } finally { saving.value = false; }
 }
 
+// ── Restablecer contraseña: temporal mostrada una sola vez ──────────────────
+const resetting = ref(false);
+const tempPassword = ref<{ name: string; email: string; password: string } | null>(null);
+const tempCopied = ref(false);
+async function resetPassword(u: User) {
+  if (!await confirm(`Se generará una contraseña temporal para "${u.name}" y la actual dejará de funcionar. Deberá cambiarla al entrar.`, 'Restablecer contraseña')) return;
+  resetting.value = true;
+  try {
+    const r = await api.post<{ password: string }>(`/users/${u.id}/reset-password`, {});
+    tempPassword.value = { name: u.name, email: u.email, password: r.password };
+    tempCopied.value = false;
+  } catch (e) { await alert(e instanceof Error ? e.message : 'No se pudo restablecer'); }
+  finally { resetting.value = false; }
+}
+function copyTemp() {
+  if (!tempPassword.value) return;
+  navigator.clipboard?.writeText(`Usuario: ${tempPassword.value.email}\nContraseña temporal: ${tempPassword.value.password}`);
+  tempCopied.value = true;
+}
+
 async function remove(u: User) {
   if (!await confirm(`¿Eliminar a "${u.name}"?`, 'Eliminar usuario')) return;
   try { await api.del(`/users/${u.id}`); await load(); view.value = 'list'; }
@@ -145,12 +175,21 @@ async function remove(u: User) {
             <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input v-model="search" placeholder="Nombre o email…" class="w-52 rounded-lg border border-slate-200 py-1.5 pl-9 pr-3 text-sm focus:border-primary focus:outline-none" />
           </div>
-          <button class="btn btn-primary btn-sm" @click="openCreate">
+          <span v-if="limit.max !== null" class="hidden whitespace-nowrap text-xs font-medium sm:inline" :class="atLimit ? 'text-[#D97706]' : 'text-slate-500'">
+            {{ limit.used }} de {{ limit.max }} usuarios
+          </span>
+          <button class="btn btn-primary btn-sm disabled:cursor-not-allowed disabled:opacity-50" :disabled="atLimit"
+            :title="atLimit ? 'Llegaste al límite de usuarios de tu plan' : ''" @click="openCreate">
             <Plus class="h-4 w-4" />
-            Añadir usuario
+            Nuevo usuario
           </button>
         </div>
       </div>
+
+      <p v-if="atLimit" class="flex-shrink-0 border-b border-[#F69008]/30 bg-[#F69008]/10 px-4 py-2.5 text-xs text-[#13243D] sm:px-6">
+        Tu plan permite {{ limit.max }} usuario{{ limit.max === 1 ? '' : 's' }} (incluido el dueño) y ya los tienes todos.
+        Para añadir más, elimina un usuario o pide a tu agencia que amplíe el plan.
+      </p>
 
       <LoadingState v-if="loading" label="Cargando usuarios…" />
 
@@ -163,7 +202,7 @@ async function remove(u: User) {
                 <th class="hidden px-3 py-3.5 sm:table-cell">Email</th>
                 <th class="px-3 py-3.5">Rol</th>
                 <th class="hidden px-3 py-3.5 lg:table-cell">Módulos</th>
-                <th class="w-20 px-4 py-3.5 text-right sm:px-6">Acciones</th>
+                <th class="w-28 px-4 py-3.5 text-right sm:px-6">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -213,6 +252,9 @@ async function remove(u: User) {
                     <button v-if="canManage(u)" title="Editar" class="cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-[#F69008]/10 hover:text-[#D97706]" @click="openEdit(u)">
                       <Pencil class="h-4 w-4" />
                     </button>
+                    <button v-if="canManage(u) && !isSelf(u)" title="Restablecer contraseña" :disabled="resetting" class="cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-[#F69008]/10 hover:text-[#D97706]" @click="resetPassword(u)">
+                      <KeyRound class="h-4 w-4" />
+                    </button>
                     <button v-if="canManage(u) && !isSelf(u)" title="Eliminar" class="cursor-pointer rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600" @click="remove(u)">
                       <Trash2 class="h-4 w-4" />
                     </button>
@@ -252,6 +294,9 @@ async function remove(u: User) {
           <span class="text-sm font-medium text-slate-900">{{ editing ? editing.name : 'Nuevo usuario' }}</span>
         </div>
         <div class="flex items-center gap-2">
+          <button v-if="editing && canManage(editing) && !isSelf(editing)" class="btn btn-ghost" :disabled="resetting" @click="resetPassword(editing)">
+            <KeyRound class="h-4 w-4" /> Restablecer contraseña
+          </button>
           <button v-if="editing && canManage(editing) && !isSelf(editing)" class="btn btn-danger" @click="remove(editing)">Eliminar usuario</button>
           <button class="btn btn-ghost" @click="goBack">Cancelar</button>
           <button :disabled="saving" class="btn btn-primary" @click="save">
@@ -326,11 +371,12 @@ async function remove(u: User) {
                     </div>
                   </div>
                   <div>
-                    <label class="uf-label">{{ editing ? 'Nueva contraseña (opcional)' : 'Contraseña' }}</label>
+                    <label class="uf-label">{{ editing ? 'Nueva contraseña (opcional)' : 'Contraseña temporal' }}</label>
                     <div class="relative">
                       <Lock class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       <input v-model="form.password" type="password" class="uf-input pl-9" :placeholder="editing ? 'Dejar en blanco para no cambiar' : 'Mínimo 8 caracteres'" />
                     </div>
+                    <p v-if="!editing || !isSelf(editing)" class="mt-1 text-[11px] text-slate-400">Deberá cambiarla la primera vez que entre.</p>
                   </div>
                 </div>
               </div>
@@ -411,6 +457,34 @@ async function remove(u: User) {
         </div>
       </div>
     </template>
+
+    <!-- Contraseña temporal recién generada: se muestra una sola vez -->
+    <Teleport to="body">
+      <div v-if="tempPassword" class="fixed inset-0 z-[250] flex items-center justify-center bg-[#13243D]/60 p-4">
+        <div class="w-full max-w-md rounded-md border border-slate-200 bg-white p-6 shadow-2xl">
+          <div class="mb-3 flex items-center gap-2.5">
+            <KeyRound class="h-5 w-5 text-[#F69008]" />
+            <h3 class="text-[15px] font-semibold text-[#13243D]">Contraseña temporal de {{ tempPassword.name }}</h3>
+          </div>
+          <p class="mb-4 text-xs leading-relaxed text-slate-500">
+            Cópiala y envíasela por un canal seguro. <strong>No se volverá a mostrar.</strong>
+            Al entrar, {{ tempPassword.name }} deberá cambiarla.
+          </p>
+          <div class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-sm text-slate-800">
+            <p class="text-xs text-slate-400">{{ tempPassword.email }}</p>
+            <p class="mt-0.5 select-all break-all text-base font-semibold">{{ tempPassword.password }}</p>
+          </div>
+          <div class="mt-5 flex justify-end gap-2">
+            <button class="btn btn-ghost" @click="copyTemp">
+              <Check v-if="tempCopied" class="h-4 w-4 text-emerald-500" />
+              <Copy v-else class="h-4 w-4" />
+              {{ tempCopied ? 'Copiada' : 'Copiar' }}
+            </button>
+            <button class="btn btn-primary" @click="tempPassword = null">Listo</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 

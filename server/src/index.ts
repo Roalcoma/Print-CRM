@@ -217,12 +217,12 @@ app.use('/api/organization', requireAuth, organizationRouter);
 app.use('/api/dashboard', requireAuth, dashboardRouter);
 app.use('/api/notifications', requireAuth, notificationsRouter);
 app.use('/api/activity', requireAuth, activityRouter);
-app.use('/api/appointments', requireAuth, appointmentsRouter);
+app.use('/api/appointments', requireAuth, requireModule('calendar'), appointmentsRouter);
 app.use('/api/calendar', requireAuth, calendarSettingsRouter);
-app.use('/api/calendars', requireAuth, calendarsRouter);
-app.use('/api/conversations', requireAuth, conversationsRouter);
+app.use('/api/calendars', requireAuth, requireModule('calendar'), calendarsRouter);
+app.use('/api/conversations', requireAuth, requireModule('conversations'), conversationsRouter);
 app.use('/api/wa', requireAuth, waSettingsRouter);
-app.use('/api/automations', requireAuth, automationsRouter);
+app.use('/api/automations', requireAuth, requireModule('automations'), automationsRouter);
 app.use('/api/social', requireAuth, socialRouter);
 app.use('/api/lead-ads', requireAuth, leadAdsRouter);
 
