@@ -257,9 +257,10 @@ test('WhatsApp: mensaje desde un anuncio guarda ad_ref en el mensaje y ad_source
   assert.equal(contact.ad_source.ctwa_clid, 'clid-123');
   assert.ok(contact.ad_source.thumbnail.startsWith('data:image/jpeg;base64,'));
 
-  const msg = await one(
+  // El webhook guarda el anuncio en el contacto un instante antes que el mensaje: esperar también al mensaje
+  const msg = await until('mensaje con ad_ref', () => one(
     `SELECT m.ad_ref FROM conv_messages m JOIN conversations c ON c.id = m.conversation_id
-     WHERE c.organization_id = $1 AND c.wa_chat_id = $2`, [org.orgId, `${phone}@s.whatsapp.net`]);
+     WHERE c.organization_id = $1 AND c.wa_chat_id = $2 AND m.ad_ref IS NOT NULL`, [org.orgId, `${phone}@s.whatsapp.net`]));
   assert.equal(msg.ad_ref.source_url, 'https://fb.me/anuncio');
   assert.equal(msg.ad_ref.greeting, 'Hola, quiero info del curso');
 
