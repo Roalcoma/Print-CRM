@@ -3,7 +3,7 @@ import { ref, watch, computed, onMounted } from 'vue';
 import { X, Calendar, Video, Pencil, Trash2, MapPin, AlertTriangle, RefreshCw, UserPlus, Mail } from 'lucide-vue-next';
 import { api } from '../api';
 import { useDialog } from '../composables/useDialog';
-import type { Appointment } from '../types';
+import type { Appointment, Calendar as CalendarT } from '../types';
 import Spinner from './Spinner.vue';
 import BizSelect from './BizSelect.vue';
 import AppointmentLead from './AppointmentLead.vue';
@@ -19,6 +19,7 @@ const props = defineProps<{
   initialContactId?: string;
   initialContactName?: string;
   calendarLocationType?: string;
+  calendarId?: string;
 }>();
 
 const emit = defineEmits<{
@@ -38,6 +39,14 @@ async function loadSettings() {
     zoomConnected.value   = s.zoom_connected;
   } catch { /* ignore */ }
 }
+
+// ─── Calendarios (la cita toma la zona horaria del calendario elegido) ───────
+const calendars = ref<CalendarT[]>([]);
+async function loadCalendars() {
+  try { calendars.value = await api.get<CalendarT[]>('/calendars/mine'); } catch { /* ignore */ }
+}
+// Zona horaria del navegador: las horas del formulario se escriben en ella
+const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 // ─── Attendees ────────────────────────────────────────────────────────────────
 interface Attendee {
@@ -140,6 +149,7 @@ const form = ref({
   location:        '',
   provider:        'manual' as 'manual' | 'google' | 'zoom',
   status:          'scheduled' as Appointment['status'],
+  calendar_id:     '',
   recurrenceType:  'none' as 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly',
   recurrenceDays:  [] as number[],
   recurrenceEnd:   'never' as 'never' | 'date' | 'count',
@@ -178,6 +188,7 @@ function resetForm() {
       location:        a.location ?? '',
       provider:        a.provider,
       status:          a.status,
+      calendar_id:     a.calendar_id ?? '',
       recurrenceType:  a.recurrence_type ?? 'none',
       recurrenceDays:  a.recurrence_days ? [...a.recurrence_days] : [],
       recurrenceEnd:   a.recurrence_end_at ? 'date' : a.recurrence_count ? 'count' : 'never',
@@ -199,6 +210,7 @@ function resetForm() {
               : props.calendarLocationType === 'zoom' ? 'zoom'
               : 'manual',
       status: 'scheduled',
+      calendar_id: props.calendarId ?? '',
       recurrenceType: 'none', recurrenceDays: [],
       recurrenceEnd: 'never', recurrenceEndDate: '', recurrenceCount: 10,
     };
@@ -214,10 +226,10 @@ watch(() => form.value.startTime, (val) => {
 });
 
 watch(() => props.modelValue, (open) => {
-  if (open) { resetForm(); loadSettings(); }
+  if (open) { resetForm(); loadSettings(); loadCalendars(); }
 });
 onMounted(() => {
-  if (props.modelValue) { resetForm(); loadSettings(); }
+  if (props.modelValue) { resetForm(); loadSettings(); loadCalendars(); }
 });
 
 // ─── Computed warnings ────────────────────────────────────────────────────────
@@ -256,6 +268,9 @@ async function save() {
       provider:       form.value.provider,
       status:         form.value.status,
       recurrence_type: form.value.recurrenceType,
+      calendar_id:    form.value.calendar_id || null,
+      // Zona de la cita (recordatorios): la del calendario si hay uno; si no, la del navegador
+      timezone:       calendars.value.find(c => c.id === form.value.calendar_id)?.timezone ?? browserTz,
     };
 
     if (form.value.recurrenceType !== 'none') {
@@ -651,6 +666,15 @@ function close() { emit('update:modelValue', false); }
                   <a href="/settings/profile" target="_blank" class="underline font-medium">Conéctalo en Mi Perfil → Conexiones</a>.
                 </p>
               </div>
+            </div>
+
+            <!-- Calendario -->
+            <div v-if="calendars.length">
+              <label class="mb-1 block text-sm font-medium text-slate-700">Calendario</label>
+              <BizSelect v-model="form.calendar_id" input-class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" :options="[
+                { value: '', label: 'Sin calendario' },
+                ...calendars.map(c => ({ value: c.id, label: c.name })),
+              ]" />
             </div>
 
             <!-- Estado -->

@@ -282,6 +282,8 @@ test('Reserva pública: crea contacto + cita y el evento de Google con Meet', as
   const cal = await api(org.token, 'POST', '/calendars', {
     name: 'Llamada de ventas', slug, booking_enabled: true, duration_minutes: 30,
     location_type: 'google_meet', timezone: 'America/Caracas', min_notice_hours: 0,
+    // Todos los días 09:00–18:00: la reserva solo acepta huecos del horario (15:00 UTC = 11:00 Caracas)
+    availability: [0, 1, 2, 3, 4, 5, 6].map(d => ({ day_of_week: d, start_time: '09:00', end_time: '18:00', is_active: true })),
   });
   assert.equal(cal.status, 201, JSON.stringify(cal.data));
 
