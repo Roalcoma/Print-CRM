@@ -221,6 +221,9 @@ contactsRouter.get('/', async (req, res) => {
   ]);
 
   const total = Number(countRows[0].total);
+  // En el listado no va la miniatura base64 del anuncio de origen (hasta 200 KB por contacto):
+  // la ficha (GET /:id) la trae completa.
+  for (const r of rows) if (r.ad_source?.thumbnail) r.ad_source = { ...r.ad_source, thumbnail: null };
   res.json({ data: rows, total, page, limit, pages: Math.ceil(total / limit) });
 });
 

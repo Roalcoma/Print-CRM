@@ -138,7 +138,7 @@ function actionColor(action: string) {
         <div class="rounded-xl border border-slate-200 bg-white p-5">
           <div class="flex items-start justify-between">
             <div>
-              <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold">En Trial</p>
+              <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold">En prueba</p>
               <p class="mt-2 text-3xl font-bold text-slate-900">{{ data.trialClients }}</p>
               <p class="mt-1 text-xs text-amber-500 font-medium">Conversión pendiente</p>
             </div>
@@ -212,7 +212,7 @@ function actionColor(action: string) {
               <span class="font-semibold text-emerald-500">{{ data.activeClients }}</span>
             </div>
             <div class="flex justify-between text-xs mt-1">
-              <span class="text-slate-500">Trial</span>
+              <span class="text-slate-500">Prueba</span>
               <span class="font-semibold text-amber-500">{{ data.trialClients }}</span>
             </div>
           </div>

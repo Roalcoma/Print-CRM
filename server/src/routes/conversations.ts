@@ -9,6 +9,10 @@ import { sendIgDm, isOutsideWindow } from '../services/instagram.ts';
 
 export const conversationsRouter = Router();
 
+// Columnas de conv_messages para listados (todas menos media_url, que puede traer base64 pesado)
+const MSG_COLS = `id, conversation_id, organization_id, wa_message_id, direction, msg_type, body, media_mime,
+  media_filename, status, sender_name, ad_ref, created_at`;
+
 type WASetting = {
   evo_url: string;
   evo_api_key: string;
@@ -76,7 +80,8 @@ conversationsRouter.get('/:id/messages', async (req, res) => {
     );
     if (!conv.rows[0]) return res.status(404).json({ error: 'Conversación no encontrada' });
 
-    let sql = `SELECT * FROM conv_messages WHERE conversation_id = $1`;
+    // Sin media_url: puede ser un data URI de ~1 MB cacheado; la media se sirve por /api/media/:id
+    let sql = `SELECT ${MSG_COLS} FROM conv_messages WHERE conversation_id = $1`;
     const vals: unknown[] = [id];
     if (before) { sql += ` AND created_at < $2`; vals.push(before); }
     sql += ` ORDER BY created_at DESC LIMIT $${vals.length + 1}`;
@@ -247,7 +252,8 @@ conversationsRouter.get('/:id/timeline', async (req, res) => {
     await pool.query('UPDATE conversations SET unread_count = 0 WHERE id = $1', [id]);
 
     const msgs = await pool.query(
-      `SELECT 'message' AS item_type, created_at AS ts, id, direction, msg_type, body, media_url, media_mime, media_filename, sender_name, status, wa_message_id, ad_ref
+      // Sin media_url (data URIs pesados): el front pide la media a /api/media/:id
+      `SELECT 'message' AS item_type, created_at AS ts, id, direction, msg_type, body, media_mime, media_filename, sender_name, status, wa_message_id, ad_ref
        FROM conv_messages WHERE conversation_id = $1 ORDER BY created_at ASC`,
       [id],
     );
@@ -307,7 +313,7 @@ conversationsRouter.get('/:id/contact', async (req, res) => {
       'SELECT contact_id, phone, display_name FROM conversations WHERE id = $1 AND organization_id = $2',
       [id, orgId],
     );
-    if (!convRes.rows[0]) return res.status(404).json({ error: 'Not found' });
+    if (!convRes.rows[0]) return res.status(404).json({ error: 'Conversación no encontrada' });
 
     const contactId = convRes.rows[0].contact_id;
     // Pasamos el teléfono real de la conversación para mostrarlo en el panel

@@ -10,10 +10,11 @@ import { fireContactCreatedTrigger } from '../services/automation-engine.ts';
 
 export const opportunitiesRouter = Router();
 
-// SELECT base con contacto y responsable embebidos.
-const BASE_SELECT = `
+// SELECT base con contacto y responsable embebidos. En listados (kanban, CSV) el anuncio de origen va
+// sin la miniatura base64 (hasta 200 KB por lead); el detalle (GET /:id) la incluye.
+const selectOpps = (adSource: string) => `
   SELECT o.*, c.first_name AS contact_first_name, c.last_name AS contact_last_name,
-         c.email AS contact_email, c.phone AS contact_phone, c.ad_source AS contact_ad_source, u.name AS owner_name,
+         c.email AS contact_email, c.phone AS contact_phone, ${adSource} AS contact_ad_source, u.name AS owner_name,
          (SELECT count(*)::int FROM opportunity_notes n WHERE n.opportunity_id = o.id) AS notes_count,
          (SELECT coalesce(json_agg(json_build_object('id', fu.id, 'name', fu.name) ORDER BY fu.name), '[]')
           FROM opportunity_followers f JOIN users fu ON fu.id = f.user_id
@@ -21,6 +22,8 @@ const BASE_SELECT = `
   FROM opportunities o
   LEFT JOIN contacts c ON c.id = o.contact_id
   LEFT JOIN users u ON u.id = o.owner_id`;
+const BASE_SELECT = selectOpps('c.ad_source');
+const LIST_SELECT = selectOpps(`c.ad_source - 'thumbnail'`);
 
 // Reemplaza el set de seguidores (valida que pertenezcan a la organización).
 async function syncFollowers(opportunityId: string, userIds: string[], orgId: string) {
@@ -141,7 +144,7 @@ opportunitiesRouter.post('/query', async (req, res) => {
     ? `${sortCol} ${dir} NULLS LAST`
     : 'o.position, o.created_at';
 
-  const rows = await query(`${BASE_SELECT} WHERE ${where.join(' AND ')} ORDER BY ${orderBy}`, params);
+  const rows = await query(`${LIST_SELECT} WHERE ${where.join(' AND ')} ORDER BY ${orderBy}`, params);
   res.json(rows);
 });
 
@@ -394,7 +397,7 @@ opportunitiesRouter.get('/export/csv', async (req, res) => {
   const pipelineId = req.query.pipelineId;
   if (typeof pipelineId !== 'string') return res.status(400).json({ error: 'Falta pipelineId' });
   const rows = await query<any>(
-    `${BASE_SELECT} WHERE o.organization_id = $1 AND o.pipeline_id = $2 ORDER BY o.created_at`,
+    `${LIST_SELECT} WHERE o.organization_id = $1 AND o.pipeline_id = $2 ORDER BY o.created_at`,
     [req.auth!.organizationId, pipelineId],
   );
   const stages = await query<{ id: string; name: string }>('SELECT id, name FROM pipeline_stages WHERE pipeline_id=$1', [pipelineId]);

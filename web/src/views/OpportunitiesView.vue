@@ -390,6 +390,12 @@ async function openEdit(o: Opportunity, tab: 'detalles' | 'notas' = 'detalles') 
     contact_email: o.contact_email ?? '', contact_phone: o.contact_phone ?? '',
   };
   showForm.value = true;
+  // El kanban trae el anuncio de origen sin miniatura (pesa): se carga del detalle al abrir
+  if (o.contact_ad_source && !o.contact_ad_source.thumbnail) {
+    api.get<Opportunity>(`/opportunities/${o.id}`).then(full => {
+      if (editing.value?.id === o.id && full.contact_ad_source) editing.value.contact_ad_source = full.contact_ad_source;
+    }).catch(() => { /* sin miniatura: la tarjeta se muestra igual */ });
+  }
   notes.value = await api.get<Note[]>(`/opportunities/${o.id}/notes`);
   await loadOppTasks(o.id);
 }

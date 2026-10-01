@@ -342,7 +342,7 @@ function statusBadge(status: string) {
 }
 
 function statusLabel(s: string) {
-  const m: Record<string, string> = { active: 'Activo', trial: 'Trial', suspended: 'Suspendido', cancelled: 'Cancelado' };
+  const m: Record<string, string> = { active: 'Activo', trial: 'Prueba', suspended: 'Suspendido', cancelled: 'Cancelado' };
   return m[s] ?? s;
 }
 
@@ -530,7 +530,7 @@ function auditActionDot(action: string) {
               <span class="text-slate-600">{{ formatDate(client.updated_at) }}</span>
             </div>
             <div v-if="client.trial_ends_at" class="flex justify-between">
-              <span>Trial hasta</span>
+              <span>Prueba hasta</span>
               <span class="text-amber-600 font-medium">{{ formatDate(client.trial_ends_at) }}</span>
             </div>
           </div>
@@ -916,7 +916,7 @@ function auditActionDot(action: string) {
               </div>
               <div>
                 <label class="mb-1 block text-xs font-medium text-slate-600">Estado</label>
-                <BizSelect v-model="editForm.status" input-class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" :options="[{ value: 'active', label: 'Activo' }, { value: 'trial', label: 'Trial' }, { value: 'suspended', label: 'Suspendido' }, { value: 'cancelled', label: 'Cancelado' }]" />
+                <BizSelect v-model="editForm.status" input-class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" :options="[{ value: 'active', label: 'Activo' }, { value: 'trial', label: 'Prueba' }, { value: 'suspended', label: 'Suspendido' }, { value: 'cancelled', label: 'Cancelado' }]" />
               </div>
             </div>
             <div>
@@ -951,7 +951,7 @@ function auditActionDot(action: string) {
                   Sin límite
                 </button>
               </div>
-              <p class="mt-1 text-[10px] text-slate-400">Se aplica cuando el estado es "Trial". 0 = sin límite de tiempo.</p>
+              <p class="mt-1 text-[10px] text-slate-400">Se aplica cuando el estado es "Prueba". 0 = sin límite de tiempo.</p>
             </div>
             <div>
               <label class="mb-1 block text-xs font-medium text-slate-600">Notas</label>

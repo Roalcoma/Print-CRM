@@ -66,7 +66,7 @@ export async function handleIgComment(conn: Conn, c: IgComment, mediaId?: string
 }
 
 // La conexión a Meta desde el servidor tiene cortes intermitentes (ETIMEDOUT): un reintento.
-const get = async <T>(url: string): Promise<T & { error?: { message: string } }> => {
+const get = async <T>(url: string): Promise<T & { error?: { message: string; code?: number } }> => {
   try {
     return await (await fetch(url)).json();
   } catch {
@@ -75,37 +75,66 @@ const get = async <T>(url: string): Promise<T & { error?: { message: string } }>
   }
 };
 
-export async function pollIgComments(): Promise<void> {
+// Límite de llamadas de Meta (códigos 4, 17, 32, 613): seguir llamando lo empeora. La cuenta afectada
+// se salta durante unos ciclos de polling, el doble cada vez que se repite (máx. ~1 h con ciclos de 2 min).
+const RATE_LIMIT_CODES = new Set([4, 17, 32, 613]);
+const MAX_SKIP_CYCLES = 30;
+const backoff = new Map<string, { skip: number; strikes: number }>();
+
+export function isRateLimitError(err: { code?: number } | undefined | null): boolean {
+  return !!err && RATE_LIMIT_CODES.has(Number(err.code));
+}
+
+// Filtra por organización (tests); sin argumento recorre todas las conexiones activas.
+export async function pollIgComments(orgId?: string): Promise<void> {
   const { rows } = await pool.query<Conn & { comments_polled_at: Date | null }>(
     `SELECT id, organization_id, access_token, instagram_business_id, page_id, comments_polled_at
-     FROM social_connections WHERE platform = 'instagram' AND status = 'active'`,
+     FROM social_connections WHERE platform = 'instagram' AND status = 'active'
+       AND ($1::uuid IS NULL OR organization_id = $1)`,
+    [orgId ?? null],
   );
 
   for (const conn of rows) {
+    // En pausa por límite de llamadas de Meta
+    const wait = backoff.get(conn.id);
+    if (wait && wait.skip > 0) { wait.skip--; continue; }
+
     // Primer poll: fijar la línea base y no disparar sobre comentarios viejos.
     if (!conn.comments_polled_at) {
       await pool.query(`UPDATE social_connections SET comments_polled_at = NOW() WHERE id = $1`, [conn.id]);
       console.log(`[ig-comments] línea base fijada para conexión ${conn.id}`);
       continue;
     }
+    const rateLimited = (err: { code?: number; message: string } | undefined) => {
+      if (!isRateLimitError(err)) return false;
+      const strikes = (backoff.get(conn.id)?.strikes ?? 0) + 1;
+      const skip = Math.min(2 ** (strikes - 1), MAX_SKIP_CYCLES);
+      backoff.set(conn.id, { skip, strikes });
+      console.warn(`[ig-comments] Meta limitó las llamadas de la conexión ${conn.id} (código ${err!.code}): se pausa ${skip} ciclo(s)`);
+      return true;
+    };
     try {
       const base = igBase(conn.access_token);
       const t = conn.access_token;
       const owner = conn.instagram_business_id ?? conn.page_id;
       const me = await get<{ username?: string }>(`${base}/${t.startsWith('IG') ? 'me' : owner}?fields=username&access_token=${t}`);
+      if (rateLimited(me.error)) continue;
       if (me.username) {
         await pool.query(`UPDATE social_connections SET username = $1 WHERE id = $2 AND username IS DISTINCT FROM $1`, [me.username, conn.id]);
       }
       const media = await get<{ data?: { id: string; timestamp: string }[] }>(
         `${base}/${t.startsWith('IG') ? 'me' : owner}/media?fields=id,timestamp&limit=10&access_token=${t}`,
       );
+      if (rateLimited(media.error)) continue;
       if (media.error) { console.error(`[ig-comments] media error conexión ${conn.id}:`, media.error.message); continue; }
 
       let fired = 0;
+      let limited = false;
       for (const m of media.data ?? []) {
         const comments = await get<{ data?: (IgComment & { timestamp: string })[] }>(
           `${base}/${m.id}/comments?fields=id,text,timestamp,username,from&limit=50&access_token=${t}`,
         );
+        if (rateLimited(comments.error)) { limited = true; break; }
         if (comments.error) { console.error(`[ig-comments] comments error media ${m.id}:`, comments.error.message); continue; }
         for (const c of comments.data ?? []) {
           if (new Date(c.timestamp) <= conn.comments_polled_at) continue;
@@ -114,6 +143,7 @@ export async function pollIgComments(): Promise<void> {
           if (await handleIgComment(conn, c, m.id)) fired++;
         }
       }
+      if (!limited) backoff.delete(conn.id);   // ciclo completo sin límite: se olvidan las pausas
       if (fired) console.log(`[ig-comments] conexión ${conn.id}: ${fired} comentario(s) procesado(s)`);
     } catch (e) {
       console.error(`[ig-comments] error en conexión ${conn.id}: ${(e as Error).message} ${(e as Error).cause ?? ''}`);
