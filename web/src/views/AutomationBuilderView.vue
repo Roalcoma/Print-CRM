@@ -93,6 +93,11 @@ const intentFilter = computed({
   get: () => extraConfig.value.intent_filter !== false,
   set: (v: boolean) => { extraConfig.value.intent_filter = v; },
 });
+// Para "cita agendada": incluir también las citas creadas a mano en el CRM (por defecto solo reservas públicas)
+const includeManual = computed({
+  get: () => extraConfig.value.include_manual === true,
+  set: (v: boolean) => { extraConfig.value.include_manual = v; },
+});
 const excludeUsernames = computed(() => (extraConfig.value.exclude_usernames as string[] | undefined) ?? []);
 const excludeInput = ref('');
 function addExcluded() {
@@ -499,6 +504,22 @@ function stepPreview(step: Step): string {
                 <input v-model="triggerConfig.tag" class="input" placeholder="ej: interesado, cliente-nuevo…" />
                 <p class="mt-1.5 text-[11px] text-slate-400">Se dispara exactamente cuando esta etiqueta sea añadida a un contacto.</p>
               </div>
+
+              <!-- Cita agendada: ¿también las citas creadas a mano? -->
+              <button
+                v-if="triggerType === 'appointment_booked'"
+                type="button"
+                class="flex w-full items-start gap-3 rounded-xl border border-slate-200 p-3 text-left transition-colors hover:bg-slate-50"
+                @click="includeManual = !includeManual"
+              >
+                <component :is="includeManual ? ToggleRight : ToggleLeft" class="mt-0.5 h-5 w-5 flex-shrink-0" :class="includeManual ? 'text-emerald-600' : 'text-slate-400'" />
+                <span>
+                  <span class="block text-[13px] font-medium text-slate-800">Incluir también las citas creadas a mano</span>
+                  <span class="mt-0.5 block text-[11px] text-slate-400">
+                    Por defecto solo se dispara con las reservas de la página pública. Actívalo si quieres que las citas que el equipo crea en el Calendario también envíen la confirmación y los recordatorios.
+                  </span>
+                </span>
+              </button>
 
               <!-- Filtros del comentario de Instagram -->
               <div v-if="triggerType === 'ig_comment_received'" class="space-y-4">

@@ -735,12 +735,16 @@ export async function fireAppointmentBookedTrigger(
   orgId: string,
   contactId: string,
   appointmentData: AppointmentTriggerData,
+  source: 'booking' | 'manual' = 'booking',
 ): Promise<void> {
   try {
+    // Las citas creadas a mano solo disparan las reglas que lo activan (config.include_manual): así una
+    // regla existente que manda WhatsApp al contacto no cambia de comportamiento sin que nadie lo decida.
     const rulesRes = await pool.query<{ id: string }>(
       `SELECT id FROM automation_rules
-       WHERE organization_id = $1 AND trigger_type = 'appointment_booked' AND enabled = true`,
-      [orgId],
+       WHERE organization_id = $1 AND trigger_type = 'appointment_booked' AND enabled = true
+         AND ($2 = 'booking' OR (config->>'include_manual')::boolean IS TRUE)`,
+      [orgId, source],
     );
     const extraStepData: Record<string, Record<string, unknown>> = {
       __appointment__: { ...appointmentData },

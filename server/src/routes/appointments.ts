@@ -444,7 +444,7 @@ appointmentsRouter.post('/', async (req, res) => {
       start_time:      start.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: timezone }),
       meeting_url:     meetingUrl ?? d.location ?? cal?.location ?? '',
       reschedule_link: cal?.slug && token ? `${process.env.PUBLIC_URL ?? ''}/book/${cal.slug}/manage/${token}` : '',
-    }).catch(console.error);
+    }, 'manual').catch(console.error);
   }
 
   const full = await queryOne(`${BASE_SELECT} WHERE a.id = $1`, [row.id]);

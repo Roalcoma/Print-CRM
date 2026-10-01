@@ -509,9 +509,15 @@ test('Contacto creado: dispara la regla en alta manual, WhatsApp y oportunidad (
 
 // ── 8. "Cita agendada" también con citas creadas a mano en el CRM ──────────
 test('Cita manual con contacto dispara "cita agendada" una vez (también si es recurrente) con appointment_id', async () => {
+  // Una regla sin include_manual NO se dispara con citas manuales (no cambia reglas existentes)
+  const solo = await api(org.token, 'POST', '/automations', {
+    name: 'Solo reservas', trigger_type: 'appointment_booked',
+    config: { steps: [{ id: 'b1', type: 'send_notification', notification_title: 'Reserva', notification_body: '{{contact.name}}' }] },
+  });
+  assert.equal(solo.status, 201);
   const rule = await api(org.token, 'POST', '/automations', {
     name: 'Recordatorio cita', trigger_type: 'appointment_booked',
-    config: { steps: [{ id: 'a1', type: 'send_notification', notification_title: 'Cita', notification_body: '{{contact.name}}' }] },
+    config: { include_manual: true, steps: [{ id: 'a1', type: 'send_notification', notification_title: 'Cita', notification_body: '{{contact.name}}' }] },
   });
   assert.equal(rule.status, 201);
   const contact = (await api(org.token, 'POST', '/contacts', { first_name: 'Rosa', last_name: 'Cita' })).data;
@@ -539,7 +545,11 @@ test('Cita manual con contacto dispara "cita agendada" una vez (también si es r
   await new Promise(r => setTimeout(r, 300));
   assert.equal(await runs(), 1);
 
+  const soloRuns = (await one('SELECT count(*)::int AS n FROM automation_runs WHERE automation_id = $1', [solo.data.id])).n;
+  assert.equal(soloRuns, 0, 'la regla sin include_manual no se dispara con citas manuales');
+
   await api(org.token, 'PATCH', `/automations/${rule.data.id}`, { enabled: false });
+  await api(org.token, 'PATCH', `/automations/${solo.data.id}`, { enabled: false });
 });
 
 // ── 9. Filtro de intención de Instagram para varios sectores ────────────────
