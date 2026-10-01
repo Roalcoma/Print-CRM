@@ -235,8 +235,9 @@ test('Reserva pública: rechaza fuera de horario, desalineado, pasado o más all
   const book = (start_at: string, n: string) =>
     api(null, 'POST', `/public/book/${ctx.slug}`, { name: `Visitante ${n}`, email: `v${n}-${stamp}@test.local`, start_at }, ip);
 
-  // Los huecos son 09:00–17:00 NY: 8 h antes de cualquier hueco de la mañana cae de madrugada
-  const morning = slots.find(t => new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: false }).startsWith('09:00'))!;
+  // Los huecos son 09:00–17:00 NY: 8 h antes de un hueco de la mañana cae de madrugada (con 2 días de
+  // margen para que no caiga en el pasado según la hora a la que corran los tests)
+  const morning = slots.find(t => new Date(t).getTime() > Date.now() + 2 * 24 * HOUR && new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: false }).startsWith('09:00'))!;
   const night = await book(new Date(new Date(morning).getTime() - 8 * HOUR).toISOString(), 'noche');
   assert.equal(night.status, 400, JSON.stringify(night.data));
   assert.match(night.data.error, /horarios disponibles/);
