@@ -559,6 +559,8 @@ test('Filtro de intención: acepta consultas de compra/servicio y de reclutamien
   // La palabra clave del post sigue funcionando
   assert.deepEqual(captionKeywords('Comenta la palabra "CAMBIO" y te cuento'), ['cambio']);
   assert.ok(matchesKeyword('CAMBIO', ['cambio']));
+});
+
 // ── WhatsApp: renombrar la instancia (solo display_name, solo admins de la propia org) ──
 test('WhatsApp: renombrar la instancia solo cambia display_name, validado y de la propia organización', async () => {
   const inst = (await api(org.token, 'GET', '/wa/instances')).data.instances[0];
