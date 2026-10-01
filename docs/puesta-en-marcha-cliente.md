@@ -79,9 +79,37 @@ Notas:
 
 ### 2.1 Aplicar plantilla de sector
 
-> **TODO (en desarrollo por otro agente):** plantillas de cuenta por sector aplicables desde el panel de agencia (pipeline, etapas, automatizaciones y textos base). Cuando exista, documentar aquí: dónde está el botón, qué crea exactamente y qué pasos de esta guía (3, 8) se vuelven opcionales.
+Las plantillas dejan la cuenta lista en un par de minutos: pipeline con etapas, calendario con página de reservas y automatizaciones con sus mensajes. Hay 6:
 
-Mientras no exista, sigue los pasos 3 y 8 a mano.
+| Plantilla | Para quién | Calendario |
+|---|---|---|
+| **Reclutamiento de agentes de seguros** | Agencias que reclutan agentes (el embudo que ya funciona con un cliente real) | Sí, sesión informativa por Meet |
+| **Clínica estética / Med spa** | Estética, spa, tratamientos | Sí, evaluación gratuita |
+| **Consultorio odontológico / médico** | Odontología, consultas médicas | Sí, con un segundo pipeline de controles |
+| **Inmobiliaria** | Venta y alquiler | Sí, llamada de asesoría; segundo pipeline de captación de propietarios |
+| **Tienda por WhatsApp** | Venta por catálogo y pedidos | No |
+| **Academia / Cursos** | Cursos, idiomas, oficios | Sí, llamada de orientación por Meet |
+
+**Cómo se aplica**
+1. En la ficha del cliente → pestaña **CRM** → **Plantillas de cuenta** → **Aplicar plantilla**. (Justo después de crear la cuenta o provisionarla también aparece **Configurar con una plantilla**, que abre lo mismo.)
+2. Elige el sector.
+3. Rellena el formulario. La empresa y el remitente vienen precargados con los datos del cliente; revisa sobre todo:
+   - **Remitente**: quién firma los mensajes (por ejemplo, el nombre del dueño o del reclutador).
+   - **WhatsApp del encargado**: si lo pones, recibirá un aviso por WhatsApp de cada lead nuevo; si lo dejas vacío, ese aviso no se crea.
+   - **Zona horaria** y, según la plantilla, ciudad, enlace de reseñas, catálogo, etc.
+4. Revisa la **vista previa**: pipelines y etapas, calendario con su enlace y horario, cada automatización con sus mensajes ya personalizados, las etiquetas que activan automatizaciones y los avisos.
+5. Pulsa **Aplicar plantilla**. La plantilla aplicada queda marcada con su fecha.
+
+**Qué crea y qué tienes que saber**
+- Todo se crea **de una vez o nada**: si algo falla, no queda nada a medias.
+- Cada plantilla se aplica **una sola vez** por cuenta; si la vuelves a intentar, avisa de que ya está aplicada.
+- **El calendario se crea a nombre del owner** y su enlace de reservas se genera a partir del nombre de la empresa (`/book/<empresa>`). Para que las citas tengan enlace de Meet, el owner debe conectar **su** Google Calendar (paso 6), iniciando sesión con sus credenciales.
+- Las automatizaciones de **Instagram se crean desactivadas**: actívalas en el paso 8 cuando Instagram esté conectado (paso 5).
+- Si la cuenta ya tenía otra automatización con el mismo disparador, la de la plantilla se crea **desactivada** para no enviar mensajes dobles; la vista previa lo avisa.
+- Las **etiquetas** (por ejemplo `no-asistio`, `pedir-resena`, `pago-confirmado`) no se "crean": la plantilla crea las automatizaciones que se activan cuando le pones esa etiqueta a un contacto. Explícaselas al cliente en la entrega (paso 10).
+- El bot hace las preguntas, pero **no mueve los leads de etapa solo** ni cambia de camino según la respuesta: el equipo revisa la conversación y mueve el lead.
+
+**Con plantilla, los pasos 3.2 (pipeline) y 8 (automatizaciones) pasan a ser solo de revisión**: entra, revisa que los textos y etapas encajen con el cliente y ajusta lo que haga falta. Sin plantilla, hazlos a mano.
 
 ---
 

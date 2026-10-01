@@ -19,11 +19,11 @@ Detalle de cada paso: [`puesta-en-marcha-cliente.md`](puesta-en-marcha-cliente.m
 - [ ] Credenciales guardadas en Vaultwarden
 - [ ] Pestaña CRM: organización y usuario owner visibles
 - [ ] Primer pago registrado (Facturación)
-- [ ] Plantilla de sector aplicada (cuando exista)
+- [ ] Plantilla de sector aplicada (ficha del cliente → CRM → Plantillas) y vista previa revisada
 
 ## Configuración (con la sesión del cliente)
 - [ ] Perfil del negocio (zona horaria y moneda)
-- [ ] Pipeline creado con sus etapas
+- [ ] Pipeline creado con sus etapas (con plantilla: solo revisar)
 - [ ] WhatsApp **Conectado** (QR o código)
 - [ ] Instagram conectado (**Conectar Instagram**) · Facebook si aplica
 - [ ] Lead Ads configurado (si aplica)
