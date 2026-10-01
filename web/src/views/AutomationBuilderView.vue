@@ -86,6 +86,23 @@ const ruleName = ref('Nueva automatización');
 const description = ref('');
 const triggerType = ref<TriggerType>('tag_added');
 const triggerConfig = ref<Record<string, string>>({});
+// Resto de la config de la regla (fuera de trigger/steps): se conserva al guardar.
+// Para "comentario de Instagram": intent_filter (bool) y exclude_usernames (string[]).
+const extraConfig = ref<Record<string, unknown>>({});
+const intentFilter = computed({
+  get: () => extraConfig.value.intent_filter !== false,
+  set: (v: boolean) => { extraConfig.value.intent_filter = v; },
+});
+const excludeUsernames = computed(() => (extraConfig.value.exclude_usernames as string[] | undefined) ?? []);
+const excludeInput = ref('');
+function addExcluded() {
+  const u = excludeInput.value.trim().replace(/^@+/, '').toLowerCase();
+  excludeInput.value = '';
+  if (u && !excludeUsernames.value.includes(u)) extraConfig.value.exclude_usernames = [...excludeUsernames.value, u];
+}
+function removeExcluded(i: number) {
+  extraConfig.value.exclude_usernames = excludeUsernames.value.filter((_, j) => j !== i);
+}
 const steps = ref<Step[]>([]);
 const enabled = ref(true);
 const saving = ref(false);
@@ -130,6 +147,8 @@ onMounted(async () => {
       description.value = rule.description ?? '';
       triggerType.value = (rule.trigger_type as TriggerType) ?? 'tag_added';
       triggerConfig.value = rule.config?.trigger ?? {};
+      const { trigger: _t, steps: _s, ...rest } = rule.config ?? {};
+      extraConfig.value = rest;
       steps.value = Array.isArray(rule.config?.steps) ? rule.config.steps : [];
       enabled.value = rule.enabled ?? true;
     } catch {
@@ -217,6 +236,7 @@ async function save() {
   errorMsg.value = '';
   try {
     const config = {
+      ...extraConfig.value,
       trigger: triggerConfig.value,
       steps: steps.value,
     };
@@ -478,6 +498,41 @@ function stepPreview(step: Step): string {
                 <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Etiqueta</label>
                 <input v-model="triggerConfig.tag" class="input" placeholder="ej: interesado, cliente-nuevo…" />
                 <p class="mt-1.5 text-[11px] text-slate-400">Se dispara exactamente cuando esta etiqueta sea añadida a un contacto.</p>
+              </div>
+
+              <!-- Filtros del comentario de Instagram -->
+              <div v-if="triggerType === 'ig_comment_received'" class="space-y-4">
+                <button
+                  type="button"
+                  class="flex w-full items-start gap-3 rounded-xl border border-slate-200 p-3 text-left transition-colors hover:bg-slate-50"
+                  @click="intentFilter = !intentFilter"
+                >
+                  <component :is="intentFilter ? ToggleRight : ToggleLeft" class="mt-0.5 h-5 w-5 flex-shrink-0" :class="intentFilter ? 'text-emerald-600' : 'text-slate-400'" />
+                  <span>
+                    <span class="block text-[13px] font-medium text-slate-800">Responder solo a quien pide información</span>
+                    <span class="mt-0.5 block text-[11px] text-slate-400">
+                      Ignora elogios y emojis sueltos ("qué bonito", "felicidades"). Responde a quien pregunta precio, disponibilidad, citas, cupos… o escribe la palabra clave que pide el post.
+                    </span>
+                  </span>
+                </button>
+                <div>
+                  <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Cuentas excluidas</label>
+                  <div class="flex flex-wrap items-center gap-1.5 rounded-md border border-slate-300 bg-white p-2 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+                    <span v-for="(u, i) in excludeUsernames" :key="u" class="flex items-center gap-1 rounded-sm bg-pink-50 px-2 py-0.5 text-xs font-medium text-pink-700">
+                      @{{ u }}
+                      <button type="button" class="cursor-pointer hover:text-pink-900" @click="removeExcluded(i)"><X class="h-3 w-3" /></button>
+                    </span>
+                    <input
+                      v-model="excludeInput"
+                      class="min-w-[120px] flex-1 border-0 bg-transparent text-sm focus:outline-none"
+                      placeholder="@cuenta y Enter…"
+                      @keydown.enter.prevent="addExcluded"
+                      @keydown.,.prevent="addExcluded"
+                      @blur="addExcluded"
+                    />
+                  </div>
+                  <p class="mt-1.5 text-[11px] text-slate-400">A estas cuentas nunca se les responde. Las cuentas conectadas de tu equipo ya se excluyen solas.</p>
+                </div>
               </div>
 
             </div>

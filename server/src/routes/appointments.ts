@@ -10,6 +10,7 @@ import {
   getGoogleEvents,
 } from '../integrations/google-calendar.ts';
 import { createZoomMeeting, deleteZoomMeeting } from '../integrations/zoom.ts';
+import { fireAppointmentBookedTrigger } from '../services/automation-engine.ts';
 
 export const appointmentsRouter = Router();
 
@@ -426,6 +427,23 @@ appointmentsRouter.post('/', async (req, res) => {
       orgId, entityType: 'opportunity', entityId: d.opportunity_id,
       actorId, actorName: actor?.name ?? null,
       eventType: 'appointment_created', meta,
+    }).catch(console.error);
+  }
+
+  // Disparar "cita agendada" (solo la cita principal; las instancias recurrentes no)
+  if (d.contact_id && (d.status ?? 'scheduled') === 'scheduled') {
+    const start = new Date(d.start_at);
+    const cal = d.calendar_id
+      ? await queryOne<{ slug: string; location: string | null }>('SELECT slug, location FROM calendars WHERE id=$1', [d.calendar_id])
+      : null;
+    const token = (await queryOne<{ cancel_token: string | null }>('SELECT cancel_token FROM appointments WHERE id=$1', [row.id]))?.cancel_token;
+    fireAppointmentBookedTrigger(orgId, d.contact_id, {
+      appointment_id:  row.id,
+      start_at:        start.toISOString(),
+      start_date:      start.toLocaleDateString('es', { timeZone: timezone, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+      start_time:      start.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: timezone }),
+      meeting_url:     meetingUrl ?? d.location ?? cal?.location ?? '',
+      reschedule_link: cal?.slug && token ? `${process.env.PUBLIC_URL ?? ''}/book/${cal.slug}/manage/${token}` : '',
     }).catch(console.error);
   }
 

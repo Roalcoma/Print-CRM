@@ -6,6 +6,7 @@ import { toCsv, parseCsv } from '../csv.ts';
 import { logActivity } from '../activity.ts';
 import { audit } from '../audit.ts';
 import { broadcast } from '../services/ws-manager.ts';
+import { fireContactCreatedTrigger } from '../services/automation-engine.ts';
 
 export const opportunitiesRouter = Router();
 
@@ -67,6 +68,7 @@ async function upsertContact(
       'INSERT INTO contacts (organization_id, first_name, email, phone) VALUES ($1,$2,$3,$4) RETURNING id',
       [orgId, name || email || 'Sin nombre', email || null, phone || null],
     );
+    fireContactCreatedTrigger(orgId, c.id).catch(console.error);
     return c.id;
   }
   return null;

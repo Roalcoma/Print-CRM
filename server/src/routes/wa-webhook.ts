@@ -4,7 +4,7 @@
 import { Router } from 'express';
 import { pool } from '../db.ts';
 import { broadcast } from '../services/ws-manager.ts';
-import { handleIncomingWaMessage, fireWaNewMessageTrigger } from '../services/automation-engine.ts';
+import { handleIncomingWaMessage, fireWaNewMessageTrigger, fireContactCreatedTrigger } from '../services/automation-engine.ts';
 
 export const waWebhookRouter = Router();
 
@@ -302,6 +302,7 @@ async function linkContact(orgId: string, convId: string, phone: string, waName:
           [orgId, firstName, lastName, effectivePhone],
         );
         contactId = created.rows[0].id;
+        fireContactCreatedTrigger(orgId, contactId).catch(console.error);
       }
     } else {
       const convContact = await pool.query<{ contact_id: string | null }>(
@@ -318,6 +319,7 @@ async function linkContact(orgId: string, convId: string, phone: string, waName:
           [orgId, parts[0], parts.slice(1).join(' ') || null],
         );
         contactId = created.rows[0].id;
+        fireContactCreatedTrigger(orgId, contactId).catch(console.error);
       }
     }
 

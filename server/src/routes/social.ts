@@ -11,6 +11,7 @@ import { env } from '../env.ts';
 import { broadcast } from '../services/ws-manager.ts';
 import { handleIgComment, captureIgPhone, findIgContact } from '../services/ig-comments.ts';
 import { upsertSocialConversation } from '../services/social-inbox.ts';
+import { fireContactCreatedTrigger } from '../services/automation-engine.ts';
 
 export const socialRouter = Router();
 export const socialPublicRouter = Router(); // callback OAuth (sin auth)
@@ -622,6 +623,7 @@ async function handleLeadgen(orgId: string, accessToken: string, event: LeadgenC
         [orgId, firstName, contactPhone, contactEmail],
       );
       contactId = newContact.rows[0]?.id ?? null;
+      fireContactCreatedTrigger(orgId, contactId).catch(console.error);
     }
   }
 
