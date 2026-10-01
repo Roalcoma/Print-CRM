@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { query, queryOne, pool } from '../db.ts';
+import { requireAdmin } from '../auth/perms.ts';
+import { audit } from '../audit.ts';
 
 export const pipelinesRouter = Router();
 
@@ -50,12 +52,18 @@ pipelinesRouter.put('/:id', async (req, res) => {
   res.json(row);
 });
 
-pipelinesRouter.delete('/:id', async (req, res) => {
-  const row = await queryOne(
-    'DELETE FROM pipelines WHERE id=$1 AND organization_id=$2 RETURNING id',
-    [req.params.id, req.auth!.organizationId],
+// Borrar pipeline: solo administradores, y rechaza si tiene oportunidades
+// (el CASCADE se las llevaría por delante sin aviso).
+pipelinesRouter.delete('/:id', requireAdmin, async (req, res) => {
+  const orgId = req.auth!.organizationId;
+  const p = await queryOne<{ id: string; name: string }>(
+    'SELECT id, name FROM pipelines WHERE id=$1 AND organization_id=$2', [req.params.id, orgId],
   );
-  if (!row) return res.status(404).json({ error: 'Pipeline no encontrado' });
+  if (!p) return res.status(404).json({ error: 'Pipeline no encontrado' });
+  const inUse = await queryOne('SELECT 1 FROM opportunities WHERE pipeline_id=$1 LIMIT 1', [p.id]);
+  if (inUse) return res.status(409).json({ error: 'El pipeline tiene oportunidades; muévelas o elimínalas antes de borrarlo' });
+  await query('DELETE FROM pipelines WHERE id=$1 AND organization_id=$2', [p.id, orgId]);
+  audit({ req, action: 'pipeline.deleted', entityType: 'pipeline', entityId: p.id, entityName: p.name });
   res.status(204).end();
 });
 

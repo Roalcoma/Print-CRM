@@ -333,11 +333,19 @@ calendarsRouter.patch('/:id', async (req, res) => {
 // ── DELETE /api/calendars/:id  ───────────────────────────────────────────────
 calendarsRouter.delete('/:id', async (req, res) => {
   const orgId = req.auth!.organizationId;
-  const cal   = await queryOne<{ id: string }>(
-    'SELECT id FROM calendars WHERE id=$1 AND organization_id=$2',
+  const cal   = await queryOne<{ id: string; user_id: string }>(
+    'SELECT id, user_id FROM calendars WHERE id=$1 AND organization_id=$2',
     [req.params.id, orgId],
   );
   if (!cal) return res.status(404).json({ error: 'Calendario no encontrado' });
+
+  // Solo el dueño del calendario o un administrador pueden borrarlo
+  if (cal.user_id !== req.auth!.userId) {
+    const me = await queryOne<{ role: string }>('SELECT role FROM users WHERE id=$1', [req.auth!.userId]);
+    if (!me || (me.role !== 'owner' && me.role !== 'admin')) {
+      return res.status(403).json({ error: 'Solo el dueño del calendario o un administrador pueden eliminarlo' });
+    }
+  }
 
   // No permitir borrar el único calendario del usuario
   const count = await queryOne<{ n: string }>(

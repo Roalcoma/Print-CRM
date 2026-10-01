@@ -66,7 +66,7 @@ usersRouter.get('/', async (req, res) => {
 // ── Crear usuario (solo admin) ────────────────────────────────────────────────
 const createSchema = z.object({
   name: z.string().min(1),
-  email: z.string().email(),
+  email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8),
   role: z.enum(['admin', 'member']),
   permissions: permsSchema,
@@ -77,7 +77,7 @@ usersRouter.post('/', requireAdmin, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   const { name, email, password, role, permissions } = parsed.data;
 
-  const existing = await queryOne('SELECT id FROM users WHERE email = $1', [email]);
+  const existing = await queryOne('SELECT id FROM users WHERE lower(email) = $1', [email]);
   if (existing) return res.status(409).json({ error: 'Ese email ya está registrado' });
 
   // Aplica también a la agencia impersonando: el límite se amplía cambiando plan o cortesía.

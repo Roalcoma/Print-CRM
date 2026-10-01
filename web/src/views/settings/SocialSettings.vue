@@ -97,6 +97,8 @@ onMounted(() => {
     showToast('Instagram conectado correctamente');
   } else if (route.query.error === 'oauth_denied') {
     showToast('Autorización cancelada', 'error');
+  } else if (route.query.error === 'oauth_state') {
+    showToast('El enlace de conexión caducó o no es válido. Inténtalo de nuevo.', 'error');
   } else if (route.query.error) {
     showToast('Error al conectar con Facebook', 'error');
   }

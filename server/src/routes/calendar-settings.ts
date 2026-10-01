@@ -4,6 +4,7 @@ import { query, queryOne } from '../db.ts';
 import { encryptSecret } from '../secrets.ts';
 import { repairPendingMeets } from '../services/google-meet.ts';
 import { requireAdmin } from '../auth/perms.ts';
+import { signOAuthState, verifyOAuthState } from '../auth/oauth-state.ts';
 import {
   getGoogleAuthUrl,
   exchangeGoogleCode,
@@ -146,6 +147,8 @@ calendarSettingsRouter.patch('/settings', async (req, res) => {
   });
 });
 
+const frontendUrl = () => process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'http://localhost:5175';
+
 // ── Google OAuth ──────────────────────────────────────────────────────────────
 function googleRedirectUri(): string {
   return `${process.env.APP_URL ?? 'http://localhost:3100'}/api/calendar/google/callback`;
@@ -153,7 +156,7 @@ function googleRedirectUri(): string {
 
 calendarSettingsRouter.get('/google/connect', (req, res) => {
   try {
-    const state = `${req.auth!.userId}:${req.auth!.organizationId}`;
+    const state = signOAuthState({ userId: req.auth!.userId, orgId: req.auth!.organizationId, provider: 'google' });
     const url   = getGoogleAuthUrl(googleRedirectUri(), state);
     res.json({ url });
   } catch (err: unknown) {
@@ -168,9 +171,10 @@ calendarPublicRouter.get('/google/callback', async (req, res) => {
   if (typeof code !== 'string' || typeof state !== 'string') {
     return res.status(400).json({ error: 'Parámetros inválidos' });
   }
-  // state = "userId:organizationId"
-  const [userId, orgId] = state.split(':');
-  if (!userId || !orgId) return res.status(400).json({ error: 'State inválido' });
+  // state = JWT firmado (userId, orgId, proveedor); un "userId:orgId" plano o manipulado se rechaza
+  const st = verifyOAuthState(state, 'google');
+  if (!st) return res.redirect(`${frontendUrl()}/settings/profile?error=oauth_state`);
+  const { userId, orgId } = st;
 
   try {
     const tokens = await exchangeGoogleCode(code, googleRedirectUri());
@@ -185,8 +189,7 @@ calendarPublicRouter.get('/google/callback', async (req, res) => {
     // Las citas agendadas mientras Google estaba desconectado reciben ahora su Meet
     repairPendingMeets(userId, orgId).catch(e => console.error('repairPendingMeets error:', e));
 
-    const frontendUrl = process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'http://localhost:5175';
-    res.redirect(`${frontendUrl}/settings/profile?connected=google`);
+    res.redirect(`${frontendUrl()}/settings/profile?connected=google`);
   } catch (err) {
     console.error('Google OAuth callback error:', err);
     res.status(500).json({ error: 'Error al conectar Google Calendar' });
@@ -210,7 +213,7 @@ function zoomRedirectUri(): string {
 
 calendarSettingsRouter.get('/zoom/connect', (req, res) => {
   try {
-    const state = `${req.auth!.userId}:${req.auth!.organizationId}`;
+    const state = signOAuthState({ userId: req.auth!.userId, orgId: req.auth!.organizationId, provider: 'zoom' });
     const url   = getZoomAuthUrl(zoomRedirectUri(), state);
     res.json({ url });
   } catch (err: unknown) {
@@ -225,9 +228,10 @@ calendarPublicRouter.get('/zoom/callback', async (req, res) => {
   if (typeof code !== 'string' || typeof state !== 'string') {
     return res.status(400).json({ error: 'Parámetros inválidos' });
   }
-  // state = "userId:organizationId"
-  const [userId, orgId] = state.split(':');
-  if (!userId || !orgId) return res.status(400).json({ error: 'State inválido' });
+  // state = JWT firmado (userId, orgId, proveedor); un "userId:orgId" plano o manipulado se rechaza
+  const st = verifyOAuthState(state, 'zoom');
+  if (!st) return res.redirect(`${frontendUrl()}/settings/profile?error=oauth_state`);
+  const { userId, orgId } = st;
 
   try {
     const tokens = await exchangeZoomCode(code, zoomRedirectUri());
@@ -239,8 +243,7 @@ calendarPublicRouter.get('/zoom/callback', async (req, res) => {
       [userId, orgId, encryptSecret(tokens.refresh_token), tokens.zoom_user_id],
     );
 
-    const frontendUrl = process.env.FRONTEND_URL ?? process.env.APP_URL ?? 'http://localhost:5175';
-    res.redirect(`${frontendUrl}/settings/profile?connected=zoom`);
+    res.redirect(`${frontendUrl()}/settings/profile?connected=zoom`);
   } catch (err) {
     console.error('Zoom OAuth callback error:', err);
     res.status(500).json({ error: 'Error al conectar Zoom' });

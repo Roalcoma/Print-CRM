@@ -52,7 +52,7 @@ try {
     if (Date.now() - t0 > 20_000) throw new Error(`El servidor de pruebas no arrancó en 20 s:\n${log}`);
     await new Promise(r => setTimeout(r, 250));
   }
-  const tests = process.argv.slice(2).length ? process.argv.slice(2) : ['test/isolation.test.ts', 'test/flows.test.ts', 'test/users.test.ts', 'test/appointment-lead.test.ts'];
+  const tests = process.argv.slice(2).length ? process.argv.slice(2) : ['test/isolation.test.ts', 'test/flows.test.ts', 'test/users.test.ts', 'test/appointment-lead.test.ts', 'test/security.test.ts'];
   const runner = spawn(process.execPath, ['--env-file=.env', '--test', '--test-concurrency=1', ...tests], { env, stdio: 'inherit' });
   code = await new Promise<number>(r => runner.on('exit', c => r(c ?? 1)));
   if (code !== 0 && process.env.TEST_SERVER_LOG !== '0') console.error(`\n── Log del servidor de pruebas ──\n${log.slice(-8000)}`);

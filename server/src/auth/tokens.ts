@@ -15,5 +15,8 @@ export function signToken(claims: AuthClaims): string {
 }
 
 export function verifyToken(token: string): AuthClaims {
-  return jwt.verify(token, env.jwtSecret) as AuthClaims;
+  const claims = jwt.verify(token, env.jwtSecret) as AuthClaims & { typ?: string };
+  // Un `state` de OAuth (mismo secreto) nunca vale como sesión
+  if (claims.typ === 'oauth_state') throw new Error('Token no válido como sesión');
+  return claims;
 }

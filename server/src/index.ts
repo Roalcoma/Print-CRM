@@ -111,6 +111,7 @@ app.use('/api/social', socialPublicRouter);  // callback OAuth Facebook (sin aut
 
 app.use('/api/auth/login',    authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/agency/auth/login', authLimiter);
 app.use('/api/auth', authRouter);
 
 // Rutas de agencia (JWT separado con claim type='agency'; deben ir antes del requireAuth del CRM)

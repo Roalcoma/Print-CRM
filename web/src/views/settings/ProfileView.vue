@@ -83,6 +83,7 @@ onMounted(async () => {
   const connected = route.query.connected as string | undefined;
   if (connected === 'google') showToast('¡Google Calendar conectado!');
   else if (connected === 'zoom') showToast('¡Zoom conectado!');
+  else if (route.query.error === 'oauth_state') showToast('El enlace de conexión caducó o no es válido. Inténtalo de nuevo.', 'error');
 });
 
 // ── Guardar perfil ────────────────────────────────────────────────────────────

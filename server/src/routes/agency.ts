@@ -107,7 +107,7 @@ function requireAgencyAuth(req: Request, res: Response, next: NextFunction) {
 // ─── Auth Routes ─────────────────────────────────────────────────────────────
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().toLowerCase().email(),
   password: z.string().min(1),
 });
 
@@ -117,7 +117,7 @@ agencyRouter.post('/auth/login', async (req, res) => {
   const { email, password } = parsed.data;
 
   const admin = await queryOne<AgencyAdminRow>(
-    'SELECT * FROM agency_admins WHERE email = $1 AND is_active = true',
+    'SELECT * FROM agency_admins WHERE lower(email) = lower($1) AND is_active = true',
     [email],
   );
   if (!admin || !(await verifyPassword(password, admin.password_hash))) {
@@ -180,7 +180,7 @@ agencyRouter.post('/auth/exchange', async (req, res) => {
   if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
   const admin = await queryOne<AgencyAdminRow>(
-    'SELECT * FROM agency_admins WHERE email = $1 AND is_active = true',
+    'SELECT * FROM agency_admins WHERE lower(email) = lower($1) AND is_active = true',
     [user.email],
   );
   if (!admin) return res.status(403).json({ error: 'Sin acceso al panel de agencia' });
@@ -291,7 +291,7 @@ agencyRouter.get('/clients', requireAgencyAuth, async (req, res) => {
 const createClientSchema = z.object({
   name: z.string().min(1),
   company: z.string().optional(),
-  email: z.string().email(),
+  email: z.string().trim().toLowerCase().email(),
   phone: z.string().optional(),
   country: z.string().optional(),
   plan: z.enum(['free', 'starter', 'pro', 'enterprise']).default('starter'),
@@ -433,7 +433,7 @@ agencyRouter.get('/clients/:id', requireAgencyAuth, async (req, res) => {
 const updateClientSchema = z.object({
   name: z.string().min(1).optional(),
   company: z.string().optional(),
-  email: z.string().email().optional(),
+  email: z.string().trim().toLowerCase().email().optional(),
   phone: z.string().optional(),
   country: z.string().optional(),
   plan: z.enum(['free', 'starter', 'pro', 'enterprise']).optional(),
@@ -542,7 +542,7 @@ agencyRouter.post('/clients/:id/impersonate', requireAgencyAuth, async (req, res
   );
   const adminCrmUser = agencyAdmin
     ? await queryOne<{ id: string; role: string }>(
-        'SELECT id, role FROM users WHERE email = $1',
+        'SELECT id, role FROM users WHERE lower(email) = lower($1)',
         [agencyAdmin.email],
       )
     : null;
@@ -800,11 +800,11 @@ agencyRouter.post('/clients/:id/provision', requireAgencyAuth, async (req, res) 
       // Crear nuevo usuario owner
       const userResult = await dbClient.query<{ id: string }>(
         `INSERT INTO users (organization_id, email, password_hash, name, role, must_change_password)
-         VALUES ($1, $2, $3, $4, 'owner', true) RETURNING id`,
+         VALUES ($1, lower(trim($2)), $3, $4, 'owner', true) RETURNING id`,
         [orgId, client.email, hash, client.name],
       );
       userId = userResult.rows[0].id;
-      userEmail = client.email;
+      userEmail = client.email.trim().toLowerCase();
     }
 
     await dbClient.query('COMMIT');

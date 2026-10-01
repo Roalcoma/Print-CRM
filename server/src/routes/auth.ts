@@ -25,7 +25,7 @@ interface UserRow {
 const registerSchema = z.object({
   organizationName: z.string().min(1),
   name: z.string().min(1),
-  email: z.string().email(),
+  email: z.string().trim().toLowerCase().email(),   // normalizado: el login no distingue mayúsculas
   password: z.string().min(8),
 });
 
@@ -41,7 +41,7 @@ authRouter.post('/register', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   const { organizationName, name, email, password } = parsed.data;
 
-  const existing = await queryOne('SELECT id FROM users WHERE email = $1', [email]);
+  const existing = await queryOne('SELECT id FROM users WHERE lower(email) = $1', [email]);
   if (existing) return res.status(409).json({ error: 'Ese email ya está registrado' });
 
   const [org] = await query<{ id: string }>(
@@ -60,7 +60,7 @@ authRouter.post('/register', async (req, res) => {
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().toLowerCase().email(),   // normalizado: el login no distingue mayúsculas
   password: z.string().min(1),
 });
 
@@ -69,7 +69,7 @@ authRouter.post('/login', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
   const { email, password } = parsed.data;
 
-  const user = await queryOne<UserRow>('SELECT * FROM users WHERE email = $1', [email]);
+  const user = await queryOne<UserRow>('SELECT * FROM users WHERE lower(email) = $1', [email]);
   if (!user || !(await verifyPassword(password, user.password_hash))) {
     return res.status(401).json({ error: 'Credenciales inválidas' });
   }
@@ -78,7 +78,7 @@ authRouter.post('/login', async (req, res) => {
 
   // Si el email también existe en agency_admins, emitir agency_token automáticamente
   const agencyAdmin = await queryOne<{ id: string; role: string }>(
-    'SELECT id, role FROM agency_admins WHERE email = $1 AND is_active = true',
+    'SELECT id, role FROM agency_admins WHERE lower(email) = $1 AND is_active = true',
     [email],
   );
   const agencyToken = agencyAdmin

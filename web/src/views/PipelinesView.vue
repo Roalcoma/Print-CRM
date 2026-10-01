@@ -11,8 +11,10 @@ import OppTabs from '../components/OppTabs.vue';
 import Spinner from '../components/Spinner.vue';
 import LoadingState from '../components/LoadingState.vue';
 import Dropdown from '../components/Dropdown.vue';
+import { useAuthStore } from '../stores/auth';
 
 const { alert, confirm } = useDialog();
+const auth = useAuthStore();
 const pipelines = ref<Pipeline[]>([]);
 const loading = ref(true);
 const q = ref('');
@@ -80,8 +82,13 @@ async function newPipeline() {
 
 async function deletePipeline(p: Pipeline) {
   if (pipelines.value.length <= 1) { await alert('Debe existir al menos un pipeline.'); return; }
-  if (!await confirm(`¿Eliminar "${p.name}" y todas sus oportunidades?`, 'Eliminar pipeline')) return;
-  await api.del(`/pipelines/${p.id}`);
+  if (!await confirm(`¿Eliminar el pipeline "${p.name}"? Solo se puede si no tiene oportunidades.`, 'Eliminar pipeline')) return;
+  try {
+    await api.del(`/pipelines/${p.id}`);
+  } catch (e) {
+    await alert((e as Error).message);
+    return;
+  }
   await load();
   if (editing.value?.id === p.id) closeEditor();
 }
@@ -153,7 +160,7 @@ async function deletePipeline(p: Pipeline) {
                   <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100" @click="openEditor(p)">
                     <Pencil class="h-4 w-4 text-slate-400" /> Editar
                   </button>
-                  <button class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50" @click="deletePipeline(p)">
+                  <button v-if="auth.isAdmin" class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50" @click="deletePipeline(p)">
                     <Trash2 class="h-4 w-4" /> Eliminar
                   </button>
                 </Dropdown>
@@ -239,7 +246,7 @@ async function deletePipeline(p: Pipeline) {
         </div>
 
         <div class="flex items-center justify-between border-t border-slate-200 px-6 py-4">
-          <button class="btn btn-danger" @click="deletePipeline(editing)"><Trash2 class="h-4 w-4" /> Eliminar</button>
+          <button v-if="auth.isAdmin" class="btn btn-danger" @click="deletePipeline(editing)"><Trash2 class="h-4 w-4" /> Eliminar</button>
           <div class="flex gap-2">
             <button class="btn btn-ghost" @click="closeEditor">Cancelar</button>
             <button :disabled="saving" class="btn btn-primary" @click="save"><Spinner v-if="saving" :size="16" light /> {{ saving ? 'Guardando…' : 'Guardar' }}</button>

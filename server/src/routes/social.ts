@@ -7,6 +7,7 @@ import type express from 'express';
 import { pool } from '../db.ts';
 import { encryptSecret } from '../secrets.ts';
 import { requireAdmin } from '../auth/perms.ts';
+import { signOAuthState, verifyOAuthState } from '../auth/oauth-state.ts';
 import { env } from '../env.ts';
 import { broadcast } from '../services/ws-manager.ts';
 import { handleIgComment, captureIgPhone, findIgContact } from '../services/ig-comments.ts';
@@ -50,7 +51,8 @@ export async function refreshInstagramTokens(): Promise<void> {
   }
 }
 
-const META_BASE = 'https://graph.facebook.com/v19.0';
+// META_GRAPH_URL: override solo para los tests (Meta simulado)
+const META_BASE = `${process.env.META_GRAPH_URL ?? 'https://graph.facebook.com'}/v19.0`;
 const META_APP_ID = process.env.META_APP_ID ?? '';
 const META_APP_SECRET = process.env.META_APP_SECRET ?? '';
 const IG_APP_ID = process.env.INSTAGRAM_APP_ID ?? '';
@@ -132,7 +134,7 @@ socialRouter.get('/facebook/auth-url', requireAdmin, async (req, res) => {
   url.searchParams.set('client_id', META_APP_ID);
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('scope', scopes);
-  url.searchParams.set('state', orgId);
+  url.searchParams.set('state', signOAuthState({ userId: req.auth!.userId, orgId, provider: 'facebook' }));
   url.searchParams.set('response_type', 'code');
 
   res.json({ url: url.toString() });
@@ -156,7 +158,7 @@ socialRouter.get('/instagram/auth-url', requireAdmin, async (req, res) => {
   url.searchParams.set('client_id', IG_APP_ID);
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('scope', scopes);
-  url.searchParams.set('state', orgId);
+  url.searchParams.set('state', signOAuthState({ userId: req.auth!.userId, orgId, provider: 'instagram' }));
   url.searchParams.set('response_type', 'code');
 
   res.json({ url: url.toString() });
@@ -164,11 +166,15 @@ socialRouter.get('/instagram/auth-url', requireAdmin, async (req, res) => {
 
 // GET /social/instagram/callback — callback OAuth de Instagram (público)
 socialPublicRouter.get('/instagram/callback', async (req, res) => {
-  const { code, state: orgId, error } = req.query as Record<string, string>;
+  const { code, state, error } = req.query as Record<string, string>;
   const frontendBase = process.env.FRONTEND_URL ?? env.publicUrl;
-  if (error || !code || !orgId) {
+  if (error || !code || !state) {
     return res.redirect(`${frontendBase}/settings/social?error=oauth_denied`);
   }
+  // state = JWT firmado (orgId, proveedor); un orgId plano o manipulado se rechaza
+  const st = verifyOAuthState(state, 'instagram');
+  if (!st) return res.redirect(`${frontendBase}/settings/social?error=oauth_state`);
+  const orgId = st.orgId;
 
   try {
     const redirectUri = `${env.publicUrl}/api/social/instagram/callback`;
@@ -238,14 +244,18 @@ socialPublicRouter.get('/instagram/callback', async (req, res) => {
   }
 });
 
-// GET /social/facebook/callback — OAuth callback público (sin JWT, autenticado via state=orgId)
+// GET /social/facebook/callback — OAuth callback público (sin JWT, autenticado via state firmado)
 socialPublicRouter.get('/facebook/callback', async (req, res) => {
-  const { code, state: orgId, error } = req.query as Record<string, string>;
+  const { code, state, error } = req.query as Record<string, string>;
 
   const frontendBase = process.env.FRONTEND_URL ?? env.publicUrl;
-  if (error || !code || !orgId) {
+  if (error || !code || !state) {
     return res.redirect(`${frontendBase}/settings/social?error=oauth_denied`);
   }
+  // state = JWT firmado (orgId, proveedor); un orgId plano o manipulado se rechaza
+  const st = verifyOAuthState(state, 'facebook');
+  if (!st) return res.redirect(`${frontendBase}/settings/social?error=oauth_state`);
+  const orgId = st.orgId;
 
   try {
     const redirectUri = `${env.publicUrl}/api/social/facebook/callback`;
@@ -578,13 +588,33 @@ async function handleLeadgen(orgId: string, accessToken: string, event: LeadgenC
 
   const cfg = configRes.rows[0];
 
-  // 2. Obtener datos del lead desde Meta Graph API
-  const leadRes = await fetch(
-    `${META_BASE}/${event.leadgen_id}?fields=id,created_time,field_data&access_token=${accessToken}`,
+  // Meta puede reenviar el mismo lead: se reclama el leadgen_id una sola vez por organización
+  const claim = await pool.query(
+    `INSERT INTO processed_leadgens (organization_id, leadgen_id) VALUES ($1, $2)
+     ON CONFLICT DO NOTHING RETURNING leadgen_id`,
+    [orgId, event.leadgen_id],
   );
-  const lead = await leadRes.json() as { id?: string; field_data?: MetaLeadField[]; error?: { message: string } };
+  if (!claim.rowCount) {
+    console.log(`handleLeadgen: lead ${event.leadgen_id} ya procesado para org ${orgId}; se ignora`);
+    return;
+  }
+  // Si no se pudo leer el lead, se libera el reclamo para que un reenvío lo procese
+  const release = () => pool.query('DELETE FROM processed_leadgens WHERE organization_id=$1 AND leadgen_id=$2', [orgId, event.leadgen_id]);
+
+  // 2. Obtener datos del lead desde Meta Graph API
+  let lead: { id?: string; field_data?: MetaLeadField[]; error?: { message: string } };
+  try {
+    const leadRes = await fetch(
+      `${META_BASE}/${event.leadgen_id}?fields=id,created_time,field_data&access_token=${accessToken}`,
+    );
+    lead = await leadRes.json() as typeof lead;
+  } catch (e) {
+    await release();
+    throw e;
+  }
   if (lead.error || !lead.field_data) {
     console.error('handleLeadgen: error obteniendo lead', lead.error);
+    await release();
     return;
   }
 
@@ -604,14 +634,17 @@ async function handleLeadgen(orgId: string, accessToken: string, event: LeadgenC
   // 4. Buscar contacto existente por teléfono o email, o crear uno nuevo
   let contactId: string | null = null;
   if (cfg.auto_create_contact) {
-    // Intentar encontrar contacto existente
-    const existing = await pool.query<{ id: string }>(
-      `SELECT id FROM contacts WHERE organization_id = $1
-       AND ($2::text IS NULL OR phone = $2)
-       AND ($3::text IS NULL OR email = $3)
-       LIMIT 1`,
-      [orgId, contactPhone, contactEmail],
-    );
+    // Intentar encontrar contacto existente. Sin teléfono ni email no hay con qué
+    // compararlo (la condición coincidiría con cualquier contacto): se crea uno nuevo.
+    const existing = (contactPhone || contactEmail)
+      ? await pool.query<{ id: string }>(
+          `SELECT id FROM contacts WHERE organization_id = $1
+           AND ($2::text IS NULL OR phone = $2)
+           AND ($3::text IS NULL OR lower(email) = lower($3))
+           LIMIT 1`,
+          [orgId, contactPhone, contactEmail],
+        )
+      : { rows: [] as { id: string }[] };
 
     if (existing.rows[0]) {
       contactId = existing.rows[0].id;
