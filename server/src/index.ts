@@ -240,6 +240,22 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
+// Tarea periódica robusta: un fallo se registra (console.error → alerta a Telegram) sin tumbar el
+// proceso, y si la ejecución anterior sigue en curso se salta el ciclo en vez de solaparse.
+function every(name: string, task: () => Promise<unknown>, ms: number, runNow = false) {
+  let running = false;
+  const tick = () => {
+    if (running) return;
+    running = true;
+    Promise.resolve()
+      .then(() => task())
+      .catch(e => console.error(`[jobs] ${name} falló:`, e))
+      .finally(() => { running = false; });
+  };
+  if (runNow) tick();
+  setInterval(tick, ms);
+}
+
 // Crear servidor HTTP compartido (Express + WebSocket en el mismo puerto).
 const server = http.createServer(app);
 initWS(server);
@@ -249,14 +265,11 @@ server.listen(env.port, () => {
   // Los tests arrancan sin tareas periódicas: recorren TODAS las orgs de la BD (compartida en local)
   if (process.env.DISABLE_BACKGROUND_JOBS === 'true') return;
   // Revisar cada 60s si hay esperas temporizadas listas para reanudar
-  setInterval(() => resumeTimedRuns(), 60_000);
+  every('resumeTimedRuns', resumeTimedRuns, 60_000);
   // Refrescar tokens de Instagram cada 30 días; también al arrancar para renovar de inmediato si toca
-  refreshInstagramTokens();
-  setInterval(() => refreshInstagramTokens(), 24 * 60 * 60_000); // revisa cada 24h; la query filtra los que toca renovar
+  every('refreshInstagramTokens', refreshInstagramTokens, 24 * 60 * 60_000, true); // la query filtra los que toca renovar
   // Polling de comentarios IG: con Standard Access Meta no envía webhooks de `comments`.
-  pollIgComments();
-  setInterval(() => pollIgComments(), 2 * 60_000);
+  every('pollIgComments', pollIgComments, 2 * 60_000, true);
   // Conexión de los WhatsApp: aviso por Telegram si alguno se cae
-  checkWhatsappConnections().catch(e => console.error('wa-monitor:', e));
-  setInterval(() => checkWhatsappConnections().catch(e => console.error('wa-monitor:', e)), 5 * 60_000);
+  every('wa-monitor', checkWhatsappConnections, 5 * 60_000, true);
 });

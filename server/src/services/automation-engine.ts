@@ -166,7 +166,7 @@ const AREA_CODE_MAP: Record<string, string> = {
 
 /**
  * Extrae el código de área (3 dígitos) de un número de teléfono de EE.UU.
- * y devuelve el nombre del estado. Si no se reconoce, devuelve 'Unknown'.
+ * y devuelve el nombre del estado. Si no se reconoce, devuelve 'Desconocido'.
  */
 export function detectUsState(phone: string): string {
   // Normalizar: quitar todo lo que no sea dígito
@@ -182,9 +182,9 @@ export function detectUsState(phone: string): string {
     const last10 = digits.slice(-10);
     areaCode = last10.slice(0, 3);
   } else {
-    return 'Unknown';
+    return 'Desconocido';
   }
-  return AREA_CODE_MAP[areaCode] ?? 'Unknown';
+  return AREA_CODE_MAP[areaCode] ?? 'Desconocido';
 }
 
 /**
@@ -790,24 +790,25 @@ export async function handleIncomingWaMessage(
     const normalizedPhone = rawPhone.replace(/\D/g, '');
     if (!normalizedPhone) return;
 
-    // Buscar run en estado 'waiting' cuyo contact_phone coincida
-    const runRes = await pool.query<{ id: string; organization_id: string }>(
-      `SELECT id, organization_id FROM automation_runs
-       WHERE organization_id = $1
-         AND status = 'waiting'
-         AND regexp_replace(contact_phone, '\\D', '', 'g') LIKE $2
-       ORDER BY waiting_since ASC
-       LIMIT 1`,
+    // Tomar de forma atómica el run en estado 'waiting' cuyo contact_phone coincida: dos mensajes
+    // simultáneos del mismo lead no pueden reanudar el mismo run (SKIP LOCKED + condición de estado).
+    const runRes = await pool.query<{ id: string }>(
+      `UPDATE automation_runs SET status = 'running', waiting_since = NULL, updated_at = NOW()
+       WHERE status = 'waiting' AND id = (
+         SELECT id FROM automation_runs
+         WHERE organization_id = $1
+           AND status = 'waiting'
+           AND regexp_replace(contact_phone, '\\D', '', 'g') LIKE $2
+         ORDER BY waiting_since ASC
+         LIMIT 1
+         FOR UPDATE SKIP LOCKED
+       )
+       RETURNING id`,
       [orgId, `%${normalizedPhone}%`],
     );
     const runRow = runRes.rows[0];
     if (!runRow) return;
 
-    // Reanudar el run
-    await pool.query(
-      `UPDATE automation_runs SET status = 'running', waiting_since = NULL, updated_at = NOW() WHERE id = $1`,
-      [runRow.id],
-    );
     executeRun(runRow.id).catch(e => console.error('[automation-engine] resumeRun error:', e));
   } catch (e) {
     console.error('[automation-engine] handleIncomingWaMessage error:', e);

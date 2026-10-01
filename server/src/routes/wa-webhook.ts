@@ -57,26 +57,80 @@ waWebhookRouter.post('/:secret', async (req, res) => {
       const { msgType, body, mediaUrl, mediaMime, mediaFilename } = parseMessage(msg);
       const adRef = direction === 'inbound' ? extractAdRef(msg) : null;
 
-      // Disparar motor de automatizaciones para mensajes entrantes
-      if (direction === 'inbound') {
-        handleIncomingWaMessage(orgId, chatId, body ?? '').catch(console.error);
-      }
+      // Idempotencia: Evolution puede reenviar el mismo evento (reintentos, reconexiones). Primero se
+      // guarda el mensaje (ON CONFLICT por wa_message_id) y SOLO si es nuevo se tocan los contadores de
+      // la conversación, el contacto, los eventos y el motor de automatizaciones. Todo en una transacción:
+      // el upsert de la conversación bloquea su fila, así dos copias simultáneas del evento se serializan.
+      let convId: string;
+      let isNewConversation: boolean;
+      let finalMsgId: string | undefined;
+      let finalMsgCreatedAt: string | undefined;
+      const tx = await pool.connect();
+      try {
+        await tx.query('BEGIN');
+        // Crear la conversación (sin contadores todavía) o bloquear la existente sin cambiarla
+        const convRes = await tx.query<{ id: string; is_new: boolean }>(
+          `INSERT INTO conversations (organization_id, wa_chat_id, display_name, phone, last_message_at, last_message_preview, unread_count)
+           VALUES ($1, $2, $3, $4, $5, $6, 0)
+           ON CONFLICT (organization_id, wa_chat_id) DO UPDATE SET updated_at = conversations.updated_at
+           RETURNING id, (xmax = 0) AS is_new`,
+          [orgId, chatId, displayName, phone, timestamp, previewText(msgType, body)],
+        );
+        convId = convRes.rows[0].id;
+        isNewConversation = convRes.rows[0].is_new === true;
 
-      const convRes = await pool.query<{ id: string; is_new: boolean }>(
-        `INSERT INTO conversations (organization_id, wa_chat_id, display_name, phone, last_message_at, last_message_preview, unread_count)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT (organization_id, wa_chat_id) DO UPDATE SET
-           last_message_at      = EXCLUDED.last_message_at,
-           last_message_preview = EXCLUDED.last_message_preview,
-           unread_count         = conversations.unread_count + EXCLUDED.unread_count,
-           display_name         = COALESCE($8::text, conversations.display_name),
-           updated_at           = NOW()
-         RETURNING id, (xmax = 0) AS is_new`,
-        [orgId, chatId, displayName, phone, timestamp, previewText(msgType, body),
-         direction === 'inbound' ? 1 : 0, senderName ?? null],
-      );
-      const convId = convRes.rows[0].id;
-      const isNewConversation = convRes.rows[0].is_new === true;
+        // Para outbound: intentar hacer UPDATE de un mensaje pendiente sin wa_message_id
+        // (solo si este wa_message_id no está ya guardado: un eco repetido no debe adoptar otro pendiente)
+        if (direction === 'outbound') {
+          const upd = await tx.query<{ id: string; created_at: string }>(
+            `UPDATE conv_messages SET wa_message_id = $1, status = 'sent'
+             WHERE id = (
+               SELECT id FROM conv_messages
+               WHERE conversation_id = $2 AND direction = 'outbound'
+               AND body IS NOT DISTINCT FROM $3
+               AND wa_message_id IS NULL
+               AND created_at > NOW() - INTERVAL '3 minutes'
+               ORDER BY created_at DESC LIMIT 1
+             )
+             AND NOT EXISTS (SELECT 1 FROM conv_messages WHERE wa_message_id = $1)
+             RETURNING id, created_at`,
+            [waId, convId, body ?? null],
+          );
+          if (upd.rows[0]) { finalMsgId = upd.rows[0].id; finalMsgCreatedAt = upd.rows[0].created_at; }
+        }
+
+        if (!finalMsgId) {
+          const msgRes = await tx.query<{ id: string; created_at: string }>(
+            `INSERT INTO conv_messages (conversation_id, organization_id, wa_message_id, direction, msg_type, body, media_url, media_mime, media_filename, sender_name, ad_ref)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+             ON CONFLICT (wa_message_id) DO NOTHING
+             RETURNING id, created_at`,
+            [convId, orgId, waId, direction, msgType, body ?? null,
+             mediaUrl ?? null, mediaMime ?? null, mediaFilename ?? null, senderName ?? null, adRef],
+          );
+          if (msgRes.rows[0]) { finalMsgId = msgRes.rows[0].id; finalMsgCreatedAt = msgRes.rows[0].created_at; }
+        }
+
+        // Mensaje ya procesado (evento duplicado): no se cuenta ni se dispara nada
+        if (!finalMsgId) { await tx.query('ROLLBACK'); return; }
+
+        await tx.query(
+          `UPDATE conversations SET
+             last_message_at      = $2,
+             last_message_preview = $3,
+             unread_count         = unread_count + $4,
+             display_name         = COALESCE($5::text, display_name),
+             updated_at           = NOW()
+           WHERE id = $1`,
+          [convId, timestamp, previewText(msgType, body), direction === 'inbound' ? 1 : 0, senderName ?? null],
+        );
+        await tx.query('COMMIT');
+      } catch (e) {
+        await tx.query('ROLLBACK').catch(() => {});
+        throw e;
+      } finally {
+        tx.release();
+      }
 
       let contactId: string | null = null;
       if (direction === 'inbound') {
@@ -86,46 +140,16 @@ waWebhookRouter.post('/:secret', async (req, res) => {
         if (contactId && adRef) {
           await pool.query(`UPDATE contacts SET ad_source = $1 WHERE id = $2 AND ad_source IS NULL`, [adRef, contactId]);
         }
-      }
 
-      // Disparar automatizaciones de nuevo mensaje WA
-      if (isNewConversation && direction === 'inbound') {
-        fireWaNewMessageTrigger(orgId, contactId).catch(e => console.error('fireWaNewMessageTrigger:', e));
-      }
+        // Motor de automatizaciones: reanudar un run que espera respuesta de este número. Se espera
+        // a que tome el run antes de disparar "nuevo mensaje": así un flujo recién iniciado que llegue a
+        // wait_for_reply no se reanuda con este mismo mensaje (nunca lanza: registra sus errores).
+        await handleIncomingWaMessage(orgId, chatId, body ?? '');
 
-      // Para outbound: intentar hacer UPDATE de un mensaje pendiente sin wa_message_id
-      let finalMsgId: string | undefined;
-      let finalMsgCreatedAt: string | undefined;
-
-      if (direction === 'outbound') {
-        const upd = await pool.query<{ id: string; created_at: string }>(
-          `UPDATE conv_messages SET wa_message_id = $1, status = 'sent'
-           WHERE id = (
-             SELECT id FROM conv_messages
-             WHERE conversation_id = $2 AND direction = 'outbound'
-             AND body IS NOT DISTINCT FROM $3
-             AND wa_message_id IS NULL
-             AND created_at > NOW() - INTERVAL '3 minutes'
-             ORDER BY created_at DESC LIMIT 1
-           )
-           RETURNING id, created_at`,
-          [waId, convId, body ?? null],
-        );
-        if (upd.rows[0]) { finalMsgId = upd.rows[0].id; finalMsgCreatedAt = upd.rows[0].created_at; }
-      }
-
-      if (!finalMsgId) {
-        const msgRes = await pool.query<{ id: string; created_at: string }>(
-          `INSERT INTO conv_messages (conversation_id, organization_id, wa_message_id, direction, msg_type, body, media_url, media_mime, media_filename, sender_name, ad_ref)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-           ON CONFLICT (wa_message_id) DO NOTHING
-           RETURNING id, created_at`,
-          [convId, orgId, waId, direction, msgType, body ?? null,
-           mediaUrl ?? null, mediaMime ?? null, mediaFilename ?? null, senderName ?? null, adRef],
-        );
-        if (!msgRes.rows[0]) return;
-        finalMsgId = msgRes.rows[0].id;
-        finalMsgCreatedAt = msgRes.rows[0].created_at;
+        // Disparar automatizaciones de nuevo mensaje WA
+        if (isNewConversation) {
+          fireWaNewMessageTrigger(orgId, contactId).catch(e => console.error('fireWaNewMessageTrigger:', e));
+        }
       }
 
       broadcast(orgId, 'message:new', {
@@ -331,79 +355,5 @@ async function linkContact(orgId: string, convId: string, phone: string, waName:
   } catch (e) {
     console.error('linkContact error:', e);
     return null;
-  }
-}
-
-// Crea oportunidad, tarea y notificaciones cuando llega un lead nuevo por WhatsApp.
-async function createLeadFlow(orgId: string, contactId: string | null, displayName: string): Promise<void> {
-  // Primer pipeline de la org
-  const pipeRes = await pool.query<{ id: string }>(
-    `SELECT id FROM pipelines WHERE organization_id = $1 ORDER BY created_at LIMIT 1`,
-    [orgId],
-  );
-  if (!pipeRes.rows[0]) return;
-  const pipelineId = pipeRes.rows[0].id;
-
-  // Primera etapa (por posición)
-  const stageRes = await pool.query<{ id: string }>(
-    `SELECT id FROM pipeline_stages WHERE pipeline_id = $1 ORDER BY position LIMIT 1`,
-    [pipelineId],
-  );
-  if (!stageRes.rows[0]) return;
-  const stageId = stageRes.rows[0].id;
-
-  // Crear oportunidad
-  const oppRes = await pool.query<{ id: string }>(
-    `INSERT INTO opportunities (organization_id, pipeline_id, stage_id, contact_id, title, source, tags)
-     VALUES ($1, $2, $3, $4, $5, 'whatsapp', ARRAY['whatsapp']::text[])
-     RETURNING id`,
-    [orgId, pipelineId, stageId, contactId, `Lead WhatsApp — ${displayName}`],
-  );
-  const oppId = oppRes.rows[0].id;
-  broadcast(orgId, 'opportunity:new', { id: oppId });
-
-  // Todos los usuarios de la org
-  const usersRes = await pool.query<{ id: string }>(
-    `SELECT id FROM users WHERE organization_id = $1`,
-    [orgId],
-  );
-  const userIds = usersRes.rows.map(u => u.id);
-  if (!userIds.length) return;
-
-  // Crear tarea (alta prioridad, vence mañana a las 9am)
-  const dueAt = new Date();
-  dueAt.setDate(dueAt.getDate() + 1);
-  dueAt.setHours(9, 0, 0, 0);
-
-  const taskRes = await pool.query<{ id: string }>(
-    `INSERT INTO tasks (organization_id, title, description, status, priority, opportunity_id, due_at)
-     VALUES ($1, $2, $3, 'pending', 'high', $4, $5)
-     RETURNING id`,
-    [orgId,
-     `Responder lead de WhatsApp — ${displayName}`,
-     `Nuevo lead entrante vía WhatsApp. Contactar a ${displayName} a la brevedad posible.`,
-     oppId, dueAt],
-  );
-  const taskId = taskRes.rows[0].id;
-
-  // Asignar tarea a todos los usuarios
-  for (const uid of userIds) {
-    await pool.query(
-      `INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-      [taskId, uid],
-    );
-  }
-
-  // Notificación para cada usuario + broadcast WS
-  for (const uid of userIds) {
-    await pool.query(
-      `INSERT INTO notifications (organization_id, user_id, type, title, body, entity_type, entity_id)
-       VALUES ($1, $2, 'new_lead', $3, $4, 'opportunity', $5)`,
-      [orgId, uid,
-       `Nuevo lead de WhatsApp`,
-       `${displayName} inició una conversación por WhatsApp.`,
-       oppId],
-    );
-    broadcast(orgId, 'notification:new', { userId: uid });
   }
 }

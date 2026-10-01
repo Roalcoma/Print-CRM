@@ -167,7 +167,7 @@ function statusBadge(status: string) {
 }
 
 function statusLabel(s: string) {
-  const m: Record<string, string> = { active: 'Activo', trial: 'Trial', suspended: 'Suspendido', cancelled: 'Cancelado' };
+  const m: Record<string, string> = { active: 'Activo', trial: 'Prueba', suspended: 'Suspendido', cancelled: 'Cancelado' };
   return m[s] ?? s;
 }
 
@@ -213,7 +213,7 @@ const totalPages = computed(() => Math.ceil(total.value / 20));
           class="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder-slate-400 focus:border-[#F69008] focus:ring-2 focus:ring-[#F69008]/20 focus:outline-none transition-all"
         />
       </div>
-      <div class="w-44"><BizSelect v-model="filterStatus" placeholder="Todos los estados" input-class="rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-3 text-sm text-slate-700" :options="[{ value: 'active', label: 'Activo' }, { value: 'trial', label: 'Trial' }, { value: 'suspended', label: 'Suspendido' }, { value: 'cancelled', label: 'Cancelado' }]" /></div>
+      <div class="w-44"><BizSelect v-model="filterStatus" placeholder="Todos los estados" input-class="rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-3 text-sm text-slate-700" :options="[{ value: 'active', label: 'Activo' }, { value: 'trial', label: 'Prueba' }, { value: 'suspended', label: 'Suspendido' }, { value: 'cancelled', label: 'Cancelado' }]" /></div>
       <div class="w-44"><BizSelect v-model="filterPlan" placeholder="Todos los planes" input-class="rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-3 text-sm text-slate-700" :options="[{ value: 'starter', label: 'Starter' }, { value: 'pro', label: 'Pro' }, { value: 'enterprise', label: 'Enterprise' }]" /></div>
       <div class="w-40"><BizSelect v-model="filterType" placeholder="Todos los tipos" input-class="rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-3 text-sm text-slate-700" :options="[{ value: 'own', label: 'Propias' }, { value: 'client', label: 'Clientes' }]" /></div>
     </div>
@@ -426,7 +426,7 @@ const totalPages = computed(() => Math.ceil(total.value / 20));
                 </div>
                 <div>
                   <label class="mb-1 block text-xs font-medium text-slate-600">Estado</label>
-                  <BizSelect v-model="form.status" input-class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" :options="[{ value: 'active', label: 'Activo' }, { value: 'trial', label: 'Trial' }]" />
+                  <BizSelect v-model="form.status" input-class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" :options="[{ value: 'active', label: 'Activo' }, { value: 'trial', label: 'Prueba' }]" />
                 </div>
               </div>
 

@@ -13,6 +13,7 @@ import pg from 'pg';
 import { encryptSecret } from '../src/secrets.ts';
 import { wantsInfo, captionKeywords, matchesKeyword } from '../src/services/ig-intent.ts';
 import { checkWhatsappConnections } from '../src/services/wa-monitor.ts';
+import { pollIgComments, isRateLimitError } from '../src/services/ig-comments.ts';
 import { pool as appPool } from '../src/db.ts';
 
 const BASE = process.env.TEST_BASE_URL ?? 'http://localhost:3202';
@@ -31,6 +32,7 @@ const calls: Call[] = [];
 const igRejected = new Set<string>();   // destinatarios de DM que Meta rechaza (fuera de ventana 24 h)
 const captions: Record<string, string> = {};
 const waState = new Map<string, string>();   // estado de conexión simulado por instancia (por defecto 'open')
+const igRateLimited = new Set<string>();     // tokens de IG a los que Meta responde "límite de llamadas" (código 4)
 const MEET = 'https://meet.google.com/abc-defg-hij';
 
 function fakeReply(c: Call): [number, unknown] {
@@ -46,6 +48,12 @@ function fakeReply(c: Call): [number, unknown] {
     return [201, { key: { remoteJid: `${c.body.number}@s.whatsapp.net`, fromMe: true, id: `EVO-${rnd()}` }, status: 'PENDING' }];
   }
   // Instagram Graph (graph.instagram.com)
+  const igToken = new URL(p, 'http://x').searchParams.get('access_token');
+  if (p.startsWith('/ig/') && igToken && igRateLimited.has(igToken)) {
+    return [400, { error: { message: 'Application request limit reached', type: 'OAuthException', code: 4 } }];
+  }
+  if (p.startsWith('/ig/v21.0/me?fields=username')) return [200, { id: 'me', username: 'cuenta_prueba' }];
+  if (p.startsWith('/ig/v21.0/me/media?')) return [200, { data: [] }];
   if (p.startsWith('/ig/v21.0/me/messages')) {
     const to = c.body.recipient?.id;
     if (to && igRejected.has(to)) {
@@ -115,12 +123,12 @@ function metaWebhook(payload: unknown, sign = true) {
   return api(null, 'POST', '/meta/webhook', raw, sign ? { 'X-Hub-Signature-256': sig } : {});
 }
 
-// Mensaje entrante de WhatsApp en el formato de Evolution v2
-function waInbound(phone: string, text: string, extra: Record<string, unknown> = {}) {
+// Mensaje entrante de WhatsApp en el formato de Evolution v2 (waId fijo para simular reenvíos)
+function waInbound(phone: string, text: string, extra: Record<string, unknown> = {}, waId = `WA-${rnd()}${rnd()}`) {
   return api(null, 'POST', `/wa/webhook/${org.waSecret}`, {
     event: 'messages.upsert', instance: org.instance,
     data: {
-      key: { remoteJid: `${phone}@s.whatsapp.net`, fromMe: false, id: `WA-${rnd()}${rnd()}` },
+      key: { remoteJid: `${phone}@s.whatsapp.net`, fromMe: false, id: waId },
       pushName: 'Ana Prueba', messageType: 'conversation', message: { conversation: text },
       messageTimestamp: Math.floor(Date.now() / 1000), ...extra,
     },
@@ -257,7 +265,7 @@ test('WhatsApp: mensaje desde un anuncio guarda ad_ref en el mensaje y ad_source
   assert.equal(contact.ad_source.ctwa_clid, 'clid-123');
   assert.ok(contact.ad_source.thumbnail.startsWith('data:image/jpeg;base64,'));
 
-  // El webhook guarda el anuncio en el contacto un instante antes que el mensaje: esperar también al mensaje
+  // El webhook guarda el mensaje y luego el anuncio en el contacto: esperar también al mensaje
   const msg = await until('mensaje con ad_ref', () => one(
     `SELECT m.ad_ref FROM conv_messages m JOIN conversations c ON c.id = m.conversation_id
      WHERE c.organization_id = $1 AND c.wa_chat_id = $2 AND m.ad_ref IS NOT NULL`, [org.orgId, `${phone}@s.whatsapp.net`]));
@@ -643,4 +651,135 @@ test('WhatsApp: caída y reconexión generan una notificación cada una para el 
   assert.equal((await one('SELECT session_status FROM wa_settings WHERE id = $1', [inst.id])).session_status, 'connected');
   const list = (await api(org.token, 'GET', '/notifications')).data;
   assert.ok(JSON.stringify(list).includes('WhatsApp reconectado'));
+});
+
+// ── Webhook de WhatsApp idempotente + reanudación atómica de wait_for_reply ──
+// Regla con "esperar respuesta" → notificación. El run se crea ya en espera (como lo deja el motor
+// tras el paso wait_for_reply) para el teléfono del lead.
+async function waitingRun(phone: string, title: string) {
+  const rule = await api(org.token, 'POST', '/automations', {
+    name: `Espera respuesta ${title}`, trigger_type: 'tag_added',
+    config: { trigger: { tag: `nunca-${rnd()}` }, steps: [
+      { id: 'w1', type: 'wait_for_reply' },
+      { id: 'n1', type: 'send_notification', notification_title: title, notification_body: '{{contact.first_name}} respondió' },
+    ] },
+  });
+  assert.equal(rule.status, 201, JSON.stringify(rule.data));
+  const contact = await api(org.token, 'POST', '/contacts', { first_name: 'Eva', last_name: 'Espera', phone });
+  assert.equal(contact.status, 201, JSON.stringify(contact.data));
+  const run = await one(
+    `INSERT INTO automation_runs (organization_id, automation_id, contact_id, contact_phone, status, current_step, waiting_since)
+     VALUES ($1, $2, $3, $4, 'waiting', 1, NOW()) RETURNING id`,
+    [org.orgId, rule.data.id, contact.data.id, phone]);
+  return { ruleId: rule.data.id as string, contactId: contact.data.id as string, runId: run.id as string };
+}
+const notifCount = async (title: string) =>
+  (await one('SELECT count(*)::int AS n FROM notifications WHERE organization_id = $1 AND title = $2', [org.orgId, title])).n;
+const runStatus = async (runId: string) => (await one('SELECT status FROM automation_runs WHERE id = $1', [runId])).status;
+
+test('WhatsApp: el mismo evento repetido (también en paralelo) guarda un mensaje, cuenta 1 no leído y reanuda la regla una vez', async () => {
+  const phone = `58412${rnd()}`;
+  const title = `Respuesta duplicada ${rnd()}`;
+  const { runId } = await waitingRun(phone, title);
+  const waId = `WA-DUP-${rnd()}${rnd()}`;
+
+  // Reenvío simultáneo y luego tardío del mismo mensaje (mismo key.id)
+  await Promise.all([waInbound(phone, 'Sí, me interesa', {}, waId), waInbound(phone, 'Sí, me interesa', {}, waId)]);
+  await until('run reanudado y completado', async () => (await runStatus(runId)) === 'completed');
+  await waInbound(phone, 'Sí, me interesa', {}, waId);
+  await until('notificación del paso posterior', async () => (await notifCount(title)) >= 1);
+  await new Promise(r => setTimeout(r, 500));   // margen por si el motor fuera a repetir
+
+  const conv = await one('SELECT * FROM conversations WHERE organization_id = $1 AND wa_chat_id = $2', [org.orgId, `${phone}@s.whatsapp.net`]);
+  const msgs = await one(`SELECT count(*)::int AS n FROM conv_messages WHERE conversation_id = $1 AND direction = 'inbound'`, [conv.id]);
+  assert.equal(msgs.n, 1, 'un solo mensaje guardado');
+  assert.equal(conv.unread_count, 1, 'el no leído se cuenta una vez');
+  assert.equal(await notifCount(title), 1, 'la regla se ejecuta una vez');
+  const news = wsEvents.filter(e => e.type === 'message:new' && e.data.message?.wa_message_id === waId);
+  assert.equal(news.length, 1, 'un solo evento message:new');
+});
+
+test('WhatsApp: dos mensajes simultáneos del mismo lead reanudan wait_for_reply una sola vez', async () => {
+  const phone = `58426${rnd()}`;
+  const title = `Respuesta simultánea ${rnd()}`;
+  const { runId } = await waitingRun(phone, title);
+
+  await Promise.all([waInbound(phone, 'Hola'), waInbound(phone, '¿Me llaman?')]);
+  await until('run completado', async () => (await runStatus(runId)) === 'completed');
+  await new Promise(r => setTimeout(r, 500));
+  assert.equal(await notifCount(title), 1, 'el paso posterior a la espera corre una vez');
+
+  const conv = await one('SELECT * FROM conversations WHERE organization_id = $1 AND wa_chat_id = $2', [org.orgId, `${phone}@s.whatsapp.net`]);
+  const msgs = await one(`SELECT count(*)::int AS n FROM conv_messages WHERE conversation_id = $1 AND direction = 'inbound'`, [conv.id]);
+  assert.equal(msgs.n, 2, 'los dos mensajes se guardan');
+  assert.equal(conv.unread_count, 2);
+});
+
+// ── Listados sin base64 pesado ──────────────────────────────────────────────
+test('Timeline sin media_url (data URI) y kanban sin miniatura del anuncio; el detalle sí la trae', async () => {
+  const phone = `58414${rnd()}`;
+  await waInbound(phone, 'Vengo del anuncio', { contextInfo: { externalAdReply: {
+    title: 'Anuncio pesado', sourceId: '777', sourceApp: 'instagram', thumbnail: Buffer.from('x'.repeat(5000)).toString('base64'),
+  } } });
+  const contact = await until('contacto con anuncio', () => one(
+    'SELECT * FROM contacts WHERE organization_id = $1 AND phone = $2 AND ad_source IS NOT NULL', [org.orgId, phone]));
+  const conv = await one('SELECT id FROM conversations WHERE organization_id = $1 AND wa_chat_id = $2', [org.orgId, `${phone}@s.whatsapp.net`]);
+
+  // Imagen con su media cacheada como data URI
+  const dataUri = `data:image/png;base64,${Buffer.from('png-falso').toString('base64')}`;
+  const img = await one(
+    `INSERT INTO conv_messages (conversation_id, organization_id, wa_message_id, direction, msg_type, media_url, media_mime)
+     VALUES ($1, $2, $3, 'inbound', 'image', $4, 'image/png') RETURNING id`, [conv.id, org.orgId, `WA-IMG-${rnd()}`, dataUri]);
+  const timeline = (await api(org.token, 'GET', `/conversations/${conv.id}/timeline`)).data;
+  const item = timeline.find((i: any) => i.type === 'message' && i.data.id === img.id);
+  assert.ok(item, 'la imagen está en el timeline');
+  assert.equal(item.data.media_url, undefined, 'sin media_url en el timeline');
+  assert.equal(item.data.media_mime, 'image/png');
+  assert.ok(!JSON.stringify(timeline).includes('data:image/png'));
+  const msgs = (await api(org.token, 'GET', `/conversations/${conv.id}/messages`)).data;
+  assert.ok(msgs.some((m: any) => m.id === img.id));
+  assert.ok(!JSON.stringify(msgs).includes('data:image/png'), 'tampoco en /messages');
+  // La media se sigue sirviendo por /api/media/:id
+  const media = await fetch(`${BASE}/api/media/${img.id}?t=${org.token}`);
+  assert.equal(media.status, 200);
+  assert.equal(Buffer.from(await media.arrayBuffer()).toString(), 'png-falso');
+
+  // Kanban: el lead (regla whatsapp_new_message) trae el anuncio sin la miniatura
+  const opp = await until('lead del anuncio', () => one(
+    'SELECT id FROM opportunities WHERE organization_id = $1 AND contact_id = $2', [org.orgId, contact.id]));
+  const board = (await api(org.token, 'POST', '/opportunities/query', { pipelineId: org.pipeline })).data;
+  const card = board.find((o: any) => o.id === opp.id);
+  assert.equal(card.contact_ad_source.title, 'Anuncio pesado');
+  assert.equal(card.contact_ad_source.thumbnail, undefined, 'sin miniatura en el listado');
+  const detail = (await api(org.token, 'GET', `/opportunities/${opp.id}`)).data;
+  assert.ok(detail.contact_ad_source.thumbnail.startsWith('data:image/jpeg;base64,'), 'el detalle trae la miniatura');
+  // Listado de contactos tampoco la trae; la ficha sí
+  const list = (await api(org.token, 'GET', `/contacts?q=${phone}`)).data.data;
+  const row = list.find((c: any) => c.id === contact.id);
+  assert.equal(row.ad_source.title, 'Anuncio pesado');
+  assert.equal(row.ad_source.thumbnail, null);
+  assert.ok((await api(org.token, 'GET', `/contacts/${contact.id}`)).data.ad_source.thumbnail);
+});
+
+// ── Polling de comentarios de IG: pausa ante el límite de llamadas de Meta ──
+test('Instagram: si Meta limita las llamadas (código 4) la cuenta se pausa unos ciclos en vez de insistir', async () => {
+  assert.ok(isRateLimitError({ code: 4 }) && isRateLimitError({ code: 17 }) && isRateLimitError({ code: 32 }) && isRateLimitError({ code: 613 }));
+  assert.ok(!isRateLimitError({ code: 190 }) && !isRateLimitError(undefined));
+  const igCalls = () => calls.filter(c => c.path.startsWith('/ig/') && c.path.includes(`access_token=${org.igToken}`)).length;
+
+  await db.query('UPDATE social_connections SET comments_polled_at = NOW() WHERE id = $1', [org.igConn]);
+  await pollIgComments(org.orgId);
+  const base = igCalls();
+  assert.ok(base >= 2, 'ciclo normal: lee la cuenta y sus posts');
+
+  igRateLimited.add(org.igToken);
+  await pollIgComments(org.orgId);              // Meta responde código 4 → pausa
+  const limited = igCalls();
+  assert.equal(limited, base + 1, 'deja de llamar en cuanto Meta limita');
+  await pollIgComments(org.orgId);              // ciclo en pausa: ninguna llamada
+  assert.equal(igCalls(), limited);
+
+  igRateLimited.delete(org.igToken);
+  await pollIgComments(org.orgId);              // pasada la pausa vuelve a consultar
+  assert.ok(igCalls() > limited);
 });
