@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
-import { X, Calendar, Video, Pencil, Trash2, MapPin, AlertTriangle, RefreshCw, UserPlus, Mail, Search, ChevronDown, Check } from 'lucide-vue-next';
+import { ref, watch, computed, onMounted } from 'vue';
+import { X, Calendar, Video, Pencil, Trash2, MapPin, AlertTriangle, RefreshCw, UserPlus, Mail } from 'lucide-vue-next';
 import { api } from '../api';
 import { useDialog } from '../composables/useDialog';
 import type { Appointment } from '../types';
 import Spinner from './Spinner.vue';
 import BizSelect from './BizSelect.vue';
+import AppointmentLead from './AppointmentLead.vue';
+import { useAuthStore } from '../stores/auth';
 
 // ─── Props / emits ────────────────────────────────────────────────────────────
 const { confirm } = useDialog();
@@ -96,40 +98,10 @@ function addFreeEmail() {
 function removeAttendee(i: number) { attendees.value.splice(i, 1); }
 function onAttendeeDrop() { setTimeout(() => { showAttendeeDrop.value = false; }, 200); }
 
-// ─── Opportunities ────────────────────────────────────────────────────────────
-const opportunities = ref<{ id: string; title: string }[]>([]);
-async function loadOpps() {
-  try { opportunities.value = await api.get<{ id: string; title: string }[]>('/opportunities'); }
-  catch { /* ignore */ }
-}
-
-const oppOpen   = ref(false);
-const oppSearch = ref('');
-const oppDropEl = ref<HTMLElement | null>(null);
-
-const selectedOppLabel = computed(() => {
-  if (!form.value.opportunity_id) return null;
-  return opportunities.value.find(o => o.id === form.value.opportunity_id)?.title ?? null;
-});
-
-const filteredOpps = computed(() => {
-  const q = oppSearch.value.trim().toLowerCase();
-  if (!q) return opportunities.value;
-  return opportunities.value.filter(o => o.title.toLowerCase().includes(q));
-});
-
-function selectOpp(id: string) {
-  form.value.opportunity_id = id;
-  oppOpen.value = false;
-  oppSearch.value = '';
-}
-
-function onOppOutsideClick(e: MouseEvent) {
-  if (oppDropEl.value && !oppDropEl.value.contains(e.target as Node)) {
-    oppOpen.value = false;
-    oppSearch.value = '';
-  }
-}
+// ─── Oportunidad (lead) ───────────────────────────────────────────────────────
+const auth = useAuthStore();
+// El contacto principal de la cita es el primer invitado que es contacto (igual que al guardar)
+const mainContact = computed(() => attendees.value.find(a => a.contact_id) ?? null);
 
 // ─── Form helpers ────────────────────────────────────────────────────────────
 function todayStr(): string {
@@ -242,14 +214,10 @@ watch(() => form.value.startTime, (val) => {
 });
 
 watch(() => props.modelValue, (open) => {
-  if (open) { resetForm(); loadSettings(); loadOpps(); }
+  if (open) { resetForm(); loadSettings(); }
 });
 onMounted(() => {
-  if (props.modelValue) { resetForm(); loadSettings(); loadOpps(); }
-  document.addEventListener('click', onOppOutsideClick, true);
-});
-onUnmounted(() => {
-  document.removeEventListener('click', onOppOutsideClick, true);
+  if (props.modelValue) { resetForm(); loadSettings(); }
 });
 
 // ─── Computed warnings ────────────────────────────────────────────────────────
@@ -514,69 +482,15 @@ function close() { emit('update:modelValue', false); }
               </div>
             </div>
 
-            <!-- Oportunidad -->
-            <div>
-              <label class="mb-1 block text-sm font-medium text-slate-700">Oportunidad</label>
-              <div ref="oppDropEl" class="relative">
-                <button
-                  type="button"
-                  class="flex w-full items-center justify-between rounded-lg border bg-white px-3 py-2 text-sm transition-all cursor-pointer"
-                  :class="oppOpen
-                    ? 'border-[#F69008] ring-2 ring-[#F69008]/20 text-slate-900'
-                    : 'border-slate-300 text-slate-700 hover:border-slate-400'"
-                  @click="oppOpen = !oppOpen"
-                >
-                  <span :class="selectedOppLabel ? 'text-slate-900' : 'text-slate-400'">
-                    {{ selectedOppLabel ?? 'Sin oportunidad' }}
-                  </span>
-                  <ChevronDown class="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200" :class="oppOpen ? 'rotate-180' : ''" />
-                </button>
-
-                <Transition name="opp-drop">
-                  <div v-if="oppOpen" class="absolute z-30 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-xl overflow-hidden">
-                    <!-- Búsqueda -->
-                    <div class="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
-                      <Search class="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                      <input
-                        v-model="oppSearch"
-                        type="text"
-                        placeholder="Buscar oportunidad…"
-                        autocomplete="off"
-                        class="flex-1 bg-transparent text-sm text-slate-700 placeholder-slate-400 outline-none"
-                      />
-                    </div>
-                    <!-- Opciones -->
-                    <div class="max-h-52 overflow-y-auto">
-                      <button
-                        type="button"
-                        class="flex w-full items-center gap-2 px-3 py-2.5 text-sm transition-colors cursor-pointer"
-                        :class="!form.opportunity_id ? 'bg-[#F69008]/8 font-medium text-[#9a5a00]' : 'text-slate-500 hover:bg-slate-50'"
-                        @click="selectOpp('')"
-                      >
-                        <Check v-if="!form.opportunity_id" class="h-3.5 w-3.5 shrink-0 text-[#F69008]" />
-                        <span v-else class="inline-block h-3.5 w-3.5 shrink-0" />
-                        Sin oportunidad
-                      </button>
-                      <button
-                        v-for="o in filteredOpps"
-                        :key="o.id"
-                        type="button"
-                        class="flex w-full items-center gap-2 px-3 py-2.5 text-sm transition-colors cursor-pointer"
-                        :class="form.opportunity_id === o.id ? 'bg-[#F69008]/8 font-medium text-[#9a5a00]' : 'text-slate-700 hover:bg-slate-50'"
-                        @click="selectOpp(o.id)"
-                      >
-                        <Check v-if="form.opportunity_id === o.id" class="h-3.5 w-3.5 shrink-0 text-[#F69008]" />
-                        <span v-else class="inline-block h-3.5 w-3.5 shrink-0" />
-                        <span class="truncate">{{ o.title }}</span>
-                      </button>
-                      <p v-if="filteredOpps.length === 0 && oppSearch" class="px-3 py-3 text-center text-xs text-slate-400">
-                        Sin resultados para "{{ oppSearch }}"
-                      </p>
-                    </div>
-                  </div>
-                </Transition>
-              </div>
-            </div>
+            <!-- Oportunidad (lead): ver, abrir, vincular, crear y cambiar de etapa -->
+            <AppointmentLead
+              v-if="modelValue && auth.can('opportunities')"
+              v-model="form.opportunity_id"
+              :appointment-id="props.appointment?.id"
+              :contact-id="mainContact?.contact_id"
+              :contact-name="mainContact?.name"
+              @changed="emit('saved')"
+            />
 
             <!-- Invitados -->
             <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
@@ -783,14 +697,6 @@ function close() { emit('update:modelValue', false); }
 </template>
 
 <style scoped>
-.opp-drop-enter-active, .opp-drop-leave-active {
-  transition: opacity 0.15s ease, transform 0.15s ease;
-}
-.opp-drop-enter-from, .opp-drop-leave-to {
-  opacity: 0;
-  transform: translateY(-4px);
-}
-
 .drawer-enter-active, .drawer-leave-active {
   transition: opacity 0.25s ease;
 }

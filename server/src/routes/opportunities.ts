@@ -142,6 +142,35 @@ opportunitiesRouter.post('/query', async (req, res) => {
   res.json(rows);
 });
 
+// ── Búsqueda ligera entre todos los pipelines (selector de lead en la cita) ──
+// Con contactId, las oportunidades de ese contacto salen primero (is_contact = true).
+opportunitiesRouter.get('/search', async (req, res) => {
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const contactId = typeof req.query.contactId === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.contactId)
+    ? req.query.contactId : null;
+  const params: unknown[] = [req.auth!.organizationId, contactId];
+  let where = 'o.organization_id = $1';
+  if (q) {
+    params.push(`%${q}%`);
+    where += ` AND (o.title ILIKE $3 OR o.business_name ILIKE $3 OR c.first_name ILIKE $3 OR c.last_name ILIKE $3 OR c.email ILIKE $3 OR c.phone ILIKE $3)`;
+  }
+  const rows = await query(
+    `SELECT o.id, o.title, o.status, o.value, o.pipeline_id, o.stage_id, o.contact_id,
+            p.name AS pipeline_name, s.name AS stage_name, s.color AS stage_color,
+            c.first_name AS contact_first_name, c.last_name AS contact_last_name,
+            (o.contact_id IS NOT DISTINCT FROM $2::uuid AND $2::uuid IS NOT NULL) AS is_contact
+     FROM opportunities o
+     JOIN pipelines p ON p.id = o.pipeline_id
+     LEFT JOIN pipeline_stages s ON s.id = o.stage_id
+     LEFT JOIN contacts c ON c.id = o.contact_id
+     WHERE ${where}
+     ORDER BY is_contact DESC, o.updated_at DESC
+     LIMIT 20`,
+    params,
+  );
+  res.json(rows);
+});
+
 // Devuelve una oportunidad con todos sus campos (para abrir el formulario).
 opportunitiesRouter.get('/:id', async (req, res) => {
   const row = await queryOne(`${BASE_SELECT} WHERE o.id = $1 AND o.organization_id = $2`, [req.params.id, req.auth!.organizationId]);
@@ -249,6 +278,8 @@ opportunitiesRouter.patch('/:id', async (req, res) => {
     [...values, req.params.id, orgId],
   );
   const full = await queryOne(`${BASE_SELECT} WHERE o.id = $1`, [req.params.id]);
+  // Tiempo real: Leads abierto en otra pestaña (p. ej. etapa cambiada desde una cita) recarga.
+  broadcast(orgId, 'opportunity:updated', { id: req.params.id });
 
   // Registrar actividad — detectar qué cambió
   const actor = await queryOne<{ name: string }>('SELECT name FROM users WHERE id=$1', [actorId]);

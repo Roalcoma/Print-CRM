@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { useDragAutoScroll } from '../composables/useDragAutoScroll';
 import { useWs } from '../composables/useWs';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useDialog } from '../composables/useDialog';
 import { Plus, Search, Filter, Download, Upload, X, Trash2, MoreVertical, ChevronDown, Check, UserRound, Briefcase, Kanban, StickyNote, UserPlus, Link2, SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-vue-next';
 import { api, getToken } from '../api';
@@ -37,6 +37,7 @@ const reloading = ref(false);
 
 // Personalización de tarjetas (persistida en la cuenta del usuario).
 const router = useRouter();
+const route = useRoute();
 const auth = useAuthStore();
 const cardConfig = computed<CardConfig>(() => normalizeCardConfig(auth.preferences.cardConfig));
 const showCustomize = ref(false);
@@ -231,16 +232,34 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+  openFromQuery();
 });
 watch(currentId, loadOpps);
+
+// Abrir una oportunidad por URL (/opportunities?open=<id>, p. ej. desde una cita del calendario):
+// cambia al pipeline de la oportunidad y abre su modal.
+async function openFromQuery() {
+  const id = route.query.open;
+  if (typeof id !== 'string' || !id) return;
+  router.replace({ query: { ...route.query, open: undefined } });
+  try {
+    const o = await api.get<Opportunity>(`/opportunities/${id}`);
+    if (o.pipeline_id !== currentId.value) currentId.value = o.pipeline_id;
+    await openEdit(o);
+  } catch { /* oportunidad inexistente o de otra cuenta */ }
+}
+watch(() => route.query.open, v => { if (v && !loading.value) openFromQuery(); });
 
 // Tiempo real: los leads que crean los bots/webhooks aparecen sin recargar la página
 const { on: onWs } = useWs();
 let wsReloadTimer: ReturnType<typeof setTimeout> | undefined;
-onWs('opportunity:new', () => {
+function scheduleReload() {
   clearTimeout(wsReloadTimer);
   wsReloadTimer = setTimeout(loadOpps, 500);
-});
+}
+onWs('opportunity:new', scheduleReload);
+// Cambios de etapa/estado hechos en otro sitio (p. ej. desde la cita en el calendario)
+onWs('opportunity:updated', scheduleReload);
 
 // Nº de condiciones realmente aplicadas (con valor válido).
 const activeFilterCount = computed(() => conditions.value.filter(
