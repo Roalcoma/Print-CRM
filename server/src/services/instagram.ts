@@ -72,3 +72,53 @@ export async function replyToIgComment(
 ): Promise<{ id?: string; error?: unknown }> {
   return post(`${igBase(accessToken)}/${commentId}/replies`, { message, access_token: accessToken }, 'replyToIgComment');
 }
+
+// Usuario de Instagram de quien escribe por DM (User Profile API). Solo funciona con personas que
+// han conversado con la cuenta; si Meta no lo da, null y se queda el id numérico.
+export async function getIgUsername(accessToken: string, igsid: string): Promise<string | null> {
+  try {
+    const url = `${igBase(accessToken)}/${igsid}?fields=username,name&access_token=${encodeURIComponent(accessToken)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    const json = await res.json() as { username?: string; name?: string; error?: unknown };
+    if (json.error) { console.warn(`[instagram] getIgUsername ${igsid}:`, JSON.stringify(json.error)); return null; }
+    return json.username ?? json.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Texto legible para un DM sin texto (foto, reel, publicación compartida, mención en historia…)
+type IgAttachment = { type?: string; payload?: { url?: string; title?: string } };
+export type IgDmMessage = {
+  text?: string;
+  attachments?: IgAttachment[];
+  reply_to?: { story?: { url?: string } };
+  is_deleted?: boolean;
+  is_unsupported?: boolean;
+};
+const ATTACHMENT_LABEL: Record<string, string> = {
+  image: '📷 Foto',
+  video: '🎬 Video',
+  audio: '🎤 Audio',
+  file: '📎 Archivo',
+  share: '🔗 Publicación compartida',
+  ig_post: '🔗 Publicación compartida',
+  ig_reel: '🎬 Reel compartido',
+  reel: '🎬 Reel compartido',
+  story_mention: '📍 Te mencionó en su historia',
+  animated_image: '🖼️ GIF',
+  sticker: '🖼️ Sticker',
+};
+export function describeIgMessage(msg: IgDmMessage): string | null {
+  if (msg.is_deleted) return '🗑️ Mensaje eliminado';
+  const parts: string[] = [];
+  for (const a of msg.attachments ?? []) {
+    const label = ATTACHMENT_LABEL[a.type ?? ''] ?? '📎 Adjunto';
+    const title = a.payload?.title ? ` · ${a.payload.title}` : '';
+    parts.push(a.payload?.url ? `${label}${title}: ${a.payload.url}` : `${label}${title}`);
+  }
+  if (msg.reply_to?.story) parts.unshift('💬 Respondió a tu historia');
+  if (msg.text) parts.push(msg.text);
+  if (!parts.length && msg.is_unsupported) return '📎 Contenido que Instagram no deja ver aquí (ábrelo en la app)';
+  return parts.length ? parts.join('\n') : null;
+}

@@ -54,6 +54,9 @@ function fakeReply(c: Call): [number, unknown] {
   }
   if (p.startsWith('/ig/v21.0/me?fields=username')) return [200, { id: 'me', username: 'cuenta_prueba' }];
   if (p.startsWith('/ig/v21.0/me/media?')) return [200, { data: [] }];
+  // User Profile API: usuario de quien escribe por DM
+  const prof = p.match(/^\/ig\/v21\.0\/(ig-att-[\w-]+)\?fields=username/);
+  if (prof) return [200, { id: prof[1], username: `usuario_${prof[1].slice(-4)}` }];
   if (p.startsWith('/ig/v21.0/me/messages')) {
     const to = c.body.recipient?.id;
     if (to && igRejected.has(to)) {
@@ -784,4 +787,29 @@ test('Instagram: si Meta limita las llamadas (código 4) la cuenta se pausa unos
   igRateLimited.delete(org.igToken);
   await pollIgComments(org.orgId);              // pasada la pausa vuelve a consultar
   assert.ok(igCalls() > limited);
+});
+
+test('Bandeja: DM de Instagram con adjunto se describe y muestra el usuario, no "Desconocido"', async () => {
+  const peer = `ig-att-${rnd()}`;
+  await metaWebhook({
+    object: 'instagram',
+    entry: [{ id: org.igBusinessId, time: Date.now(), messaging: [{ sender: { id: peer }, recipient: { id: org.igBusinessId }, timestamp: Date.now(),
+      message: { mid: `m-${rnd()}`, attachments: [{ type: 'ig_reel', payload: { url: 'https://cdn.example/reel.mp4', title: 'Mi reel' } }] } }] }],
+  });
+  const conv = await until('conversación con adjunto', () => one(
+    'SELECT * FROM conversations WHERE organization_id = $1 AND wa_chat_id = $2', [org.orgId, `ig_${peer}`]));
+  assert.equal(conv.display_name, `usuario_${peer.slice(-4)}`);
+  assert.match(conv.last_message_preview, /Reel compartido/);
+  const msg = await one('SELECT body FROM conv_messages WHERE conversation_id = $1', [conv.id]);
+  assert.match(msg.body, /^🎬 Reel compartido · Mi reel: https:\/\/cdn\.example\/reel\.mp4$/);
+
+  // Segundo mensaje: no vuelve a consultar el usuario
+  const before = callsTo(`/ig/v21.0/${peer}?fields=username`).length;
+  await metaWebhook({
+    object: 'instagram',
+    entry: [{ id: org.igBusinessId, time: Date.now(), messaging: [{ sender: { id: peer }, recipient: { id: org.igBusinessId }, timestamp: Date.now(),
+      message: { mid: `m-${rnd()}`, attachments: [{ type: 'image', payload: { url: 'https://cdn.example/f.jpg' } }] } }] }],
+  });
+  await until('segundo mensaje', () => one(`SELECT 1 FROM conv_messages WHERE conversation_id = $1 AND body LIKE '📷 Foto%'`, [conv.id]));
+  assert.equal(callsTo(`/ig/v21.0/${peer}?fields=username`).length, before);
 });

@@ -12,6 +12,7 @@ import { env } from '../env.ts';
 import { broadcast } from '../services/ws-manager.ts';
 import { handleIgComment, captureIgPhone, findIgContact } from '../services/ig-comments.ts';
 import { upsertSocialConversation } from '../services/social-inbox.ts';
+import { describeIgMessage, getIgUsername, type IgDmMessage } from '../services/instagram.ts';
 import { fireContactCreatedTrigger } from '../services/automation-engine.ts';
 
 export const socialRouter = Router();
@@ -438,12 +439,16 @@ metaWebhookRouter.post('/webhook', verifyMetaSignature, async (req, res) => {
         const peerId = (isEcho ? messaging.recipient?.id : messaging.sender?.id) ?? '';
         if (!peerId || peerId === pageId || peerId === conn.instagram_business_id) continue;
 
-        const text = messaging.message.text ?? null;
+        // Fotos, reels, publicaciones compartidas o menciones llegan sin texto: se describen
+        const text = describeIgMessage(messaging.message);
         const mid = messaging.message.mid ?? peerId + '_' + messaging.timestamp;
 
-        // Si viene de alguien que comentó, se vincula a su contacto y muestra su nombre
+        // Si viene de alguien que comentó, se vincula a su contacto y muestra su nombre;
+        // si no, se pide su usuario a Instagram (solo la primera vez)
         const igContact = dmChannel === 'instagram_dm' ? await findIgContact(orgId, peerId) : null;
-        const displayName = igContact ? [igContact.first_name, igContact.last_name].filter(Boolean).join(' ') || peerId : peerId;
+        const displayName = igContact
+          ? [igContact.first_name, igContact.last_name].filter(Boolean).join(' ') || peerId
+          : (dmChannel === 'instagram_dm' ? await igDisplayName(orgId, conn.access_token, peerId) : peerId);
         await upsertSocialConversation({
           orgId, socialAccountId: conn.id, channel: dmChannel, chatId: `${dmPrefix}_${peerId}`,
           displayName, text, mid, direction: isEcho ? 'outbound' : 'inbound', contactId: igContact?.id,
@@ -464,11 +469,13 @@ metaWebhookRouter.post('/webhook', verifyMetaSignature, async (req, res) => {
           if (msg.sender?.id === pageId || msg.sender?.id === conn.instagram_business_id) continue;
 
           const senderId = msg.sender?.id ?? '';
-          const text = msg.message.text ?? null;
+          const text = describeIgMessage(msg.message);
           const mid = msg.message.mid ?? senderId + '_' + msg.timestamp;
 
           const igContact = await findIgContact(orgId, senderId);
-          const displayName = igContact ? [igContact.first_name, igContact.last_name].filter(Boolean).join(' ') || senderId : senderId;
+          const displayName = igContact
+            ? [igContact.first_name, igContact.last_name].filter(Boolean).join(' ') || senderId
+            : await igDisplayName(orgId, conn.access_token, senderId);
           await upsertSocialConversation({
             orgId, socialAccountId: conn.id, channel: 'instagram_dm', chatId: `ig_${senderId}`,
             displayName, text, mid, direction: 'inbound', contactId: igContact?.id,
@@ -528,6 +535,17 @@ function verifyMetaSignature(req: express.Request & { rawBody?: Buffer }, res: e
   next();
 }
 
+// Nombre a mostrar de un DM de Instagram sin contacto: el guardado en la conversación o, si solo
+// hay el id numérico, el usuario que devuelva Instagram (una consulta por conversación nueva)
+async function igDisplayName(orgId: string, accessToken: string, igsid: string): Promise<string> {
+  const prev = (await pool.query<{ display_name: string | null }>(
+    `SELECT display_name FROM conversations WHERE organization_id = $1 AND wa_chat_id = $2`,
+    [orgId, `ig_${igsid}`],
+  )).rows[0]?.display_name;
+  if (prev && !/^\d+$/.test(prev)) return prev;
+  return (await getIgUsername(accessToken, igsid)) ?? igsid;
+}
+
 // ─── Tipos Meta Webhook ─────────────────────────────────────────────────────
 interface MetaWebhookBody {
   object: string;
@@ -536,7 +554,7 @@ interface MetaWebhookBody {
     messaging?: Array<{
       sender?: { id: string };
       recipient?: { id: string };
-      message?: { mid: string; text?: string; is_echo?: boolean };
+      message?: IgDmMessage & { mid: string; is_echo?: boolean };
       timestamp?: number;
     }>;
     changes?: Array<{
@@ -548,7 +566,7 @@ interface MetaWebhookBody {
 
 interface IgMessageChange {
   sender?: { id: string };
-  message?: { mid: string; text?: string };
+  message?: IgDmMessage & { mid: string };
   timestamp?: number;
 }
 
