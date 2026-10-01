@@ -10,7 +10,7 @@ import {
   getGoogleEvents,
 } from '../integrations/google-calendar.ts';
 import { createZoomMeeting, deleteZoomMeeting } from '../integrations/zoom.ts';
-import { fireAppointmentBookedTrigger } from '../services/automation-engine.ts';
+import { fireAppointmentBookedTrigger, rescheduleAppointmentWaits, appointmentTimeFields } from '../services/automation-engine.ts';
 
 export const appointmentsRouter = Router();
 
@@ -210,6 +210,26 @@ const appointmentSchema = z.object({
 
 const updateSchema = appointmentSchema.partial();
 
+// ── Helper: zona horaria de la cita ─────────────────────────────────────────
+function isValidTimezone(tz: string | null | undefined): tz is string {
+  if (!tz) return false;
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch { return false; }
+}
+
+// Zona con la que se guardan la cita y se formatean sus recordatorios. Preferencia: la del calendario →
+// la que envió el cliente (la del navegador) → la de la organización (Ajustes → Negocio) →
+// 'America/Caracas' como último recurso (es el DEFAULT de esas columnas en la BD).
+async function resolveAppointmentTimezone(orgId: string, calendarId: string | null | undefined, sent: string | null | undefined): Promise<string> {
+  if (calendarId) {
+    const cal = await queryOne<{ timezone: string | null }>('SELECT timezone FROM calendars WHERE id=$1 AND organization_id=$2', [calendarId, orgId]);
+    if (isValidTimezone(cal?.timezone)) return cal.timezone;
+  }
+  if (isValidTimezone(sent)) return sent;
+  const org = await queryOne<{ timezone: string | null }>('SELECT timezone FROM organizations WHERE id=$1', [orgId]);
+  if (isValidTimezone(org?.timezone)) return org.timezone;
+  return 'America/Caracas';
+}
+
 // ── Helper: generar instancias recurrentes ───────────────────────────────────
 function generateRecurrenceDates(
   first: Date,
@@ -268,7 +288,7 @@ appointmentsRouter.post('/', async (req, res) => {
   ]);
   if (bad) return res.status(400).json({ error: `${bad} no pertenece a tu cuenta` });
   const provider = d.provider ?? 'manual';
-  const timezone = d.timezone ?? 'America/Caracas';
+  const timezone = await resolveAppointmentTimezone(orgId, d.calendar_id, d.timezone);
 
   let meetingUrl:      string | null = d.meeting_url ?? null;
   let providerEventId: string | null = null;
@@ -439,9 +459,7 @@ appointmentsRouter.post('/', async (req, res) => {
     const token = (await queryOne<{ cancel_token: string | null }>('SELECT cancel_token FROM appointments WHERE id=$1', [row.id]))?.cancel_token;
     fireAppointmentBookedTrigger(orgId, d.contact_id, {
       appointment_id:  row.id,
-      start_at:        start.toISOString(),
-      start_date:      start.toLocaleDateString('es', { timeZone: timezone, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
-      start_time:      start.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: timezone }),
+      ...appointmentTimeFields(start, timezone),
       meeting_url:     meetingUrl ?? d.location ?? cal?.location ?? '',
       reschedule_link: cal?.slug && token ? `${process.env.PUBLIC_URL ?? ''}/book/${cal.slug}/manage/${token}` : '',
     }, 'manual').catch(console.error);
@@ -462,19 +480,26 @@ appointmentsRouter.patch('/:id', async (req, res) => {
 
   const existing = await queryOne<{
     status: string; contact_id: string | null; opportunity_id: string | null; title: string;
+    calendar_id: string | null; start_at: Date;
   }>(
-    'SELECT status, contact_id, opportunity_id, title FROM appointments WHERE id=$1 AND organization_id=$2',
+    'SELECT status, contact_id, opportunity_id, title, calendar_id, start_at FROM appointments WHERE id=$1 AND organization_id=$2',
     [req.params.id, orgId],
   );
   if (!existing) return res.status(404).json({ error: 'Cita no encontrada' });
   const bad = await foreignRef(orgId, [
     ['contacts', (d as { contact_id?: string | null }).contact_id, 'El contacto'],
     ['opportunities', (d as { opportunity_id?: string | null }).opportunity_id, 'La oportunidad'],
+    ['calendars', d.calendar_id, 'El calendario'],
   ]);
   if (bad) return res.status(400).json({ error: `${bad} no pertenece a tu cuenta` });
 
+  // Si cambia el calendario o llega una zona, se vuelve a resolver (el calendario manda)
+  if ('timezone' in d || 'calendar_id' in d) {
+    d.timezone = await resolveAppointmentTimezone(orgId, 'calendar_id' in d ? d.calendar_id : existing.calendar_id, d.timezone);
+  }
+
   const COLS = ['title','description','start_at','end_at','timezone','is_all_day','contact_id',
-                'opportunity_id','location','meeting_url','provider','status',
+                'opportunity_id','location','meeting_url','provider','status','calendar_id',
                 'recurrence_type','recurrence_days','recurrence_end_at','recurrence_count'] as const;
   type Col = typeof COLS[number];
   const cols = COLS.filter(c => c in d) as Col[];
@@ -491,6 +516,12 @@ appointmentsRouter.patch('/:id', async (req, res) => {
      WHERE id = $${values.length + 1} AND organization_id = $${values.length + 2}`,
     [...values, req.params.id, orgId],
   );
+
+  // Reagendada, cancelada o con otra zona: reprogramar (o cancelar) los recordatorios pendientes
+  const moved = d.start_at !== undefined && new Date(d.start_at).getTime() !== new Date(existing.start_at).getTime();
+  if (moved || ('status' in d && d.status !== existing.status) || 'timezone' in d) {
+    await rescheduleAppointmentWaits(orgId, req.params.id as string);
+  }
 
   // Log status change
   if ('status' in d && d.status && d.status !== existing.status) {
@@ -557,5 +588,7 @@ appointmentsRouter.delete('/:id', async (req, res) => {
   }
 
   await query('DELETE FROM appointments WHERE id=$1 AND organization_id=$2', [req.params.id, orgId]);
+  // Sin cita no hay recordatorio: cancelar los runs que la esperaban
+  await rescheduleAppointmentWaits(orgId, req.params.id as string);
   res.status(204).end();
 });

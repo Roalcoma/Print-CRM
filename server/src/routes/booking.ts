@@ -1,11 +1,23 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
 import { getGoogleFreebusy } from '../integrations/google-calendar.ts';
 import { ensureGoogleMeet } from '../services/google-meet.ts';
-import { fireAppointmentBookedTrigger, fireContactCreatedTrigger } from '../services/automation-engine.ts';
+import { fireAppointmentBookedTrigger, fireContactCreatedTrigger, rescheduleAppointmentWaits, appointmentTimeFields } from '../services/automation-engine.ts';
 
 export const bookingRouter = Router();
+
+// Rate limit por IP para reservar y reagendar (rutas públicas sin login): evita llenar la agenda
+// con reservas falsas y probar tokens de gestión a fuerza bruta. req.ip respeta `trust proxy` de index.ts.
+// BOOKING_RATE_LIMIT permite ajustar el máximo por hora (por defecto 10).
+const publicBookingLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: Number(process.env.BOOKING_RATE_LIMIT) || 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas solicitudes de reserva desde tu conexión. Inténtalo de nuevo en una hora.' },
+});
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -50,6 +62,7 @@ async function computeSlots(
   fromDate: Date,
   toDate: Date,
   googleBusy: Array<{ start: string; end: string }> = [],
+  excludeAppointmentId: string | null = null, // al reagendar, la propia cita no ocupa su hueco
 ): Promise<Array<{ date: string; times: string[] }>> {
 
   const availability = await query<{
@@ -67,8 +80,8 @@ async function computeSlots(
   const booked = await query<{ start_at: string; end_at: string }>(
     `SELECT start_at, end_at FROM appointments
      WHERE calendar_id=$1 AND status IN ('scheduled','blocked')
-       AND start_at < $3 AND end_at > $2`,
-    [calendarId, fromDate, toDate],
+       AND start_at < $3 AND end_at > $2 AND id IS DISTINCT FROM $4`,
+    [calendarId, fromDate, toDate, excludeAppointmentId],
   );
 
   const result: Array<{ date: string; times: string[] }> = [];
@@ -126,6 +139,66 @@ async function computeSlots(
   return result;
 }
 
+// Horas ocupadas en Google Calendar del dueño del calendario (si lo tiene conectado)
+async function loadGoogleBusy(userId: string, orgId: string, from: Date, to: Date): Promise<Array<{ start: string; end: string }>> {
+  const gcalSettings = await queryOne<{
+    google_refresh_token: string | null;
+    google_calendar_id: string | null;
+  }>('SELECT google_refresh_token, google_calendar_id FROM calendar_settings WHERE user_id=$1 AND organization_id=$2', [userId, orgId]);
+  if (!gcalSettings?.google_refresh_token) return [];
+  try {
+    return await getGoogleFreebusy({
+      refreshToken: gcalSettings.google_refresh_token,
+      calendarId: gcalSettings.google_calendar_id ?? 'primary',
+      timeMin: from,
+      timeMax: to,
+    });
+  } catch { return []; /* si falla Google, continuar sin freebusy */ }
+}
+
+// Ventana reservable de un calendario: desde ahora + aviso mínimo hasta ahora + días de anticipación
+function bookingWindow(cal: { min_notice_hours: number; max_advance_days: number }) {
+  const now = new Date();
+  return { from: addMinutes(now, cal.min_notice_hours * 60), to: addMinutes(now, cal.max_advance_days * 24 * 60) };
+}
+
+type BookableCalendar = {
+  id: string; user_id: string; organization_id: string; timezone: string;
+  duration_minutes: number; buffer_minutes: number; min_notice_hours: number; max_advance_days: number;
+};
+
+// Valida que start_at sea uno de los huecos que ofrece la página pública (mismo cálculo que el GET):
+// ni en el pasado ni antes del aviso mínimo (400), dentro de los días de anticipación (400), sin choque
+// con otra cita o bloqueo (409) y dentro del horario del calendario con su duración/buffer y Google (400).
+// `current` es la cita que se reagenda (no choca consigo misma). Devuelve el error o null si es válido.
+async function validateSlot(
+  cal: BookableCalendar,
+  startAt: Date,
+  current: { id: string; start_at: string | Date; end_at: string | Date } | null = null,
+): Promise<{ status: number; error: string } | null> {
+  const { from, to } = bookingWindow(cal);
+  if (startAt <= from) return { status: 400, error: 'El horario seleccionado ya no está disponible' };
+  if (startAt > to) return { status: 400, error: `Solo se puede reservar con hasta ${cal.max_advance_days} días de anticipación` };
+
+  const conflict = await queryOne(
+    `SELECT id FROM appointments
+     WHERE calendar_id=$1 AND status IN ('scheduled','blocked') AND id IS DISTINCT FROM $4
+       AND start_at < $3 AND end_at > $2`,
+    [cal.id, startAt, addMinutes(startAt, cal.duration_minutes), current?.id ?? null],
+  );
+  if (conflict) return { status: 409, error: 'Ese horario ya no está disponible, elige otro' };
+
+  let busy = await loadGoogleBusy(cal.user_id, cal.organization_id, from, to);
+  if (current) {
+    // El evento de Google de la propia cita no bloquea su reagendado
+    const cs = new Date(current.start_at).getTime(), ce = new Date(current.end_at).getTime();
+    busy = busy.filter(b => !(new Date(b.start).getTime() === cs && new Date(b.end).getTime() === ce));
+  }
+  const slots = await computeSlots(cal.id, cal.duration_minutes, cal.buffer_minutes, cal.timezone, from, to, busy, current?.id ?? null);
+  const ok = slots.some(d => d.times.some(t => new Date(t).getTime() === startAt.getTime()));
+  return ok ? null : { status: 400, error: 'Ese horario no está dentro de los horarios disponibles del calendario, elige otro' };
+}
+
 // ── GET /api/public/book/:slug  ──────────────────────────────────────────────
 bookingRouter.get('/:slug', async (req, res) => {
   const cal = await queryOne<{
@@ -148,27 +221,10 @@ bookingRouter.get('/:slug', async (req, res) => {
     'SELECT name FROM users WHERE id=$1', [cal.user_id],
   );
 
-  const now       = new Date();
-  const fromDate  = addMinutes(now, cal.min_notice_hours * 60);
-  const toDate    = addMinutes(now, cal.max_advance_days * 24 * 60);
+  const { from: fromDate, to: toDate } = bookingWindow(cal);
 
   // Obtener freebusy de Google si está conectado
-  let googleBusy: Array<{ start: string; end: string }> = [];
-  const gcalSettings = await queryOne<{
-    google_refresh_token: string | null;
-    google_calendar_id: string | null;
-  }>('SELECT google_refresh_token, google_calendar_id FROM calendar_settings WHERE user_id=$1 AND organization_id=$2', [cal.user_id, cal.organization_id]);
-
-  if (gcalSettings?.google_refresh_token) {
-    try {
-      googleBusy = await getGoogleFreebusy({
-        refreshToken: gcalSettings.google_refresh_token,
-        calendarId: gcalSettings.google_calendar_id ?? 'primary',
-        timeMin: fromDate,
-        timeMax: toDate,
-      });
-    } catch { /* si falla Google, continuar sin freebusy */ }
-  }
+  const googleBusy = await loadGoogleBusy(cal.user_id, cal.organization_id, fromDate, toDate);
 
   const slots = await computeSlots(
     cal.id, cal.duration_minutes, cal.buffer_minutes,
@@ -203,14 +259,14 @@ const bookSchema = z.object({
   contact_ref: z.string().uuid().optional().nullable(),
 });
 
-bookingRouter.post('/:slug', async (req, res) => {
+bookingRouter.post('/:slug', publicBookingLimiter, async (req, res) => {
   const parsed = bookSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
 
   const cal = await queryOne<{
     id: string; slug: string; name: string; organization_id: string; user_id: string;
     timezone: string; booking_enabled: boolean;
-    duration_minutes: number; buffer_minutes: number; min_notice_hours: number;
+    duration_minutes: number; buffer_minutes: number; min_notice_hours: number; max_advance_days: number;
     location: string | null; location_type: string | null;
   }>(
     'SELECT * FROM calendars WHERE slug=$1 AND is_active=true',
@@ -223,21 +279,10 @@ bookingRouter.post('/:slug', async (req, res) => {
   const d       = parsed.data;
   const startAt = new Date(d.start_at);
   const endAt   = addMinutes(startAt, cal.duration_minutes);
-  const now     = new Date();
 
-  // Validar que el slot no esté en el pasado
-  if (startAt <= addMinutes(now, cal.min_notice_hours * 60)) {
-    return res.status(400).json({ error: 'El horario seleccionado ya no está disponible' });
-  }
-
-  // Verificar colisión
-  const conflict = await queryOne(
-    `SELECT id FROM appointments
-     WHERE calendar_id=$1 AND status IN ('scheduled','blocked')
-       AND start_at < $3 AND end_at > $2`,
-    [cal.id, startAt, endAt],
-  );
-  if (conflict) return res.status(409).json({ error: 'Ese horario ya no está disponible, elige otro' });
+  // Debe ser uno de los huecos que ofrece la página: futuro, en ventana, libre y en horario
+  const invalid = await validateSlot(cal, startAt);
+  if (invalid) return res.status(invalid.status).json({ error: invalid.error });
 
   // Buscar o crear contacto. Orden: enlace personalizado (?c=) → email → teléfono → nuevo.
   const nameParts = d.name.trim().split(/\s+/);
@@ -337,9 +382,7 @@ bookingRouter.post('/:slug', async (req, res) => {
     const publicUrl = process.env.PUBLIC_URL ?? '';
     fireAppointmentBookedTrigger(cal.organization_id, contact.id, {
       appointment_id:  appt.id,
-      start_at:        startAt.toISOString(),
-      start_date:      startAt.toLocaleDateString('es', { timeZone: cal.timezone, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
-      start_time:      formatTime(startAt, cal.timezone),
+      ...appointmentTimeFields(startAt, cal.timezone),
       meeting_url:     meetLink ?? cal.location ?? '',
       reschedule_link: `${publicUrl}/book/${cal.slug}/manage/${appt.cancel_token}`,
     }).catch(console.error);
@@ -387,6 +430,8 @@ bookingRouter.post('/:slug/cancel/:token', async (req, res) => {
   if (appt.status === 'cancelled') return res.json({ success: true, message: 'La cita ya estaba cancelada' });
 
   await query("UPDATE appointments SET status='cancelled', updated_at=now() WHERE id=$1", [appt.id]);
+  // Sin recordatorios para una cita cancelada
+  await rescheduleAppointmentWaits(appt.organization_id, appt.id);
 
   // Cancelar en Google si aplica
   if (appt.provider === 'google' && appt.provider_event_id) {
@@ -409,17 +454,17 @@ bookingRouter.post('/:slug/cancel/:token', async (req, res) => {
 });
 
 // ── POST /api/public/book/:slug/reschedule/:token  ───────────────────────────
-bookingRouter.post('/:slug/reschedule/:token', async (req, res) => {
+bookingRouter.post('/:slug/reschedule/:token', publicBookingLimiter, async (req, res) => {
   const parsed = z.object({ start_at: z.string().datetime({ offset: true }) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Fecha inválida' });
 
   const appt = await queryOne<{
     id: string; status: string; provider: string; provider_event_id: string | null;
     user_id: string; organization_id: string; title: string; description: string | null;
-    meeting_url: string | null; calendar_id: string;
+    meeting_url: string | null; calendar_id: string; start_at: string; end_at: string;
   }>(
     `SELECT a.id, a.status, a.provider, a.provider_event_id, a.user_id, c.organization_id,
-            a.title, a.description, a.meeting_url, a.calendar_id
+            a.title, a.description, a.meeting_url, a.calendar_id, a.start_at, a.end_at
      FROM appointments a
      JOIN calendars c ON c.id = a.calendar_id
      WHERE c.slug=$1 AND a.cancel_token=$2`,
@@ -428,30 +473,26 @@ bookingRouter.post('/:slug/reschedule/:token', async (req, res) => {
   if (!appt) return res.status(404).json({ error: 'Cita no encontrada' });
   if (appt.status === 'cancelled') return res.status(400).json({ error: 'No se puede reagendar una cita cancelada' });
 
-  const cal = await queryOne<{ duration_minutes: number; timezone: string; min_notice_hours: number }>(
-    'SELECT duration_minutes, timezone, min_notice_hours FROM calendars WHERE id=$1',
+  const cal = await queryOne<BookableCalendar>(
+    `SELECT id, user_id, organization_id, timezone, duration_minutes, buffer_minutes, min_notice_hours, max_advance_days
+     FROM calendars WHERE id=$1`,
     [appt.calendar_id],
   );
   if (!cal) return res.status(404).json({ error: 'Calendario no encontrado' });
 
   const newStart = new Date(parsed.data.start_at);
   const newEnd   = addMinutes(newStart, cal.duration_minutes);
-  const now      = new Date();
 
-  if (newStart <= addMinutes(now, cal.min_notice_hours * 60))
-    return res.status(400).json({ error: 'El horario seleccionado ya no está disponible' });
-
-  const conflict = await queryOne(
-    `SELECT id FROM appointments WHERE calendar_id=$1 AND status='scheduled' AND id<>$2
-       AND start_at < $4 AND end_at > $3`,
-    [appt.calendar_id, appt.id, newStart, newEnd],
-  );
-  if (conflict) return res.status(409).json({ error: 'Ese horario ya no está disponible, elige otro' });
+  // Mismas reglas que al reservar (las horas bloqueadas también ocupan el hueco)
+  const invalid = await validateSlot(cal, newStart, appt);
+  if (invalid) return res.status(invalid.status).json({ error: invalid.error });
 
   await query(
     "UPDATE appointments SET start_at=$1, end_at=$2, updated_at=now() WHERE id=$3",
     [newStart.toISOString(), newEnd.toISOString(), appt.id],
   );
+  // Recordatorios pendientes ("X min antes") pasan a la hora nueva
+  await rescheduleAppointmentWaits(appt.organization_id, appt.id);
 
   // Actualizar en Google
   if (appt.provider === 'google' && appt.provider_event_id) {
