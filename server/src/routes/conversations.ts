@@ -6,6 +6,7 @@ import { belongsToOrg } from '../tenant.ts';
 import { evolutionFor } from '../services/evolution.ts';
 import { broadcast } from '../services/ws-manager.ts';
 import { sendIgDm, isOutsideWindow } from '../services/instagram.ts';
+import { normalizePhone } from '../phone.ts';
 
 export const conversationsRouter = Router();
 
@@ -360,7 +361,9 @@ conversationsRouter.post('/', async (req, res) => {
 
     // Formato chatId de WA: código de país + número + @s.whatsapp.net (sin +)
     // Evolution API siempre entrega JIDs con @s.whatsapp.net; usar @c.us causaría duplicados.
-    const waPhone = phone.replace(/\D/g, '');
+    // Normalizado como en phone.ts: "(407) 555-1234" → 14075551234 (el mismo JID que llega por webhook)
+    const waPhone = normalizePhone(phone);
+    if (!waPhone) return res.status(400).json({ error: 'Número de teléfono inválido' });
     const chatId = `${waPhone}@s.whatsapp.net`;
 
     // Si ya existe, vincular el contacto solo si no tenía uno asignado

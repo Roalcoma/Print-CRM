@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { query, queryOne } from '../db.ts';
+import type pg from 'pg';
+import { pool, query, queryOne } from '../db.ts';
+import { findContactByPhone, lockPhone, withTransaction } from '../phone.ts';
 import { getGoogleFreebusy } from '../integrations/google-calendar.ts';
 import { ensureGoogleMeet } from '../services/google-meet.ts';
 import { fireAppointmentBookedTrigger, fireContactCreatedTrigger, rescheduleAppointmentWaits, appointmentTimeFields } from '../services/automation-engine.ts';
@@ -186,7 +188,7 @@ async function validateSlot(
        AND start_at < $3 AND end_at > $2`,
     [cal.id, startAt, addMinutes(startAt, cal.duration_minutes), current?.id ?? null],
   );
-  if (conflict) return { status: 409, error: 'Ese horario ya no está disponible, elige otro' };
+  if (conflict) return { status: 409, error: SLOT_TAKEN };
 
   let busy = await loadGoogleBusy(cal.user_id, cal.organization_id, from, to);
   if (current) {
@@ -197,6 +199,27 @@ async function validateSlot(
   const slots = await computeSlots(cal.id, cal.duration_minutes, cal.buffer_minutes, cal.timezone, from, to, busy, current?.id ?? null);
   const ok = slots.some(d => d.times.some(t => new Date(t).getTime() === startAt.getTime()));
   return ok ? null : { status: 400, error: 'Ese horario no está dentro de los horarios disponibles del calendario, elige otro' };
+}
+
+const SLOT_TAKEN = 'Ese horario ya no está disponible, elige otro';
+
+// Dentro de una transacción: toma el candado del calendario (se libera en COMMIT/ROLLBACK) y comprueba
+// que el hueco siga libre, con el mismo buffer que computeSlots. Así dos reservas/reagendados simultáneos
+// no ocupan el mismo hueco. Solo afecta a la reserva pública: las citas que se crean desde el CRM
+// (routes/appointments.ts) pueden solaparse a propósito y no pasan por aquí. Devuelve true si está libre.
+async function lockCalendarAndCheck(
+  tx: pg.PoolClient, cal: { id: string; buffer_minutes: number }, startAt: Date, endAt: Date, excludeId: string | null = null,
+): Promise<boolean> {
+  await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`calendar-booking:${cal.id}`]);
+  const buffer = cal.buffer_minutes ?? 0;
+  const r = await tx.query(
+    `SELECT 1 FROM appointments
+     WHERE calendar_id=$1 AND status IN ('scheduled','blocked') AND id IS DISTINCT FROM $4
+       AND start_at < $3 AND end_at + make_interval(mins => $5) > $2
+     LIMIT 1`,
+    [cal.id, startAt, addMinutes(endAt, buffer), excludeId, buffer],
+  );
+  return r.rowCount === 0;
 }
 
 // ── GET /api/public/book/:slug  ──────────────────────────────────────────────
@@ -284,91 +307,100 @@ bookingRouter.post('/:slug', publicBookingLimiter, async (req, res) => {
   const invalid = await validateSlot(cal, startAt);
   if (invalid) return res.status(invalid.status).json({ error: invalid.error });
 
-  // Buscar o crear contacto. Orden: enlace personalizado (?c=) → email → teléfono → nuevo.
+  // Todo en una transacción con candado por calendario: dos reservas simultáneas al mismo hueco pasan
+  // validateSlot a la vez, pero aquí se serializan y la segunda ve la cita de la primera → 409.
   const nameParts = d.name.trim().split(/\s+/);
-  const phoneDigits = d.phone?.replace(/\D/g, '') ?? '';
-  let contact: { id: string } | null = null;
+  const booked = await withTransaction(pool, async tx => {
+    if (!(await lockCalendarAndCheck(tx, cal, startAt, endAt))) return null;
 
-  if (d.contact_ref) {
-    const ref = await queryOne<{ id: string; email: string | null; phone: string | null; ig_sender_id: string | null }>(
-      'SELECT id, email, phone, ig_sender_id FROM contacts WHERE id=$1 AND organization_id=$2',
-      [d.contact_ref, cal.organization_id],
-    );
-    if (ref) {
-      // Completa lo que falte; si vino de Instagram su nombre era el usuario de IG → nombre real
-      await query(
-        `UPDATE contacts SET
-           email      = COALESCE(NULLIF(email, ''), $2),
-           phone      = COALESCE(NULLIF(phone, ''), $3),
-           first_name = CASE WHEN $4 THEN $5 ELSE first_name END,
-           last_name  = CASE WHEN $4 THEN $6 ELSE last_name END,
-           updated_at = NOW()
-         WHERE id = $1`,
-        [ref.id, d.email, d.phone ?? null, ref.ig_sender_id !== null, nameParts[0], nameParts.slice(1).join(' ') || null],
-      );
-      contact = ref;
+    // Buscar o crear contacto. Orden: enlace personalizado (?c=) → email → teléfono → nuevo.
+    // Candado por teléfono: no se duplica con un WhatsApp/reserva simultáneos del mismo número.
+    await lockPhone(tx, cal.organization_id, d.phone);
+    let contact: { id: string } | null = null;
+    let created = false;
+
+    if (d.contact_ref) {
+      const ref = (await tx.query<{ id: string; email: string | null; phone: string | null; ig_sender_id: string | null }>(
+        'SELECT id, email, phone, ig_sender_id FROM contacts WHERE id=$1 AND organization_id=$2',
+        [d.contact_ref, cal.organization_id],
+      )).rows[0];
+      if (ref) {
+        // Completa lo que falte; si vino de Instagram su nombre era el usuario de IG → nombre real
+        await tx.query(
+          `UPDATE contacts SET
+             email      = COALESCE(NULLIF(email, ''), $2),
+             phone      = COALESCE(NULLIF(phone, ''), $3),
+             first_name = CASE WHEN $4 THEN $5 ELSE first_name END,
+             last_name  = CASE WHEN $4 THEN $6 ELSE last_name END,
+             updated_at = NOW()
+           WHERE id = $1`,
+          [ref.id, d.email, d.phone ?? null, ref.ig_sender_id !== null, nameParts[0], nameParts.slice(1).join(' ') || null],
+        );
+        contact = ref;
+      }
     }
-  }
-  if (!contact) {
-    contact = await queryOne<{ id: string }>(
-      'SELECT id FROM contacts WHERE lower(email)=lower($1) AND organization_id=$2 ORDER BY created_at LIMIT 1',
-      [d.email, cal.organization_id],
-    );
-  }
-  if (!contact && phoneDigits.length >= 7) {
-    // Compara por los últimos 10 dígitos para tolerar códigos de país y formatos distintos
-    const byPhone = await queryOne<{ id: string; ig_sender_id: string | null }>(
-      `SELECT id, ig_sender_id FROM contacts WHERE organization_id=$1
-         AND right(regexp_replace(phone, '\\D', '', 'g'), 10) = right($2, 10)
-       ORDER BY created_at LIMIT 1`,
-      [cal.organization_id, phoneDigits],
-    );
-    if (byPhone) {
-      await query(
-        `UPDATE contacts SET
-           email      = COALESCE(NULLIF(email, ''), $2),
-           first_name = CASE WHEN $3 THEN $4 ELSE first_name END,
-           last_name  = CASE WHEN $3 THEN $5 ELSE last_name END,
-           updated_at = NOW()
-         WHERE id = $1`,
-        [byPhone.id, d.email, byPhone.ig_sender_id !== null, nameParts[0], nameParts.slice(1).join(' ') || null],
-      );
-      contact = byPhone;
+    if (!contact) {
+      contact = (await tx.query<{ id: string }>(
+        'SELECT id FROM contacts WHERE lower(email)=lower($1) AND organization_id=$2 ORDER BY created_at LIMIT 1',
+        [d.email, cal.organization_id],
+      )).rows[0] ?? null;
     }
-  }
-  if (!contact) {
-    const firstName = nameParts[0];
-    const lastName  = nameParts.slice(1).join(' ') || null;
-    const [newContact] = await query<{ id: string }>(
-      `INSERT INTO contacts (organization_id, first_name, last_name, email, phone)
-       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-      [cal.organization_id, firstName, lastName, d.email, d.phone ?? null],
+    if (!contact) {
+      // Comparación tolerante (últimos 10 dígitos, phone.ts): misma lógica que WhatsApp y el CRM
+      const byPhone = await findContactByPhone<{ id: string; ig_sender_id: string | null }>(
+        tx, cal.organization_id, d.phone, 'id, ig_sender_id',
+      );
+      if (byPhone) {
+        await tx.query(
+          `UPDATE contacts SET
+             email      = COALESCE(NULLIF(email, ''), $2),
+             first_name = CASE WHEN $3 THEN $4 ELSE first_name END,
+             last_name  = CASE WHEN $3 THEN $5 ELSE last_name END,
+             updated_at = NOW()
+           WHERE id = $1`,
+          [byPhone.id, d.email, byPhone.ig_sender_id !== null, nameParts[0], nameParts.slice(1).join(' ') || null],
+        );
+        contact = byPhone;
+      }
+    }
+    if (!contact) {
+      const firstName = nameParts[0];
+      const lastName  = nameParts.slice(1).join(' ') || null;
+      contact = (await tx.query<{ id: string }>(
+        `INSERT INTO contacts (organization_id, first_name, last_name, email, phone)
+         VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+        [cal.organization_id, firstName, lastName, d.email, d.phone ?? null],
+      )).rows[0];
+      created = true;
+    }
+
+    // Crear la cita
+    const appt = (await tx.query<{ id: string; title: string; start_at: string; end_at: string; meeting_url: string | null; cancel_token: string }>(
+      `INSERT INTO appointments
+         (organization_id, user_id, calendar_id, contact_id, title, description,
+          start_at, end_at, timezone, status, provider)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'scheduled','manual')
+       RETURNING id, title, start_at, end_at, meeting_url, cancel_token`,
+      [
+        cal.organization_id, cal.user_id, cal.id, contact.id,
+        `Reunión con ${d.name}`,
+        d.notes ?? null,
+        startAt.toISOString(), endAt.toISOString(), cal.timezone,
+      ],
+    )).rows[0];
+
+    // Guardar como attendee
+    await tx.query(
+      `INSERT INTO appointment_attendees (appointment_id, contact_id, email, name)
+       VALUES ($1,$2,$3,$4)`,
+      [appt.id, contact.id, d.email, d.name],
     );
-    contact = newContact;
-    fireContactCreatedTrigger(cal.organization_id, newContact.id).catch(console.error);
-  }
-
-  // Crear la cita
-  const [appt] = await query<{ id: string; title: string; start_at: string; end_at: string; meeting_url: string | null; cancel_token: string }>(
-    `INSERT INTO appointments
-       (organization_id, user_id, calendar_id, contact_id, title, description,
-        start_at, end_at, timezone, status, provider)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'scheduled','manual')
-     RETURNING id, title, start_at, end_at, meeting_url, cancel_token`,
-    [
-      cal.organization_id, cal.user_id, cal.id, contact.id,
-      `Reunión con ${d.name}`,
-      d.notes ?? null,
-      startAt.toISOString(), endAt.toISOString(), cal.timezone,
-    ],
-  );
-
-  // Guardar como attendee
-  await query(
-    `INSERT INTO appointment_attendees (appointment_id, contact_id, email, name)
-     VALUES ($1,$2,$3,$4)`,
-    [appt.id, contact.id, d.email, d.name],
-  );
+    return { contact, created, appt };
+  });
+  if (!booked) return res.status(409).json({ error: SLOT_TAKEN });
+  const { contact, appt } = booked;
+  // Tras el COMMIT: el flujo de "Contacto creado" ya ve el contacto (y solo se dispara una vez)
+  if (booked.created) fireContactCreatedTrigger(cal.organization_id, contact.id).catch(console.error);
 
   // Crear evento en Google Meet si está configurado
   const meetLink = await ensureGoogleMeet(appt.id);
@@ -487,10 +519,16 @@ bookingRouter.post('/:slug/reschedule/:token', publicBookingLimiter, async (req,
   const invalid = await validateSlot(cal, newStart, appt);
   if (invalid) return res.status(invalid.status).json({ error: invalid.error });
 
-  await query(
-    "UPDATE appointments SET start_at=$1, end_at=$2, updated_at=now() WHERE id=$3",
-    [newStart.toISOString(), newEnd.toISOString(), appt.id],
-  );
+  // Mismo candado por calendario que la reserva: revalida el hueco y mueve la cita sin carreras
+  const moved = await withTransaction(pool, async tx => {
+    if (!(await lockCalendarAndCheck(tx, cal, newStart, newEnd, appt.id))) return false;
+    await tx.query(
+      "UPDATE appointments SET start_at=$1, end_at=$2, updated_at=now() WHERE id=$3",
+      [newStart.toISOString(), newEnd.toISOString(), appt.id],
+    );
+    return true;
+  });
+  if (!moved) return res.status(409).json({ error: SLOT_TAKEN });
   // Recordatorios pendientes ("X min antes") pasan a la hora nueva
   await rescheduleAppointmentWaits(appt.organization_id, appt.id);
 

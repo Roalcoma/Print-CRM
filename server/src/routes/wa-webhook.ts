@@ -5,6 +5,7 @@ import { Router } from 'express';
 import { pool } from '../db.ts';
 import { broadcast } from '../services/ws-manager.ts';
 import { handleIncomingWaMessage, fireWaNewMessageTrigger, fireContactCreatedTrigger } from '../services/automation-engine.ts';
+import { findContactByPhone, lockPhone, phoneMatchKey, withTransaction } from '../phone.ts';
 
 export const waWebhookRouter = Router();
 
@@ -297,6 +298,9 @@ function previewText(msgType: string, body: string | null): string {
   return map[msgType] ?? '📎 Archivo adjunto';
 }
 
+// Busca o crea el contacto del chat y lo enlaza a la conversación. El buscar-o-crear va en una
+// transacción con candado por teléfono (o por conversación si el JID es @lid sin teléfono): dos mensajes
+// simultáneos de un número nuevo crean UN contacto y disparan "Contacto creado" una sola vez.
 async function linkContact(orgId: string, convId: string, phone: string, waName: string): Promise<string | null> {
   try {
     const phoneRe = /^\+?[\d\s\-().]{7,20}$/;
@@ -304,48 +308,42 @@ async function linkContact(orgId: string, convId: string, phone: string, waName:
     if (!effectivePhone && phoneRe.test(waName.trim())) {
       effectivePhone = waName.trim().replace(/\D/g, '');
     }
+    if (!phoneMatchKey(effectivePhone)) effectivePhone = '';
 
-    let contactId: string | null = null;
-
-    if (effectivePhone) {
-      const existing = await pool.query<{ id: string }>(
-        `SELECT id FROM contacts WHERE organization_id = $1 AND regexp_replace(phone, '\\D', '', 'g') = $2 LIMIT 1`,
-        [orgId, effectivePhone],
-      );
-      if (existing.rows[0]) {
-        contactId = existing.rows[0].id;
-      } else {
+    const { contactId, created } = await withTransaction(pool, async tx => {
+      if (effectivePhone) {
+        await lockPhone(tx, orgId, effectivePhone);
+        const existing = await findContactByPhone(tx, orgId, effectivePhone);
+        if (existing) return { contactId: existing.id, created: false };
         const isPhoneName = phoneRe.test(waName.trim());
         const parts = waName.trim().split(/\s+/);
         const firstName = isPhoneName ? waName.trim() : parts[0];
         const lastName  = isPhoneName ? null : (parts.slice(1).join(' ') || null);
-        const created = await pool.query<{ id: string }>(
+        const ins = await tx.query<{ id: string }>(
           `INSERT INTO contacts (organization_id, first_name, last_name, phone, tags)
            VALUES ($1, $2, $3, $4, ARRAY['whatsapp']::text[])
            RETURNING id`,
           [orgId, firstName, lastName, effectivePhone],
         );
-        contactId = created.rows[0].id;
-        fireContactCreatedTrigger(orgId, contactId).catch(console.error);
+        return { contactId: ins.rows[0].id, created: true };
       }
-    } else {
-      const convContact = await pool.query<{ contact_id: string | null }>(
-        `SELECT contact_id FROM conversations WHERE id = $1`, [convId],
+      // Sin teléfono (@lid): el contacto es el de la conversación; se bloquea su fila para serializar
+      const convContact = await tx.query<{ contact_id: string | null }>(
+        `SELECT contact_id FROM conversations WHERE id = $1 FOR UPDATE`, [convId],
       );
-      if (convContact.rows[0]?.contact_id) {
-        contactId = convContact.rows[0].contact_id;
-      } else {
-        const parts = waName.trim().split(/\s+/);
-        const created = await pool.query<{ id: string }>(
-          `INSERT INTO contacts (organization_id, first_name, last_name, phone, tags)
-           VALUES ($1, $2, $3, '', ARRAY['whatsapp']::text[])
-           RETURNING id`,
-          [orgId, parts[0], parts.slice(1).join(' ') || null],
-        );
-        contactId = created.rows[0].id;
-        fireContactCreatedTrigger(orgId, contactId).catch(console.error);
-      }
-    }
+      if (convContact.rows[0]?.contact_id) return { contactId: convContact.rows[0].contact_id, created: false };
+      const parts = waName.trim().split(/\s+/);
+      const ins = await tx.query<{ id: string }>(
+        `INSERT INTO contacts (organization_id, first_name, last_name, phone, tags)
+         VALUES ($1, $2, $3, '', ARRAY['whatsapp']::text[])
+         RETURNING id`,
+        [orgId, parts[0], parts.slice(1).join(' ') || null],
+      );
+      // Se enlaza dentro de la transacción: el siguiente mensaje ya lo encuentra
+      await tx.query(`UPDATE conversations SET contact_id = COALESCE(contact_id, $1) WHERE id = $2`, [ins.rows[0].id, convId]);
+      return { contactId: ins.rows[0].id, created: true };
+    });
+    if (created) fireContactCreatedTrigger(orgId, contactId).catch(console.error);
 
     await pool.query(
       `UPDATE conversations SET contact_id = COALESCE(contact_id, $1), display_name = $2, updated_at = NOW() WHERE id = $3`,
