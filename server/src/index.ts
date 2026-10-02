@@ -36,8 +36,9 @@ import { leadAdsRouter } from './routes/lead-ads.ts';
 import { agencyRouter } from './routes/agency.ts';
 import { automationsRouter } from './routes/automations.ts';
 import { resumeTimedRuns } from './services/automation-engine.ts';
-import { initWS } from './services/ws-manager.ts';
-import { verifyToken } from './auth/tokens.ts';
+import { initWS, issueWsTicket } from './services/ws-manager.ts';
+import { signMediaToken, verifyMediaToken } from './auth/tokens.ts';
+import { validateSession } from './auth/session.ts';
 import { pool } from './db.ts';
 import { readFileSync } from 'fs';
 import { dirname, resolve } from 'path';
@@ -117,14 +118,28 @@ app.use('/api/auth', authRouter);
 // Rutas de agencia (JWT separado con claim type='agency'; deben ir antes del requireAuth del CRM)
 app.use('/api/agency', agencyRouter);
 
-// Proxy de media — acepta token por query param ?t= para usarlo en <img src>.
+// Ticket de un solo uso (30 s) para abrir el WebSocket sin poner la sesión en la URL.
+app.post('/api/ws-ticket', requireAuth, (req, res) => {
+  res.json({ ticket: issueWsTicket(req.auth!) });
+});
+
+// Token de media de vida corta (10 min, typ 'media', ligado a usuario+org) para las URLs de
+// <img>/<video>/<audio>, que no pueden mandar la cabecera Authorization.
+app.post('/api/media-token', requireAuth, requireModule('conversations'), (req, res) => {
+  res.json({ token: signMediaToken(req.auth!), expiresIn: 600 });
+});
+
+// Proxy de media — acepta por query (?t=) SOLO el token de media (nunca la sesión).
 // Cuando media_url es un data URI cacheado lo sirve directo; si no, pide
 // el base64 a Evolution API y lo cachea para futuros accesos.
+// Cache-Control private: son adjuntos de clientes, ningún proxy/CDN compartido debe guardarlos.
 app.get('/api/media/:msgId', async (req, res) => {
   try {
     const token = req.query.t as string | undefined;
     if (!token) return res.status(401).end();
-    const auth = verifyToken(token);
+    let auth;
+    try { auth = verifyMediaToken(token); } catch { return res.status(401).end(); }
+    if (!(await validateSession(auth))) return res.status(401).end();
 
     type MsgRow = {
       media_url: string | null;
@@ -154,7 +169,7 @@ app.get('/api/media/:msgId', async (req, res) => {
       const [header, b64] = r.media_url.split(',');
       const mime = header.split(':')[1]?.split(';')[0] ?? 'application/octet-stream';
       res.setHeader('Content-Type', mime);
-      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('Cache-Control', 'private, max-age=86400');
       return res.send(Buffer.from(b64, 'base64'));
     }
 
@@ -166,7 +181,7 @@ app.get('/api/media/:msgId', async (req, res) => {
       if (upstream?.ok) {
         const mime = r.media_mime || upstream.headers.get('content-type') || 'application/octet-stream';
         res.setHeader('Content-Type', mime);
-        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.setHeader('Cache-Control', 'private, max-age=3600');
         return res.send(Buffer.from(await upstream.arrayBuffer()));
       }
     }
@@ -198,7 +213,7 @@ app.get('/api/media/:msgId', async (req, res) => {
     ).catch(() => {});
 
     res.setHeader('Content-Type', mime);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
     res.send(binary);
   } catch (e) {
     console.error('media proxy:', e);

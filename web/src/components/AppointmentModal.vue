@@ -137,6 +137,8 @@ function toISO(date: string, time: string): string {
 // ─── Form state ───────────────────────────────────────────────────────────────
 const saving   = ref(false);
 const deleting = ref(false);
+// Error concreto del server (solapamiento, validación…) visible en el pie del modal
+const saveError = ref('');
 
 const form = ref({
   title:           '',
@@ -170,6 +172,7 @@ function toggleDay(d: number) {
 }
 
 function resetForm() {
+  saveError.value = '';
   attendees.value = [];
   attendeeQuery.value = '';
   attendeeResults.value = [];
@@ -246,6 +249,7 @@ const recurrenceLabel: Record<string, string> = {
 async function save() {
   if (!form.value.title.trim()) return;
   saving.value = true;
+  saveError.value = '';
   try {
     const startISO = form.value.isAllDay
       ? new Date(`${form.value.date}T00:00:00`).toISOString()
@@ -298,6 +302,8 @@ async function save() {
     }
     emit('saved');
     emit('update:modelValue', false);
+  } catch (e) {
+    saveError.value = e instanceof Error ? e.message : 'No se pudo guardar la cita';
   } finally {
     saving.value = false;
   }
@@ -307,10 +313,13 @@ async function remove() {
   if (!props.appointment) return;
   if (!await confirm('¿Eliminar esta cita? Si es recurrente, solo se elimina esta instancia.', 'Eliminar cita')) return;
   deleting.value = true;
+  saveError.value = '';
   try {
     await api.del(`/appointments/${props.appointment.id}`);
     emit('deleted');
     emit('update:modelValue', false);
+  } catch (e) {
+    saveError.value = e instanceof Error ? e.message : 'No se pudo eliminar la cita';
   } finally {
     deleting.value = false;
   }
@@ -690,6 +699,11 @@ function close() { emit('update:modelValue', false); }
           </div>
 
           <!-- Footer -->
+          <p v-if="saveError" role="alert"
+             class="mx-6 mb-1 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 ring-1 ring-red-200">
+            <AlertTriangle class="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <span>{{ saveError }}</span>
+          </p>
           <div class="flex items-center justify-between border-t border-slate-200 px-6 py-4">
             <button
               v-if="isEdit"

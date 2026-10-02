@@ -2,7 +2,7 @@
 // Gestiona reconexión automática con backoff, heartbeat ping/pong, y bus de eventos.
 
 import { ref, onUnmounted } from 'vue';
-import { getToken } from '../api';
+import { api, getToken } from '../api';
 
 type Handler = (data: unknown) => void;
 
@@ -15,14 +15,16 @@ let backoff = 1000;
 let refCount = 0;
 let hasConnectedBefore = false;
 
-function getWsUrl(): string {
-  const token = getToken();
+// La URL lleva un ticket de un solo uso (30 s) pedido por POST autenticado: la sesión de
+// 30 días nunca va en la URL (quedaría en logs de proxies/servidor).
+async function getWsUrl(): Promise<string> {
+  const { ticket } = await api.post<{ ticket: string }>('/ws-ticket');
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const host = import.meta.env.VITE_API_URL
     ? new URL(import.meta.env.VITE_API_URL as string).host
     // En dev Vite (5175) y la API (3100) van por separado; en prod la API sirve la web y /ws en el mismo host
     : import.meta.env.DEV ? `${location.hostname}:3100` : location.host;
-  return `${proto}://${host}/ws?token=${token}`;
+  return `${proto}://${host}/ws?ticket=${encodeURIComponent(ticket)}`;
 }
 
 function stopHeartbeat() {
@@ -44,9 +46,25 @@ function startHeartbeat() {
   }, 25000);
 }
 
-function connect() {
-  if (socket && socket.readyState <= WebSocket.OPEN) return;
-  socket = new WebSocket(getWsUrl());
+let connecting = false;
+
+async function connect() {
+  if (connecting || (socket && socket.readyState <= WebSocket.OPEN)) return;
+  if (!getToken()) return;   // sin sesión no hay WebSocket
+  connecting = true;
+  let url: string;
+  try {
+    url = await getWsUrl();
+  } catch {
+    // Sin red o server caído: reintentar con backoff (un 401 ya lo gestiona api.ts)
+    connecting = false;
+    if (refCount > 0) scheduleReconnect();
+    return;
+  } finally {
+    connecting = false;
+  }
+  if (refCount <= 0) return;   // el componente se desmontó mientras se pedía el ticket
+  socket = new WebSocket(url);
 
   socket.onopen = () => {
     backoff = 1000;

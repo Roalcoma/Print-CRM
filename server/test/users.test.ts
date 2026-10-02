@@ -125,7 +125,9 @@ test('contraseña temporal: hay que cambiarla y luego se desmarca', async () => 
   assert.equal(same.status, 400);
   const ch = await api(t, 'POST', '/me/password', { current_password: 'temporal-123', new_password: 'definitiva-123' });
   assert.equal(ch.status, 200);
-  assert.equal((await api(t, 'GET', '/me')).data.mustChangePassword, false);
+  // Cambiarla cierra las demás sesiones (token_version): sigue con el token nuevo
+  assert.equal((await api(t, 'GET', '/me')).status, 401);
+  assert.equal((await api(ch.data.token, 'GET', '/me')).data.mustChangePassword, false);
 
   // El owner registrado por sí mismo no tiene que cambiarla
   assert.equal((await api(owner.token, 'GET', '/me')).data.mustChangePassword, false);

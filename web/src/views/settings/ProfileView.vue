@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { User, Lock, Save, Check, Eye, EyeOff, ExternalLink, X, Link2 } from 'lucide-vue-next';
-import { api } from '../../api';
+import { api, setToken } from '../../api';
 import { useAuthStore } from '../../stores/auth';
 import { useDialog } from '../../composables/useDialog';
 import Spinner from '../../components/Spinner.vue';
@@ -122,10 +122,12 @@ async function changePassword() {
 
   savingPwd.value = true;
   try {
-    await api.post('/me/password', {
+    // El server cierra las demás sesiones y devuelve un token nuevo para esta
+    const r = await api.post<{ token?: string }>('/me/password', {
       current_password: pwd.value.current,
       new_password: pwd.value.next,
     });
+    if (r?.token) setToken(r.token);
     pwd.value = { current: '', next: '', confirm: '', showCurrent: false, showNext: false, showConfirm: false };
     savedPwd.value = true;
     setTimeout(() => { savedPwd.value = false; }, 2000);

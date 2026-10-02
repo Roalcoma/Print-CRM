@@ -5,6 +5,8 @@ import jwt from 'jsonwebtoken';
 import { query, queryOne, pool } from '../db.ts';
 import { hashPassword, verifyPassword } from '../auth/password.ts';
 import { env } from '../env.ts';
+import { verifyToken, type AuthClaims } from '../auth/tokens.ts';
+import { validateSession } from '../auth/session.ts';
 import { TEMPLATES, TemplateError, templateSummary, buildPlan, applyTemplate, appliedTemplates } from '../templates/index.ts';
 
 export const agencyRouter = Router();
@@ -96,12 +98,21 @@ function requireAgencyAuth(req: Request, res: Response, next: NextFunction) {
   if (!header?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No autenticado' });
   }
+  let claims: AgencyClaims;
   try {
-    req.agencyAuth = verifyAgencyToken(header.slice(7));
-    next();
+    claims = verifyAgencyToken(header.slice(7));
   } catch {
-    res.status(401).json({ error: 'Token inválido o expirado' });
+    return res.status(401).json({ error: 'Token inválido o expirado' });
   }
+  // Revocable: un admin desactivado o borrado deja de entrar aunque su JWT siga vigente
+  // (1 query por petición; el panel de agencia tiene poco tráfico).
+  queryOne<{ id: string }>('SELECT id FROM agency_admins WHERE id = $1 AND is_active = true', [claims.adminId])
+    .then(admin => {
+      if (!admin) return res.status(401).json({ error: 'Sesión cerrada. Vuelve a iniciar sesión.' });
+      req.agencyAuth = claims;
+      next();
+    })
+    .catch(() => res.status(401).json({ error: 'Token inválido o expirado' }));
 }
 
 // ─── Auth Routes ─────────────────────────────────────────────────────────────
@@ -166,10 +177,14 @@ agencyRouter.post('/auth/exchange', async (req, res) => {
   if (!header?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No autenticado' });
   }
-  let crmClaims: { userId: string };
+  let crmClaims: AuthClaims;
   try {
-    crmClaims = jwt.verify(header.slice(7), env.jwtSecret) as { userId: string };
+    // verifyToken: solo sesiones del CRM (nunca un token de media/OAuth, que llevan `typ`)
+    crmClaims = verifyToken(header.slice(7));
   } catch {
+    return res.status(401).json({ error: 'Token CRM inválido o expirado' });
+  }
+  if (!(await validateSession(crmClaims).catch(() => null))) {
     return res.status(401).json({ error: 'Token CRM inválido o expirado' });
   }
 
@@ -567,6 +582,7 @@ agencyRouter.post('/clients/:id/impersonate', requireAgencyAuth, async (req, res
       organizationId: client.organization_id,
       role: actingRole,
       impersonatedByAgency: true,
+      agencyAdminId: req.agencyAuth!.adminId,   // si se desactiva el admin, este token deja de valer
     },
     env.jwtSecret,
     { expiresIn: '8h' },
@@ -791,7 +807,7 @@ agencyRouter.post('/clients/:id/provision', requireAgencyAuth, async (req, res) 
     if (existingUser.rows.length > 0) {
       // Actualizar contraseña del owner existente
       await dbClient.query(
-        'UPDATE users SET password_hash = $1, must_change_password = true WHERE id = $2',
+        'UPDATE users SET password_hash = $1, must_change_password = true, token_version = token_version + 1 WHERE id = $2',
         [hash, existingUser.rows[0].id],
       );
       userId = existingUser.rows[0].id;

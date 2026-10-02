@@ -7,7 +7,7 @@ import {
   ChevronRight, StickyNote, Trash2, MoreVertical, Play, Pause,
   Inbox, MessageSquare, Star, CheckCircle, XCircle, ExternalLink,
 } from 'lucide-vue-next';
-import { api, getToken } from '../api';
+import { api } from '../api';
 import { useDialog } from '../composables/useDialog';
 import type { Conversation, ConvMessage, Contact, Pipeline, Stage, AdRef } from '../types';
 import { useWs } from '../composables/useWs';
@@ -559,8 +559,35 @@ const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') closeLightbox(
 onMounted(() => document.addEventListener('keydown', onKeyDown));
 onUnmounted(() => document.removeEventListener('keydown', onKeyDown));
 
+// ── Token de media ───────────────────────────────────────────────────────────
+// <img>/<video>/<audio> no pueden mandar la cabecera Authorization: la URL lleva un token de
+// media propio (10 min, solo vale para /api/media), nunca la sesión. Se renueva cada 8 min y
+// al volver a la pestaña si ya está viejo.
+const mediaToken = ref('');
+let mediaTokenAt = 0;
+let mediaTimer: ReturnType<typeof setInterval> | undefined;
+async function refreshMediaToken() {
+  try {
+    mediaToken.value = (await api.post<{ token: string }>('/media-token')).token;
+    mediaTokenAt = Date.now();
+  } catch { /* sin permiso o sin red: los adjuntos no se verán, el resto sigue */ }
+}
+const onVisible = () => {
+  if (document.visibilityState === 'visible' && Date.now() - mediaTokenAt > 8 * 60_000) refreshMediaToken();
+};
+onMounted(() => {
+  refreshMediaToken();
+  mediaTimer = setInterval(refreshMediaToken, 8 * 60_000);
+  document.addEventListener('visibilitychange', onVisible);
+});
+onUnmounted(() => {
+  clearInterval(mediaTimer);
+  document.removeEventListener('visibilitychange', onVisible);
+});
+
 function mediaUrl(msgId: unknown): string {
-  return `/api/media/${encodeURIComponent(String(msgId))}?t=${encodeURIComponent(getToken() ?? '')}`;
+  if (!mediaToken.value) return '';
+  return `/api/media/${encodeURIComponent(String(msgId))}?t=${encodeURIComponent(mediaToken.value)}`;
 }
 
 const oppStatusColor: Record<string, string> = {

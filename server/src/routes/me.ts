@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { query, queryOne } from '../db.ts';
 import { hashPassword, verifyPassword } from '../auth/password.ts';
+import { signToken } from '../auth/tokens.ts';
+import { invalidateUser } from '../auth/session.ts';
 
 export const meRouter = Router();
 
@@ -91,14 +93,26 @@ meRouter.post('/password', async (req, res) => {
   if (!u) return res.status(404).json({ error: 'Usuario no encontrado' });
 
   const valid = await verifyPassword(current_password, u.password_hash);
-  if (!valid) return res.status(401).json({ error: 'Contraseña actual incorrecta' });
+  // 400 y no 401: el front trata cualquier 401 como sesión caducada y cerraría la sesión
+  if (!valid) return res.status(400).json({ error: 'Contraseña actual incorrecta' });
   if (current_password === new_password) return res.status(400).json({ error: 'La nueva contraseña debe ser distinta de la actual' });
 
   // Al cambiarla uno mismo deja de ser temporal.
   const newHash = await hashPassword(new_password);
-  await query('UPDATE users SET password_hash=$1, must_change_password=false WHERE id=$2', [newHash, req.auth!.userId]);
-
-  res.json({ ok: true });
+  // token_version+1 cierra las demás sesiones abiertas; esta sigue con el token nuevo que
+  // devolvemos (el front lo guarda). La agencia impersonando no cierra nada.
+  const a = req.auth!;
+  if (a.impersonatedByAgency) {
+    await query('UPDATE users SET password_hash=$1, must_change_password=false WHERE id=$2', [newHash, a.userId]);
+    return res.json({ ok: true });
+  }
+  const [row] = await query<{ token_version: number }>(
+    'UPDATE users SET password_hash=$1, must_change_password=false, token_version=token_version+1 WHERE id=$2 RETURNING token_version',
+    [newHash, a.userId],
+  );
+  invalidateUser(a.userId);
+  const token = signToken({ userId: a.userId, organizationId: a.organizationId, role: a.role, tv: row.token_version });
+  res.json({ ok: true, token });
 });
 
 // Guarda preferencias (merge superficial de claves de nivel superior).

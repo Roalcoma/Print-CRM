@@ -1,5 +1,7 @@
 // Cliente HTTP para el backoffice de agencia.
 // Usa un token JWT separado (claim type='agency') almacenado en localStorage.
+import { apiErrorMessage } from './utils/apiError';
+
 const AGENCY_TOKEN_KEY = 'agency_token';
 
 export function getAgencyToken(): string | null {
@@ -22,7 +24,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   });
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as { error?: string }).error?.toString() ?? `Error ${res.status}`);
+  if (!res.ok) throw new Error(apiErrorMessage((data as { error?: unknown }).error, `Error ${res.status}`));
   return data as T;
 }
 

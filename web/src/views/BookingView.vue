@@ -2,6 +2,8 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import BizSelect from '../components/BizSelect.vue';
+import { apiErrorMessage } from '../utils/apiError';
+import { showToast } from '../composables/useToast';
 import { ChevronLeft, ChevronRight, Clock, Calendar, CheckCircle, AlertCircle, Globe, ChevronDown, Search, Check, MapPin } from 'lucide-vue-next';
 
 const route = useRoute();
@@ -216,13 +218,20 @@ async function submit() {
         contact_ref: contactRef,
       }),
     });
-    const data = await res.json();
-    if (!res.ok) { errMsg.value = data.error ?? 'Error al agendar.'; step.value = 'error'; return; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = apiErrorMessage(data.error, 'Error al agendar.');
+      // Datos del formulario mal puestos: se avisa y el visitante corrige sin perder lo escrito
+      if (res.status === 400) { showToast(msg, 'error'); return; }
+      errMsg.value = msg; step.value = 'error'; return;
+    }
     bookingLocation.value = data.location ?? null;
     cancelToken.value     = data.cancel_token ?? null;
     appointmentId.value   = data.appointment?.id ?? null;
     successMsg.value = data.message;
     step.value = 'success';
+  } catch {
+    showToast('Error de conexión. Revisa tu internet e intenta de nuevo.', 'error');
   } finally { saving.value = false; }
 }
 </script>
