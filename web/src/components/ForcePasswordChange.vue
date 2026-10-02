@@ -3,7 +3,7 @@
 // o por un admin) y debe cambiarla antes de usar el CRM.
 import { ref } from 'vue';
 import { KeyRound, LogOut } from 'lucide-vue-next';
-import { api } from '../api';
+import { api, setToken } from '../api';
 import { useAuthStore } from '../stores/auth';
 import Spinner from './Spinner.vue';
 
@@ -20,7 +20,9 @@ async function submit() {
   if (next.value !== confirm.value) { error.value = 'Las contraseñas no coinciden'; return; }
   saving.value = true;
   try {
-    await api.post('/me/password', { current_password: current.value, new_password: next.value });
+    // El server cierra las demás sesiones y devuelve un token nuevo para esta
+    const r = await api.post<{ token?: string }>('/me/password', { current_password: current.value, new_password: next.value });
+    if (r?.token) setToken(r.token);
     if (auth.user) auth.user.mustChangePassword = false;
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'No se pudo cambiar la contraseña';

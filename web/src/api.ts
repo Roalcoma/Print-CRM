@@ -1,6 +1,13 @@
 // Cliente HTTP mínimo sobre fetch nativo. Inyecta el token y parsea JSON/errores.
 // ponytail: sin axios; fetch cubre todo lo que necesitamos.
+import { apiErrorMessage } from './utils/apiError';
+
 const TOKEN_KEY = 'crm_token';
+
+// Error de sesión caducada: ya redirige a /login, no hace falta avisar con un toast.
+export class SessionExpiredError extends Error {
+  constructor() { super('Sesión expirada'); this.name = 'SessionExpiredError'; }
+}
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -24,10 +31,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (res.status === 401) {
     localStorage.removeItem(TOKEN_KEY);
     window.location.replace('/login');
-    throw new Error('Sesión expirada');
+    throw new SessionExpiredError();
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as any).error?.toString() ?? `Error ${res.status}`);
+  // `error` puede ser texto o el array de issues de zod: siempre un mensaje legible
+  if (!res.ok) throw new Error(apiErrorMessage((data as { error?: unknown }).error, `Error ${res.status}`));
   return data as T;
 }
 

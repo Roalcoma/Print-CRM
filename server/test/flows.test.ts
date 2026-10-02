@@ -744,8 +744,9 @@ test('Timeline sin media_url (data URI) y kanban sin miniatura del anuncio; el d
   const msgs = (await api(org.token, 'GET', `/conversations/${conv.id}/messages`)).data;
   assert.ok(msgs.some((m: any) => m.id === img.id));
   assert.ok(!JSON.stringify(msgs).includes('data:image/png'), 'tampoco en /messages');
-  // La media se sigue sirviendo por /api/media/:id
-  const media = await fetch(`${BASE}/api/media/${img.id}?t=${org.token}`);
+  // La media se sigue sirviendo por /api/media/:id (con el token de media, no la sesión)
+  const mediaToken = (await api(org.token, 'POST', '/media-token')).data.token;
+  const media = await fetch(`${BASE}/api/media/${img.id}?t=${mediaToken}`);
   assert.equal(media.status, 200);
   assert.equal(Buffer.from(await media.arrayBuffer()).toString(), 'png-falso');
 

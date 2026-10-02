@@ -19,6 +19,7 @@ interface UserRow {
   preferences?: Record<string, unknown>;
   permissions?: string[];
   must_change_password?: boolean;
+  token_version?: number;
 }
 
 // Registro: crea organización + usuario owner en una transacción lógica simple.
@@ -74,7 +75,7 @@ authRouter.post('/login', async (req, res) => {
     return res.status(401).json({ error: 'Credenciales inválidas' });
   }
 
-  const token = signToken({ userId: user.id, organizationId: user.organization_id, role: user.role });
+  const token = signToken({ userId: user.id, organizationId: user.organization_id, role: user.role, tv: user.token_version ?? 0 });
 
   // Si el email también existe en agency_admins, emitir agency_token automáticamente
   const agencyAdmin = await queryOne<{ id: string; role: string }>(

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
 import { hashPassword } from '../auth/password.ts';
 import { requireAdmin, MODULES } from '../auth/perms.ts';
+import { invalidateUser } from '../auth/session.ts';
 
 export const usersRouter = Router();
 
@@ -127,8 +128,10 @@ usersRouter.patch('/:id', requireAdmin, async (req, res) => {
   }
   if (d.password !== undefined) {
     sets.push(`password_hash = $${sets.length + 1}`); values.push(await hashPassword(d.password));
-    // Si la cambia otro (admin/agencia), es temporal: obligar a cambiarla al entrar.
+    // Si la cambia otro (admin/agencia), es temporal: obligar a cambiarla al entrar
+    // y cerrar las sesiones que tuviera abiertas.
     sets.push(`must_change_password = $${sets.length + 1}`); values.push(!isSelf);
+    if (!isSelf) sets.push('token_version = token_version + 1');
   }
   if (sets.length === 0) return res.status(400).json({ error: 'Nada que actualizar' });
 
@@ -137,6 +140,7 @@ usersRouter.patch('/:id', requireAdmin, async (req, res) => {
      RETURNING id, name, email, role, permissions, created_at`,
     [...values, req.params.id, orgId],
   );
+  invalidateUser(req.params.id as string);   // rol/permisos/sesiones nuevos ya, sin esperar la caché
   res.json(publicUser(u));
 });
 
@@ -156,8 +160,10 @@ usersRouter.post('/:id/reset-password', requireAdmin, async (req, res) => {
     return res.status(403).json({ error: 'No se puede modificar al owner' });
   }
   const password = parsed.data.password ?? randomBytes(9).toString('base64url');
-  await query('UPDATE users SET password_hash=$1, must_change_password=true WHERE id=$2 AND organization_id=$3',
+  // token_version+1: cierra todas las sesiones abiertas de ese usuario
+  await query('UPDATE users SET password_hash=$1, must_change_password=true, token_version=token_version+1 WHERE id=$2 AND organization_id=$3',
     [await hashPassword(password), req.params.id, orgId]);
+  invalidateUser(req.params.id as string);
   res.json({ password });
 });
 
@@ -168,5 +174,6 @@ usersRouter.delete('/:id', requireAdmin, async (req, res) => {
   if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
   if (target.role === 'owner') return res.status(403).json({ error: 'No se puede eliminar al owner' });
   await query('DELETE FROM users WHERE id=$1 AND organization_id=$2', [req.params.id, req.auth!.organizationId]);
+  invalidateUser(req.params.id as string);   // su token deja de valer en la siguiente petición
   res.status(204).end();
 });
