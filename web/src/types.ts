@@ -118,6 +118,19 @@ export interface Opportunity {
   stage_color?: string;
 }
 
+// Totales de lo filtrado por etapa y estado (POST /opportunities/query con `limit`).
+export interface OppTotal {
+  stage_id: string;
+  status: 'open' | 'won' | 'lost';
+  count: number;
+  value: number;
+}
+// Respuesta paginada del kanban/lista: la página pedida + los totales de TODO lo filtrado.
+export interface OppPage {
+  opportunities: Opportunity[];
+  totals: OppTotal[];
+}
+
 export interface Note {
   id: string;
   opportunity_id: string;

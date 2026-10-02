@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
 import { foreignRef } from '../tenant.ts';
+import { orgTimezone, monthRangeSql } from '../org-tz.ts';
 import { logActivity } from '../activity.ts';
 import {
   createGoogleEvent,
@@ -50,14 +51,14 @@ appointmentsRouter.get('/', async (req, res) => {
     )`);
   }
 
-  // Filtro de rango
-  if (month && year) {
-    const m = Number(month);
-    const y = Number(year);
-    const start = new Date(y, m - 1, 1);
-    const end   = new Date(y, m, 1);
-    params.push(start, end);
-    where.push(`a.start_at >= $${params.length - 1} AND a.start_at < $${params.length}`);
+  // Filtro de rango: el mes se toma en la zona de la organización (el servidor corre en UTC; antes
+  // las citas de la última noche del mes en América quedaban fuera de la vista mensual)
+  const m = Number(month);
+  const y = Number(year);
+  if (month && year && Number.isInteger(m) && m >= 1 && m <= 12 && Number.isInteger(y) && y >= 1970 && y <= 9999) {
+    params.push(y, m, await orgTimezone(orgId));
+    const [start, end] = monthRangeSql(`$${params.length - 2}`, `$${params.length - 1}`, `$${params.length}`);
+    where.push(`a.start_at >= ${start} AND a.start_at < ${end}`);
   } else {
     const now  = new Date();
     const in30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);

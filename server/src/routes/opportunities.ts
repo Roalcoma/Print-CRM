@@ -13,16 +13,20 @@ export const opportunitiesRouter = Router();
 
 // SELECT base con contacto y responsable embebidos. En listados (kanban, CSV) el anuncio de origen va
 // sin la miniatura base64 (hasta 200 KB por lead); el detalle (GET /:id) la incluye.
-const selectOpps = (adSource: string) => `
+// `from` permite partir de una página de ids ya filtrada (kanban paginado) para que notas y seguidores
+// se calculen solo para las filas que se devuelven.
+const selectOpps = (adSource: string, from = 'opportunities o') => `
   SELECT o.*, c.first_name AS contact_first_name, c.last_name AS contact_last_name,
          c.email AS contact_email, c.phone AS contact_phone, ${adSource} AS contact_ad_source, u.name AS owner_name,
-         (SELECT count(*)::int FROM opportunity_notes n WHERE n.opportunity_id = o.id) AS notes_count,
-         (SELECT coalesce(json_agg(json_build_object('id', fu.id, 'name', fu.name) ORDER BY fu.name), '[]')
-          FROM opportunity_followers f JOIN users fu ON fu.id = f.user_id
-          WHERE f.opportunity_id = o.id) AS followers
-  FROM opportunities o
+         nc.notes_count, fl.followers
+  FROM ${from}
   LEFT JOIN contacts c ON c.id = o.contact_id
-  LEFT JOIN users u ON u.id = o.owner_id`;
+  LEFT JOIN users u ON u.id = o.owner_id
+  LEFT JOIN LATERAL (SELECT count(*)::int AS notes_count FROM opportunity_notes n WHERE n.opportunity_id = o.id) nc ON true
+  LEFT JOIN LATERAL (
+    SELECT coalesce(json_agg(json_build_object('id', fu.id, 'name', fu.name) ORDER BY fu.name), '[]') AS followers
+    FROM opportunity_followers f JOIN users fu ON fu.id = f.user_id
+    WHERE f.opportunity_id = o.id) fl ON true`;
 const BASE_SELECT = selectOpps('c.ad_source');
 const LIST_SELECT = selectOpps(`c.ad_source - 'thumbnail'`);
 
@@ -127,33 +131,83 @@ const querySchema = z.object({
   filters: z.array(z.object({ field: z.string(), op: z.string(), value: z.unknown().optional() })).optional(),
   sort_by:  z.string().optional(),
   sort_dir: z.enum(['asc', 'desc']).optional(),
+  // Paginación (kanban/lista). Sin `limit` se devuelve el array completo (compatibilidad).
+  limit:   z.number().int().min(0).max(1000).optional(),
+  offset:  z.number().int().min(0).optional(),
+  stageId: z.string().uuid().optional(),          // "cargar más" de una sola columna
+  group:   z.enum(['stage', 'none']).optional(),  // 'stage' (defecto): limit/offset por etapa; 'none': global (lista)
 });
+type OppQuery = z.infer<typeof querySchema>;
 
+// WHERE (sin la palabra) + parámetros + ORDER BY comunes a /query y a la exportación CSV.
+// Requiere el JOIN de contacts como `c` (búsqueda y filtros por contacto).
+function oppQueryParts(orgId: string, q: OppQuery) {
+  const where = ['o.organization_id = $1', 'o.pipeline_id = $2'];
+  const params: unknown[] = [orgId, q.pipelineId];
+  if (q.search?.trim()) {
+    params.push(`%${q.search.trim()}%`);
+    where.push(`(o.title ILIKE $${params.length} OR o.business_name ILIKE $${params.length} OR c.first_name ILIKE $${params.length} OR c.last_name ILIKE $${params.length} OR c.email ILIKE $${params.length})`);
+  }
+  if (q.filters?.length) {
+    const f = buildFilters(q.filters as Condition[], q.match ?? 'AND', params.length + 1);
+    if (f.sql) { where.push(f.sql); params.push(...f.params); }
+  }
+  const sortCol = (q.sort_by && SORT_COLS[q.sort_by]) ? SORT_COLS[q.sort_by] : null;
+  const dir = q.sort_dir === 'asc' ? 'ASC' : 'DESC';
+  // o.id desempata: el orden es total y las páginas no repiten ni saltan filas
+  const orderBy = sortCol ? `${sortCol} ${dir} NULLS LAST, o.id` : 'o.position, o.created_at, o.id';
+  return { where, params, orderBy };
+}
+
+// Respuesta paginada:
+//   { opportunities: [...], totals: [{ stage_id, status, count, value }] }
+// `totals` cuenta TODO lo filtrado (no solo lo devuelto), agrupado por etapa y estado: el kanban saca
+// el total y la suma de cada columna, y la lista/dashboard los totales por estado.
+// Con group='stage' se devuelven, de cada etapa, las filas offset+1 … offset+limit en el orden pedido;
+// con stageId solo las de esa etapa (botón/scroll "cargar más").
 opportunitiesRouter.post('/query', async (req, res) => {
   const parsed = querySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
-  const { pipelineId, search, match, filters, sort_by, sort_dir } = parsed.data;
+  const q = parsed.data;
+  const { where, params, orderBy } = oppQueryParts(req.auth!.organizationId, q);
 
-  const where = ['o.organization_id = $1', 'o.pipeline_id = $2'];
-  const params: unknown[] = [req.auth!.organizationId, pipelineId];
-
-  if (search?.trim()) {
-    params.push(`%${search.trim()}%`);
-    where.push(`(o.title ILIKE $${params.length} OR o.business_name ILIKE $${params.length} OR c.first_name ILIKE $${params.length} OR c.last_name ILIKE $${params.length} OR c.email ILIKE $${params.length})`);
-  }
-  if (filters?.length) {
-    const f = buildFilters(filters as Condition[], match ?? 'AND', params.length + 1);
-    if (f.sql) { where.push(f.sql); params.push(...f.params); }
+  if (q.limit === undefined) {
+    const rows = await query(`${LIST_SELECT} WHERE ${where.join(' AND ')} ORDER BY ${orderBy}`, params);
+    return res.json(rows);
   }
 
-  const sortCol = (sort_by && SORT_COLS[sort_by]) ? SORT_COLS[sort_by] : null;
-  const dir = sort_dir === 'asc' ? 'ASC' : 'DESC';
-  const orderBy = sortCol
-    ? `${sortCol} ${dir} NULLS LAST`
-    : 'o.position, o.created_at';
+  const totalsSql = `SELECT o.stage_id, o.status, count(*)::int AS count, coalesce(sum(o.value), 0)::float8 AS value
+    FROM opportunities o LEFT JOIN contacts c ON c.id = o.contact_id
+    WHERE ${where.join(' AND ')} GROUP BY o.stage_id, o.status`;
 
-  const rows = await query(`${LIST_SELECT} WHERE ${where.join(' AND ')} ORDER BY ${orderBy}`, params);
-  res.json(rows);
+  const pageWhere = [...where];
+  const pageParams = [...params];
+  if (q.stageId) { pageParams.push(q.stageId); pageWhere.push(`o.stage_id = $${pageParams.length}`); }
+  pageParams.push(q.offset ?? 0, q.limit);
+  const pOff = `$${pageParams.length - 1}`, pLim = `$${pageParams.length}`;
+  const byStage = q.group !== 'none';
+  // Primero se eligen los ids de la página (solo opportunities + contacts) y luego se completan
+  // contacto, responsable, notas y seguidores únicamente para esas filas.
+  const pageSql = byStage
+    ? `SELECT id, rn FROM (
+         SELECT o.id, row_number() OVER (PARTITION BY o.stage_id ORDER BY ${orderBy}) AS rn
+         FROM opportunities o LEFT JOIN contacts c ON c.id = o.contact_id
+         WHERE ${pageWhere.join(' AND ')}
+       ) x WHERE rn > ${pOff} AND rn <= ${pOff} + ${pLim}`
+    : `SELECT o.id, row_number() OVER (ORDER BY ${orderBy}) AS rn
+       FROM opportunities o LEFT JOIN contacts c ON c.id = o.contact_id
+       WHERE ${pageWhere.join(' AND ')}
+       ORDER BY ${orderBy} OFFSET ${pOff} LIMIT ${pLim}`;
+  const [opportunities, totals] = await Promise.all([
+    q.limit === 0 ? Promise.resolve([]) : query(
+      `WITH page AS (${pageSql})
+       ${selectOpps(`c.ad_source - 'thumbnail'`, 'page JOIN opportunities o ON o.id = page.id')}
+       ORDER BY ${byStage ? 'o.stage_id, ' : ''}page.rn`,
+      pageParams,
+    ),
+    query<{ stage_id: string; status: string; count: number; value: number }>(totalsSql, params),
+  ]);
+  res.json({ opportunities, totals });
 });
 
 // ── Búsqueda ligera entre todos los pipelines (selector de lead en la cita) ──
@@ -401,6 +455,8 @@ opportunitiesRouter.get('/:id/appointments', async (req, res) => {
 });
 
 // ── Exportar CSV ────────────────────────────────────────────────────────────
+// GET: todo el pipeline. POST: lo filtrado con el mismo cuerpo que /query (búsqueda, filtros, orden),
+// completo aunque el kanban solo tenga cargada la primera página de cada columna.
 opportunitiesRouter.get('/export/csv', async (req, res) => {
   const pipelineId = req.query.pipelineId;
   if (typeof pipelineId !== 'string') return res.status(400).json({ error: 'Falta pipelineId' });
@@ -408,6 +464,18 @@ opportunitiesRouter.get('/export/csv', async (req, res) => {
     `${LIST_SELECT} WHERE o.organization_id = $1 AND o.pipeline_id = $2 ORDER BY o.created_at`,
     [req.auth!.organizationId, pipelineId],
   );
+  await sendCsv(res, pipelineId, rows);
+});
+
+opportunitiesRouter.post('/export/csv', async (req, res) => {
+  const parsed = querySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+  const { where, params, orderBy } = oppQueryParts(req.auth!.organizationId, parsed.data);
+  const rows = await query<any>(`${LIST_SELECT} WHERE ${where.join(' AND ')} ORDER BY ${orderBy}`, params);
+  await sendCsv(res, parsed.data.pipelineId, rows);
+});
+
+async function sendCsv(res: import('express').Response, pipelineId: string, rows: any[]) {
   const stages = await query<{ id: string; name: string }>('SELECT id, name FROM pipeline_stages WHERE pipeline_id=$1', [pipelineId]);
   const stageName = (id: string) => stages.find(s => s.id === id)?.name ?? '';
   const headers = ['title', 'value', 'status', 'stage', 'source', 'business_name', 'tags', 'contact_name', 'contact_email', 'contact_phone', 'created_at'];
@@ -418,7 +486,7 @@ opportunitiesRouter.get('/export/csv', async (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="oportunidades.csv"');
   res.send(toCsv(headers, data));
-});
+}
 
 // ── Importar CSV ────────────────────────────────────────────────────────────
 opportunitiesRouter.post('/import', async (req, res) => {
