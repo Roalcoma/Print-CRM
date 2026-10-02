@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { query, queryOne } from '../db.ts';
 import { foreignRef } from '../tenant.ts';
+import { orgTimezone, isTodaySql, monthRangeSql } from '../org-tz.ts';
 import { logActivity } from '../activity.ts';
 import { audit } from '../audit.ts';
 import { createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from '../integrations/google-calendar.ts';
@@ -96,12 +97,12 @@ tasksRouter.get('/stats', async (req, res) => {
     today: string; overdue: string; pending: string; done: string; total: string;
   }>(`
     SELECT
-      count(*) FILTER (WHERE due_at::date = CURRENT_DATE AND status NOT IN ('done','cancelled'))  AS today,
+      count(*) FILTER (WHERE ${isTodaySql('due_at', '$2')} AND status NOT IN ('done','cancelled'))  AS today,
       count(*) FILTER (WHERE due_at < now()            AND status NOT IN ('done','cancelled'))  AS overdue,
       count(*) FILTER (WHERE status NOT IN ('done','cancelled'))                                AS pending,
       count(*) FILTER (WHERE status = 'done')                                                  AS done,
       count(*)                                                                                  AS total
-    FROM tasks WHERE organization_id = $1`, [orgId]);
+    FROM tasks WHERE organization_id = $1`, [orgId, await orgTimezone(orgId)]);
   const done  = Number(row.done);
   const total = Number(row.total);
   res.json({
@@ -122,11 +123,12 @@ tasksRouter.get('/', async (req, res) => {
   if (typeof status === 'string' && (STATUSES as readonly string[]).includes(status)) { params.push(status); where.push(`t.status = $${params.length}`); }
   if (typeof assigneeId === 'string') { params.push(assigneeId); where.push(`EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $${params.length})`); }
   if (typeof opportunityId === 'string') { params.push(opportunityId); where.push(`t.opportunity_id = $${params.length}`); }
-  if (month && year) {
-    const m = Number(month); const y = Number(year);
-    const start = new Date(y, m - 1, 1); const end = new Date(y, m, 1);
-    params.push(start, end);
-    where.push(`t.due_at >= $${params.length - 1} AND t.due_at < $${params.length}`);
+  const m = Number(month); const y = Number(year);
+  if (month && year && Number.isInteger(m) && m >= 1 && m <= 12 && Number.isInteger(y) && y >= 1970 && y <= 9999) {
+    // Mes en la zona de la organización (el servidor corre en UTC)
+    params.push(y, m, await orgTimezone(req.auth!.organizationId));
+    const [start, end] = monthRangeSql(`$${params.length - 2}`, `$${params.length - 1}`, `$${params.length}`);
+    where.push(`t.due_at >= ${start} AND t.due_at < ${end}`);
   }
 
   const rows = await query(

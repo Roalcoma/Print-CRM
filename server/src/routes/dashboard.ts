@@ -1,10 +1,13 @@
 import { Router } from 'express';
 import { query } from '../db.ts';
+import { orgTimezone, isTodaySql } from '../org-tz.ts';
 
 export const dashboardRouter = Router();
 
 dashboardRouter.get('/summary', async (req, res) => {
   const orgId = req.auth!.organizationId;
+  // "Hoy" en la zona de la organización (el servidor corre en UTC)
+  const tz = await orgTimezone(orgId);
 
   const [
     contactsRows,
@@ -30,10 +33,10 @@ dashboardRouter.get('/summary', async (req, res) => {
     // tasks stats
     query<{ today: string; overdue: string }>(
       `SELECT
-         count(*) FILTER (WHERE due_at::date = CURRENT_DATE AND status NOT IN ('done','cancelled')) AS today,
+         count(*) FILTER (WHERE ${isTodaySql('due_at', '$2')} AND status NOT IN ('done','cancelled')) AS today,
          count(*) FILTER (WHERE due_at < now()            AND status NOT IN ('done','cancelled')) AS overdue
        FROM tasks WHERE organization_id = $1`,
-      [orgId],
+      [orgId, tz],
     ),
     // pipeline by stage (with total_count including all statuses)
     query<{ stage_name: string; position: number; count: string; value: string; total_count: string }>(
@@ -63,11 +66,11 @@ dashboardRouter.get('/summary', async (req, res) => {
       `SELECT id, title, priority, status, due_at
        FROM tasks
        WHERE organization_id = $1
-         AND due_at::date = CURRENT_DATE
+         AND ${isTodaySql('due_at', '$2')}
          AND status NOT IN ('done', 'cancelled')
        ORDER BY due_at
        LIMIT 8`,
-      [orgId],
+      [orgId, tz],
     ),
     // opportunities by status (open/won/lost)
     query<{ status: string; count: string; value: string }>(

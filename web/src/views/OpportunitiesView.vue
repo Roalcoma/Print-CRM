@@ -6,7 +6,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useDialog } from '../composables/useDialog';
 import { Plus, Search, Filter, Download, Upload, X, Trash2, MoreVertical, ChevronDown, Check, UserRound, Briefcase, Kanban, StickyNote, UserPlus, Link2, SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-vue-next';
 import { api, getToken } from '../api';
-import type { Pipeline, Opportunity, FilterCondition, FilterOp, Note, User, Task, TaskStatus } from '../types';
+import type { Pipeline, Opportunity, OppTotal, OppPage, FilterCondition, FilterOp, Note, User, Task, TaskStatus } from '../types';
 import { ListTodo, CalendarClock } from 'lucide-vue-next';
 import OppTabs from '../components/OppTabs.vue';
 import Dropdown from '../components/Dropdown.vue';
@@ -26,7 +26,13 @@ const KNOWN_SOURCES = ['whatsapp','facebook','instagram','tiktok','google','link
 const pipelines = ref<Pipeline[]>([]);
 const users = ref<User[]>([]);
 const currentId = ref<string>('');
+// Oportunidades CARGADAS (paginadas: las primeras PAGE de cada columna + las que se piden con "cargar más")
 const opps = ref<Opportunity[]>([]);
+// Totales de TODO lo filtrado por etapa y estado (los contadores no dependen de lo cargado)
+const totals = ref<OppTotal[]>([]);
+const PAGE = 50;        // por columna en el tablero
+const LIST_PAGE = 100;  // en la vista de lista
+const MAX_LIMIT = 1000; // tope del servidor por petición
 const dragId = ref<string | null>(null);
 // Auto-scroll del tablero al arrastrar cerca de los bordes
 const boardEl = ref<HTMLElement | null>(null);
@@ -48,7 +54,7 @@ async function applyCardConfig(c: CardConfig) {
 
 // Vista tablero/lista (recordada en la cuenta).
 const viewMode = ref<'board' | 'list'>(auth.preferences.oppView === 'list' ? 'list' : 'board');
-watch(viewMode, v => auth.savePreferences({ oppView: v }));
+watch(viewMode, v => { auth.savePreferences({ oppView: v }); loadOpps(); });
 const stageById = computed(() => {
   const m: Record<string, { name: string; color: string }> = {};
   (current.value?.stages ?? []).forEach(s => { m[s.id] = { name: s.name, color: s.color }; });
@@ -123,7 +129,7 @@ function clearQf() {
 }
 
 const current = computed(() => pipelines.value.find(p => p.id === currentId.value) ?? null);
-const totalLeads = computed(() => opps.value.length);
+const totalLeads = computed(() => totals.value.reduce((s, t) => s + t.count, 0));
 const money = (n: number) => n.toLocaleString('es-VE', { style: 'currency', currency: 'USD' });
 const dateTime = (d: string) => new Date(d).toLocaleString('es-VE', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -193,20 +199,71 @@ function selectSort(key: string) {
   saveOppSort(); loadOpps();
 }
 
-async function loadOpps() {
-  if (!currentId.value) return;
-  reloading.value = true;
+// Cuerpo común de /opportunities/query y de la exportación CSV (búsqueda, filtros y orden actuales).
+function queryBody() {
   const filters = conditions.value
     .filter(c => c.field && c.op && (NO_VALUE.includes(c.op) || (c.value !== '' && c.value != null)))
     .map(c => ({ field: c.field, op: c.op, value: fieldType(c.field) === 'number' ? Number(c.value) : c.value }));
-  try {
-    opps.value = await api.post<Opportunity[]>('/opportunities/query', {
-      pipelineId: currentId.value, search: search.value || undefined, match: match.value, filters,
-      sort_by: sortBy.value || undefined, sort_dir: sortDir.value,
-    });
-  } finally {
-    reloading.value = false;
+  return {
+    pipelineId: currentId.value, search: search.value || undefined, match: match.value, filters,
+    sort_by: sortBy.value || undefined, sort_dir: sortDir.value,
+  };
+}
+
+// Cada carga completa invalida las respuestas en vuelo anteriores (y los "cargar más" pendientes).
+let loadSeq = 0;
+
+// Carga la primera página. Con keep (recarga en tiempo real, tras guardar/borrar) conserva cuántas
+// tarjetas había cargadas para no "encoger" la columna que el usuario ya había desplegado.
+async function loadOpps(opts: { keep?: boolean } = {}) {
+  if (!currentId.value) return;
+  const isList = viewMode.value === 'list';
+  let limit = isList ? LIST_PAGE : PAGE;
+  if (opts.keep) {
+    if (isList) limit = Math.max(limit, opps.value.length);
+    else for (const id of new Set(opps.value.map(o => o.stage_id))) limit = Math.max(limit, stageOpps(id).length);
   }
+  const seq = ++loadSeq;
+  reloading.value = true;
+  try {
+    const page = await api.post<OppPage>('/opportunities/query', {
+      ...queryBody(), limit: Math.min(limit, MAX_LIMIT), group: isList ? 'none' : 'stage',
+    });
+    if (seq !== loadSeq) return;
+    opps.value = page.opportunities;
+    totals.value = page.totals;
+  } finally {
+    if (seq === loadSeq) reloading.value = false;
+  }
+}
+
+// "Cargar más": siguiente página de una columna (stageId) o de la lista (sin stageId).
+const loadingMore = ref<Record<string, boolean>>({});
+async function loadMore(stageId?: string) {
+  const key = stageId ?? '__list';
+  if (loadingMore.value[key] || !currentId.value) return;
+  const loaded = stageId ? stageOpps(stageId).length : opps.value.length;
+  if (loaded >= (stageId ? stageCount(stageId) : totalLeads.value)) return;
+  const seq = loadSeq;
+  loadingMore.value[key] = true;
+  try {
+    const page = await api.post<OppPage>('/opportunities/query', {
+      ...queryBody(), limit: stageId ? PAGE : LIST_PAGE, offset: loaded,
+      ...(stageId ? { stageId, group: 'stage' } : { group: 'none' }),
+    });
+    if (seq !== loadSeq) return; // hubo una recarga completa mientras tanto
+    // Sin duplicados si entraron leads nuevos entre página y página (desplazan el offset)
+    const have = new Set(opps.value.map(o => o.id));
+    opps.value.push(...page.opportunities.filter(o => !have.has(o.id)));
+    totals.value = page.totals;
+  } finally {
+    loadingMore.value[key] = false;
+  }
+}
+// Scroll infinito: al acercarse al final de una columna (o de la lista) se pide la siguiente página.
+function onScrollEnd(e: Event, stageId?: string) {
+  const el = e.target as HTMLElement;
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) loadMore(stageId);
 }
 const SOURCE_OPTS = [
   { value: 'whatsapp', label: 'WhatsApp' }, { value: 'facebook', label: 'Facebook' },
@@ -234,7 +291,8 @@ onMounted(async () => {
   }
   openFromQuery();
 });
-watch(currentId, loadOpps);
+// (durante la carga inicial lo hace onMounted: evita pedir dos veces la primera página)
+watch(currentId, () => { if (!loading.value) loadOpps(); });
 
 // Abrir una oportunidad por URL (/opportunities?open=<id>, p. ej. desde una cita del calendario):
 // cambia al pipeline de la oportunidad y abre su modal.
@@ -255,7 +313,7 @@ const { on: onWs } = useWs();
 let wsReloadTimer: ReturnType<typeof setTimeout> | undefined;
 function scheduleReload() {
   clearTimeout(wsReloadTimer);
-  wsReloadTimer = setTimeout(loadOpps, 500);
+  wsReloadTimer = setTimeout(() => loadOpps({ keep: true }), 500);
 }
 onWs('opportunity:new', scheduleReload);
 // Cambios de etapa/estado hechos en otro sitio (p. ej. desde la cita en el calendario)
@@ -272,7 +330,21 @@ function onSearch() { clearTimeout(searchTimer); searchTimer = setTimeout(loadOp
 
 // ── Kanban helpers ───────────────────────────────────────────────────────────
 function stageOpps(stageId: string) { return opps.value.filter(o => o.stage_id === stageId); }
-function stageSum(stageId: string) { return money(stageOpps(stageId).reduce((s, o) => s + Number(o.value), 0)); }
+// Total y suma de la columna: de TODO lo filtrado, no solo de las tarjetas cargadas
+function stageCount(stageId: string) { return totals.value.reduce((s, t) => s + (t.stage_id === stageId ? t.count : 0), 0); }
+function stageSum(stageId: string) { return money(totals.value.reduce((s, t) => s + (t.stage_id === stageId ? Number(t.value) : 0), 0)); }
+function stageHasMore(stageId: string) { return stageOpps(stageId).length < stageCount(stageId); }
+// Mueve una oportunidad entre columnas en los totales locales (antes de que llegue la recarga)
+function moveInTotals(o: Opportunity, from: string, to: string) {
+  const v = Number(o.value);
+  const row = (stage: string) => {
+    let t = totals.value.find(x => x.stage_id === stage && x.status === o.status);
+    if (!t) { t = { stage_id: stage, status: o.status, count: 0, value: 0 }; totals.value.push(t); }
+    return t;
+  };
+  const a = row(from); a.count = Math.max(0, a.count - 1); a.value = Number(a.value) - v;
+  const b = row(to); b.count += 1; b.value = Number(b.value) + v;
+}
 
 // ── Drag & drop ──────────────────────────────────────────────────────────────
 function onDragStart(id: string) { dragId.value = id; }
@@ -281,8 +353,16 @@ async function onDrop(stageId: string) {
   if (!id) return;
   const opp = opps.value.find(o => o.id === id);
   if (!opp || opp.stage_id === stageId) return;
+  const from = opp.stage_id;
   opp.stage_id = stageId;
-  await api.patch(`/opportunities/${id}`, { stage_id: stageId });
+  moveInTotals(opp, from, stageId);
+  try {
+    await api.patch(`/opportunities/${id}`, { stage_id: stageId });
+  } catch (e) {
+    opp.stage_id = from; // revertir si el servidor lo rechazó
+    moveInTotals(opp, stageId, from);
+    throw e;
+  }
 }
 
 // ── Filtros ──────────────────────────────────────────────────────────────────
@@ -292,8 +372,14 @@ function onFieldChange(c: FilterCondition) { c.op = OPS_BY_TYPE[fieldType(c.fiel
 
 // ── Import / Export CSV ──────────────────────────────────────────────────────
 const fileInput = ref<HTMLInputElement | null>(null);
+// Exporta TODO lo filtrado (búsqueda + filtros + orden), no solo las tarjetas cargadas en pantalla
 async function exportCsv() {
-  const res = await fetch(`/api/opportunities/export/csv?pipelineId=${currentId.value}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  const res = await fetch('/api/opportunities/export/csv', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(queryBody()),
+  });
+  if (!res.ok) { alert('No se pudo exportar el CSV'); return; }
   const url = URL.createObjectURL(await res.blob());
   const a = document.createElement('a');
   a.href = url; a.download = 'oportunidades.csv'; a.click();
@@ -306,7 +392,7 @@ async function onImportFile(e: Event) {
   const res = await api.post<{ imported: number; errors: string[] }>('/opportunities/import', { pipelineId: currentId.value, csv });
   alert(`Importadas: ${res.imported}${res.errors.length ? `\nErrores:\n${res.errors.join('\n')}` : ''}`);
   if (fileInput.value) fileInput.value.value = '';
-  await loadOpps();
+  await loadOpps({ keep: true });
 }
 
 // ── Formulario completo (estilo GHL) ─────────────────────────────────────────
@@ -431,14 +517,14 @@ async function saveForm() {
     if (editing.value) await api.patch(`/opportunities/${editing.value.id}`, payload);
     else await api.post('/opportunities', payload);
     showForm.value = false;
-    await loadOpps();
+    await loadOpps({ keep: true });
   } finally { saving.value = false; }
 }
 async function deleteOpp() {
   if (!editing.value || !await confirm('¿Eliminar esta oportunidad?', 'Eliminar oportunidad')) return;
   await api.del(`/opportunities/${editing.value.id}`);
   showForm.value = false;
-  await loadOpps();
+  await loadOpps({ keep: true });
 }
 async function addNote() {
   if (!editing.value || !newNote.value.trim()) return;
@@ -779,13 +865,14 @@ async function deleteNote(id: string) {
               <span
                 class="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold text-slate-800"
                 :style="{ backgroundColor: stage.color }"
-              >{{ stageOpps(stage.id).length }}</span>
+                :title="stageHasMore(stage.id) ? `${stageOpps(stage.id).length} cargadas de ${stageCount(stage.id)}` : undefined"
+              >{{ stageCount(stage.id) }}</span>
             </div>
             <span class="text-xs font-semibold text-slate-600">{{ stageSum(stage.id) }}</span>
           </div>
         </div>
 
-        <div class="flex-1 overflow-y-auto bg-slate-50/40 p-2.5">
+        <div class="flex-1 overflow-y-auto bg-slate-50/40 p-2.5" @scroll.passive="onScrollEnd($event, stage.id)">
           <TransitionGroup name="list" tag="div" class="space-y-2.5">
             <OpportunityCard
               v-for="opp in stageOpps(stage.id)"
@@ -800,7 +887,13 @@ async function deleteNote(id: string) {
               @open-conversation="openConversation"
             />
           </TransitionGroup>
-          <p v-if="stageOpps(stage.id).length === 0" class="py-8 text-center text-xs text-slate-400">Sin oportunidades</p>
+          <p v-if="stageOpps(stage.id).length === 0 && !stageHasMore(stage.id)" class="py-8 text-center text-xs text-slate-400">Sin oportunidades</p>
+
+          <!-- Paginación de la columna: se cargan PAGE tarjetas y el resto al llegar al final -->
+          <button v-if="stageHasMore(stage.id)" class="kanban-load-more" :disabled="loadingMore[stage.id]" @click="loadMore(stage.id)">
+            <Spinner v-if="loadingMore[stage.id]" :size="14" />
+            <template v-else>Cargar más · {{ stageOpps(stage.id).length }} de {{ stageCount(stage.id) }}</template>
+          </button>
 
           <!-- Quick Add button (estilo Flowlu) -->
           <button
@@ -815,7 +908,7 @@ async function deleteNote(id: string) {
     </div>
 
     <!-- Vista de lista -->
-    <div v-else class="flex-1 overflow-auto bg-slate-100/40 p-6">
+    <div v-else class="flex-1 overflow-auto bg-slate-100/40 p-6" @scroll.passive="onScrollEnd($event)">
       <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
         <table class="data-table w-full text-sm">
           <thead>
@@ -858,6 +951,12 @@ async function deleteNote(id: string) {
             </tr>
           </tbody>
         </table>
+        <div v-if="opps.length < totalLeads" class="border-t border-slate-100 p-2">
+          <button class="kanban-load-more" :disabled="loadingMore.__list" @click="loadMore()">
+            <Spinner v-if="loadingMore.__list" :size="14" />
+            <template v-else>Cargar más · {{ opps.length }} de {{ totalLeads }}</template>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1131,4 +1230,15 @@ async function deleteNote(id: string) {
 }
 .qf-input:focus { border-color: #F69008; box-shadow: 0 0 0 3px rgba(246,144,8,0.15); }
 .qf-input::placeholder { color: #94A3B8; }
+
+/* ── "Cargar más" de una columna / de la lista ─────────────────────────── */
+.kanban-load-more {
+  display: flex; align-items: center; justify-content: center; gap: 0.375rem;
+  width: 100%; margin-top: 0.625rem; padding: 0.5rem 0.75rem; border-radius: 0.375rem;
+  border: 1px solid #E2E8F0; background: white;
+  font-size: 0.75rem; font-weight: 600; color: #475569; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.kanban-load-more:hover:not(:disabled) { border-color: #F69008; color: #D97706; background: rgba(246,144,8,0.05); }
+.kanban-load-more:disabled { cursor: default; opacity: 0.7; }
 </style>

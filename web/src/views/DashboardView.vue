@@ -6,7 +6,7 @@ import {
 } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
-import type { ContactStats, Pipeline, Opportunity, Task } from '../types';
+import type { ContactStats, Pipeline, OppTotal, OppPage, Task } from '../types';
 import LoadingState from '../components/LoadingState.vue';
 import { useAuthStore } from '../stores/auth';
 
@@ -16,7 +16,8 @@ const loading = ref(true);
 
 const contacts = ref(0);
 const activeContacts = ref(0);
-const allOpps  = ref<Opportunity[]>([]);
+// Totales por etapa y estado del primer pipeline (sin descargar las oportunidades)
+const oppTotals = ref<OppTotal[]>([]);
 const tasks    = ref<Task[]>([]);
 const pipeline = ref<Pipeline | null>(null);
 
@@ -33,7 +34,7 @@ onMounted(async () => {
         api.get<Pipeline[]>('/pipelines').then(async ps => {
           if (!ps[0]) return;
           pipeline.value = ps[0];
-          allOpps.value = await api.post<Opportunity[]>('/opportunities/query', { pipelineId: ps[0].id });
+          oppTotals.value = (await api.post<OppPage>('/opportunities/query', { pipelineId: ps[0].id, limit: 0 })).totals;
         })
       );
     }
@@ -44,27 +45,29 @@ onMounted(async () => {
   } finally { loading.value = false; }
 });
 
-const openOpps = computed(() => allOpps.value.filter(o => o.status === 'open'));
-const wonOpps  = computed(() => allOpps.value.filter(o => o.status === 'won'));
-const lostOpps = computed(() => allOpps.value.filter(o => o.status === 'lost'));
+const sumBy = (status: OppTotal['status'], key: 'count' | 'value') =>
+  oppTotals.value.filter(t => t.status === status).reduce((s, t) => s + Number(t[key]), 0);
+const openCount = computed(() => sumBy('open', 'count'));
+const wonCount  = computed(() => sumBy('won', 'count'));
+const lostCount = computed(() => sumBy('lost', 'count'));
 
-const openValue = computed(() => openOpps.value.reduce((s, o) => s + Number(o.value), 0));
-const wonValue  = computed(() => wonOpps.value.reduce((s, o) => s + Number(o.value), 0));
+const openValue = computed(() => sumBy('open', 'value'));
+const wonValue  = computed(() => sumBy('won', 'value'));
 
 const conversionRate = computed(() => {
-  const closed = wonOpps.value.length + lostOpps.value.length;
-  return closed > 0 ? Math.round((wonOpps.value.length / closed) * 100) : null;
+  const closed = wonCount.value + lostCount.value;
+  return closed > 0 ? Math.round((wonCount.value / closed) * 100) : null;
 });
 
 const stageStats = computed(() => {
   if (!pipeline.value) return [];
   return pipeline.value.stages.map(s => {
-    const inStage = openOpps.value.filter(o => o.stage_id === s.id);
+    const t = oppTotals.value.find(x => x.stage_id === s.id && x.status === 'open');
     return {
       name:  s.name,
       color: s.color,
-      count: inStage.length,
-      value: inStage.reduce((sum, o) => sum + Number(o.value), 0),
+      count: t?.count ?? 0,
+      value: Number(t?.value ?? 0),
     };
   }).filter(s => s.count > 0);
 });
@@ -111,8 +114,8 @@ const moneyFull = (n: number) => {
           <p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D97706]">{{ todayStr }}</p>
           <h1 class="mt-1 text-2xl font-extrabold text-ink sm:text-[28px]">{{ greeting }}, {{ firstName }}</h1>
           <p class="mt-1 max-w-xl text-sm text-slate-500">
-            <template v-if="auth.can('opportunities') && openOpps.length">
-              Tienes <span class="font-semibold text-slate-700">{{ openOpps.length }} oportunidades abiertas</span>
+            <template v-if="auth.can('opportunities') && openCount">
+              Tienes <span class="font-semibold text-slate-700">{{ openCount }} oportunidades abiertas</span>
               por <span class="font-semibold text-[#D97706]">{{ moneyFull(openValue) }}</span><template v-if="pendingTasks">
               y <span class="font-semibold text-slate-700">{{ pendingTasks }} {{ pendingTasks === 1 ? 'tarea pendiente' : 'tareas pendientes' }}</span></template>.
             </template>
@@ -182,7 +185,7 @@ const moneyFull = (n: number) => {
           <div class="flex items-start justify-between">
             <div>
               <p class="text-sm font-medium text-slate-500">En pipeline</p>
-              <p class="stat-card__number mt-2">{{ openOpps.length }}</p>
+              <p class="stat-card__number mt-2">{{ openCount }}</p>
               <p class="stat-card__label">Oportunidades abiertas</p>
             </div>
             <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[#F69008]/10 text-[#D97706] transition-colors group-hover:bg-[#F69008]/20">
@@ -239,7 +242,7 @@ const moneyFull = (n: number) => {
           <div class="mt-3 flex items-center gap-2">
             <span class="badge-trend" :class="conversionRate >= 50 ? 'badge-trend--up' : 'badge-trend--down'">
               <component :is="conversionRate >= 50 ? ArrowUpRight : ArrowDownRight" class="h-3 w-3" />
-              {{ wonOpps.length }} ganadas
+              {{ wonCount }} ganadas
             </span>
           </div>
         </div>
@@ -276,7 +279,7 @@ const moneyFull = (n: number) => {
               <div class="min-w-0 flex-1">
                 <p class="text-xs font-medium text-emerald-700">Ganadas</p>
                 <p class="truncate text-sm font-bold text-emerald-800">
-                  {{ wonOpps.length }}
+                  {{ wonCount }}
                   <span class="font-normal text-emerald-600"> — {{ moneyFull(wonValue) }}</span>
                 </p>
               </div>
@@ -287,7 +290,7 @@ const moneyFull = (n: number) => {
               </div>
               <div class="flex-1">
                 <p class="text-xs font-medium text-red-600">Perdidas</p>
-                <p class="text-sm font-bold text-red-700">{{ lostOpps.length }} oportunidades</p>
+                <p class="text-sm font-bold text-red-700">{{ lostCount }} oportunidades</p>
               </div>
             </div>
             <div class="flex items-center gap-3 rounded-lg bg-blue-50 p-3">
@@ -296,7 +299,7 @@ const moneyFull = (n: number) => {
               </div>
               <div class="flex-1">
                 <p class="text-xs font-medium text-blue-700">En proceso</p>
-                <p class="text-sm font-bold text-blue-800">{{ openOpps.length }} oportunidades</p>
+                <p class="text-sm font-bold text-blue-800">{{ openCount }} oportunidades</p>
               </div>
             </div>
           </div>
@@ -319,7 +322,7 @@ const moneyFull = (n: number) => {
                     :style="{
                       background: s.color,
                       '--stage': s.color,
-                      width: `${openOpps.length > 0 ? Math.round((s.count / openOpps.length) * 100) : 0}%`
+                      width: `${openCount > 0 ? Math.round((s.count / openCount) * 100) : 0}%`
                     }"
                   ></div>
                 </div>
