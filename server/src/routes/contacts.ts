@@ -1,14 +1,16 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { query, queryOne } from '../db.ts';
+import { pool, query, queryOne } from '../db.ts';
+import { findContactByPhone, lockPhone, withTransaction } from '../phone.ts';
 import { logActivity } from '../activity.ts';
 import { audit } from '../audit.ts';
 import { fireTagTrigger, fireContactCreatedTrigger } from '../services/automation-engine.ts';
 
 export const contactsRouter = Router();
 
-// Normaliza un número de teléfono: quita el + inicial y espacios para comparación consistente.
-function normalizePhone(phone: string | null | undefined): string | null {
+// Limpia el teléfono que se GUARDA (quita espacios y el + inicial; el formato que escribió el usuario se
+// respeta). Para comparar/deduplicar se usa phone.ts (columna phone_digits, últimos 10 dígitos).
+function cleanPhone(phone: string | null | undefined): string | null {
   if (!phone) return null;
   return phone.trim().replace(/^\+/, '');
 }
@@ -98,7 +100,7 @@ contactsRouter.post('/import/csv', async (req, res) => {
           firstName,
           (r['Apellido'] ?? r['last_name'] ?? '') || null,
           (r['Email']    ?? r['email']     ?? '') || null,
-          normalizePhone((r['Teléfono'] ?? r['phone'] ?? '') || null),
+          cleanPhone((r['Teléfono'] ?? r['phone'] ?? '') || null),
           (r['Empresa']  ?? r['company']   ?? '') || null,
           (r['Cargo']    ?? r['position']  ?? '') || null,
           (r['Ciudad']   ?? r['city']      ?? '') || null,
@@ -235,17 +237,16 @@ contactsRouter.post('/', async (req, res) => {
   const orgId  = req.auth!.organizationId;
   const actorId = req.auth!.userId;
 
-  const normalizedPhone = normalizePhone(c.phone);
+  const normalizedPhone = cleanPhone(c.phone);
 
-  // Si hay teléfono, buscar contacto existente con el mismo número (ignorando +)
-  if (normalizedPhone) {
-    const existing = await queryOne<{ id: string }>(
-      `SELECT id FROM contacts WHERE organization_id=$1 AND regexp_replace(phone, '^\\+', '') = $2 LIMIT 1`,
-      [orgId, normalizedPhone],
-    );
+  // Buscar-o-crear con candado por teléfono: dos altas simultáneas del mismo número no duplican.
+  // Comparación tolerante (últimos 10 dígitos): "(407) 555-1234" es el mismo que "14075551234".
+  const result = await withTransaction(pool, async tx => {
+    await lockPhone(tx, orgId, normalizedPhone);
+    const existing = await findContactByPhone(tx, orgId, normalizedPhone);
     if (existing) {
       // Actualizar el contacto existente con los datos nuevos en vez de crear duplicado
-      const [updated] = await query(
+      const upd = await tx.query(
         `UPDATE contacts SET
            first_name     = COALESCE(NULLIF($2,''), first_name),
            last_name      = COALESCE($3, last_name),
@@ -256,47 +257,50 @@ contactsRouter.post('/', async (req, res) => {
          WHERE id=$1 RETURNING *`,
         [existing.id, c.first_name, c.last_name ?? null, c.email || null, normalizedPhone, c.company ?? null],
       );
-      return res.status(200).json(updated);
+      return { row: upd.rows[0], created: false };
     }
-  }
 
-  const [row] = await query(
-    `INSERT INTO contacts (
-       organization_id, first_name, last_name, email, phone,
-       email_secondary, phone_secondary, company, position,
-       address, city, country, birthday, linkedin, twitter,
-       instagram, website, source, status, avatar_color, tags, notes
-     ) VALUES (
-       $1,  $2,  $3,  $4,  $5,
-       $6,  $7,  $8,  $9,
-       $10, $11, $12, $13, $14, $15,
-       $16, $17, $18, $19, $20, $21, $22
-     ) RETURNING *`,
-    [
-      orgId,
-      c.first_name,
-      c.last_name       ?? null,
-      c.email           || null,
-      normalizedPhone   ?? null,
-      c.email_secondary || null,
-      c.phone_secondary ?? null,
-      c.company         ?? null,
-      c.position        ?? null,
-      c.address         ?? null,
-      c.city            ?? null,
-      c.country         ?? null,
-      c.birthday        ?? null,
-      c.linkedin        ?? null,
-      c.twitter         ?? null,
-      c.instagram       ?? null,
-      c.website         ?? null,
-      c.source          ?? null,
-      c.status          ?? 'active',
-      c.avatar_color    ?? null,
-      c.tags            ?? [],
-      c.notes           ?? null,
-    ],
-  );
+    const ins = await tx.query(
+      `INSERT INTO contacts (
+         organization_id, first_name, last_name, email, phone,
+         email_secondary, phone_secondary, company, position,
+         address, city, country, birthday, linkedin, twitter,
+         instagram, website, source, status, avatar_color, tags, notes
+       ) VALUES (
+         $1,  $2,  $3,  $4,  $5,
+         $6,  $7,  $8,  $9,
+         $10, $11, $12, $13, $14, $15,
+         $16, $17, $18, $19, $20, $21, $22
+       ) RETURNING *`,
+      [
+        orgId,
+        c.first_name,
+        c.last_name       ?? null,
+        c.email           || null,
+        normalizedPhone   ?? null,
+        c.email_secondary || null,
+        c.phone_secondary ?? null,
+        c.company         ?? null,
+        c.position        ?? null,
+        c.address         ?? null,
+        c.city            ?? null,
+        c.country         ?? null,
+        c.birthday        ?? null,
+        c.linkedin        ?? null,
+        c.twitter         ?? null,
+        c.instagram       ?? null,
+        c.website         ?? null,
+        c.source          ?? null,
+        c.status          ?? 'active',
+        c.avatar_color    ?? null,
+        c.tags            ?? [],
+        c.notes           ?? null,
+      ],
+    );
+    return { row: ins.rows[0], created: true };
+  });
+  if (!result.created) return res.status(200).json(result.row);
+  const row = result.row;
 
   const fullName = [c.first_name, c.last_name].filter(Boolean).join(' ');
   const actor    = await queryOne<{ name: string }>('SELECT name FROM users WHERE id=$1', [actorId]);
@@ -411,9 +415,9 @@ contactsRouter.put('/:id', async (req, res) => {
       c.first_name,
       c.last_name                ?? null,
       c.email                    || null,
-      normalizePhone(c.phone)    ?? null,
+      cleanPhone(c.phone)    ?? null,
       c.email_secondary          || null,
-      normalizePhone(c.phone_secondary) ?? null,
+      cleanPhone(c.phone_secondary) ?? null,
       c.company                  ?? null,
       c.position                 ?? null,
       c.address                  ?? null,
@@ -471,7 +475,7 @@ contactsRouter.patch('/:id', async (req, res) => {
     if (key in req.body) {
       fields.push(`${key}=$${idx}`);
       const val = req.body[key] ?? null;
-      values.push(key === 'phone' || key === 'phone_secondary' ? normalizePhone(val) : val);
+      values.push(key === 'phone' || key === 'phone_secondary' ? cleanPhone(val) : val);
       idx++;
     }
   }

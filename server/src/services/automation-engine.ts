@@ -8,6 +8,7 @@ import { evolutionFor, type EvolutionClient } from './evolution.ts';
 import { sendIgDm, sendIgPrivateReply, replyToIgComment } from './instagram.ts';
 import { upsertSocialConversation } from './social-inbox.ts';
 import { wantsInfo, captionKeywords, matchesKeyword } from './ig-intent.ts';
+import { phoneMatchKey } from '../phone.ts';
 
 // ── Mapa de códigos de área de EE.UU. → Estado ──────────────────────────────
 
@@ -845,8 +846,9 @@ export async function handleIncomingWaMessage(
     const rawPhone = waChatId.split('@')[0];
     if (!rawPhone) return;
 
-    const normalizedPhone = rawPhone.replace(/\D/g, '');
-    if (!normalizedPhone) return;
+    // Misma comparación tolerante que los contactos (últimos 10 dígitos, ver phone.ts)
+    const phoneKey = phoneMatchKey(rawPhone);
+    if (!phoneKey) return;
 
     // Tomar de forma atómica el run en estado 'waiting' cuyo contact_phone coincida: dos mensajes
     // simultáneos del mismo lead no pueden reanudar el mismo run (SKIP LOCKED + condición de estado).
@@ -856,13 +858,13 @@ export async function handleIncomingWaMessage(
          SELECT id FROM automation_runs
          WHERE organization_id = $1
            AND status = 'waiting'
-           AND regexp_replace(contact_phone, '\\D', '', 'g') LIKE $2
+           AND right(crm_phone_digits(contact_phone), 10) = $2
          ORDER BY waiting_since ASC
          LIMIT 1
          FOR UPDATE SKIP LOCKED
        )
        RETURNING id`,
-      [orgId, `%${normalizedPhone}%`],
+      [orgId, phoneKey],
     );
     const runRow = runRes.rows[0];
     if (!runRow) return;

@@ -14,6 +14,7 @@ import { handleIgComment, captureIgPhone, findIgContact } from '../services/ig-c
 import { upsertSocialConversation } from '../services/social-inbox.ts';
 import { describeIgMessage, getIgUsername, type IgDmMessage } from '../services/instagram.ts';
 import { fireContactCreatedTrigger } from '../services/automation-engine.ts';
+import { contactPhoneMatch, lockPhone, phoneMatchKey, withTransaction } from '../phone.ts';
 
 export const socialRouter = Router();
 export const socialPublicRouter = Router(); // callback OAuth (sin auth)
@@ -654,28 +655,30 @@ async function handleLeadgen(orgId: string, accessToken: string, event: LeadgenC
   if (cfg.auto_create_contact) {
     // Intentar encontrar contacto existente. Sin teléfono ni email no hay con qué
     // compararlo (la condición coincidiría con cualquier contacto): se crea uno nuevo.
-    const existing = (contactPhone || contactEmail)
-      ? await pool.query<{ id: string }>(
-          `SELECT id FROM contacts WHERE organization_id = $1
-           AND ($2::text IS NULL OR phone = $2)
-           AND ($3::text IS NULL OR lower(email) = lower($3))
-           LIMIT 1`,
-          [orgId, contactPhone, contactEmail],
-        )
-      : { rows: [] as { id: string }[] };
-
-    if (existing.rows[0]) {
-      contactId = existing.rows[0].id;
-    } else {
-      const newContact = await pool.query<{ id: string }>(
+    // Teléfono con la comparación tolerante de phone.ts; candado por teléfono contra altas simultáneas.
+    const phoneKey = phoneMatchKey(contactPhone);
+    const found = await withTransaction(pool, async tx => {
+      await lockPhone(tx, orgId, contactPhone);
+      const existing = (phoneKey || contactEmail)
+        ? await tx.query<{ id: string }>(
+            `SELECT id FROM contacts WHERE organization_id = $1
+             AND ($2::text IS NULL OR ${contactPhoneMatch('$2')})
+             AND ($3::text IS NULL OR lower(email) = lower($3))
+             ORDER BY created_at LIMIT 1`,
+            [orgId, phoneKey, contactEmail],
+          )
+        : { rows: [] as { id: string }[] };
+      if (existing.rows[0]) return { id: existing.rows[0].id, created: false };
+      const newContact = await tx.query<{ id: string }>(
         `INSERT INTO contacts (organization_id, first_name, phone, email, source)
          VALUES ($1, $2, $3, $4, 'facebook_lead_ad')
          RETURNING id`,
         [orgId, firstName, contactPhone, contactEmail],
       );
-      contactId = newContact.rows[0]?.id ?? null;
-      fireContactCreatedTrigger(orgId, contactId).catch(console.error);
-    }
+      return { id: newContact.rows[0]?.id ?? null, created: true };
+    });
+    contactId = found.id;
+    if (found.created) fireContactCreatedTrigger(orgId, contactId).catch(console.error);
   }
 
   // 5. Crear oportunidad en el pipeline configurado

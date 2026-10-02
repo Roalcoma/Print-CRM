@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { query, queryOne } from '../db.ts';
+import { pool, query, queryOne } from '../db.ts';
+import { findContactByPhone, lockPhone, withTransaction } from '../phone.ts';
 import { buildFilters, type Condition } from '../filters.ts';
 import { toCsv, parseCsv } from '../csv.ts';
 import { logActivity } from '../activity.ts';
@@ -68,11 +69,18 @@ async function upsertContact(
     if (existing) return existing.id;
   }
   if (hasData) {
-    const [c] = await query<{ id: string }>(
-      'INSERT INTO contacts (organization_id, first_name, email, phone) VALUES ($1,$2,$3,$4) RETURNING id',
-      [orgId, name || email || 'Sin nombre', email || null, phone || null],
-    );
-    if (fireTrigger) fireContactCreatedTrigger(orgId, c.id).catch(console.error);
+    // Mismo teléfono (comparación tolerante de phone.ts) → se reutiliza; candado contra altas simultáneas
+    const c = await withTransaction(pool, async tx => {
+      await lockPhone(tx, orgId, phone);
+      const byPhone = await findContactByPhone(tx, orgId, phone);
+      if (byPhone) return { id: byPhone.id, created: false };
+      const ins = await tx.query<{ id: string }>(
+        'INSERT INTO contacts (organization_id, first_name, email, phone) VALUES ($1,$2,$3,$4) RETURNING id',
+        [orgId, name || email || 'Sin nombre', email || null, phone || null],
+      );
+      return { id: ins.rows[0].id, created: true };
+    });
+    if (c.created && fireTrigger) fireContactCreatedTrigger(orgId, c.id).catch(console.error);
     return c.id;
   }
   return null;
