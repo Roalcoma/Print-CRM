@@ -4,7 +4,7 @@
 
 import { pool } from '../db.ts';
 import { broadcast } from './ws-manager.ts';
-import { evolutionFor, type EvolutionClient } from './evolution.ts';
+import { evolutionFor, isNotOnWhatsapp, type EvolutionClient } from './evolution.ts';
 import { sendIgDm, sendIgPrivateReply, replyToIgComment } from './instagram.ts';
 import { upsertSocialConversation } from './social-inbox.ts';
 import { wantsInfo, captionKeywords, matchesKeyword } from './ig-intent.ts';
@@ -250,11 +250,13 @@ type ApptWait = { appointment_id?: string | null; minutes_before?: number; resum
 // Antes de continuar un run que esperaba "X minutos antes de la cita": si la cita se canceló, el run se
 // cancela (no salen recordatorios de citas canceladas); si se reagendó, se reprograma con la hora nueva;
 // si la cita ya empezó (p. ej. el servidor estuvo caído), se salta el recordatorio que seguía a la espera.
+// `startIdx` es el paso por el que se va a reanudar (ya resuelto por id); devuelve el paso por el que seguir
+// o 'stop'. La comparación con resume_step usa el current_step guardado (los dos se guardaron a la vez).
 async function checkAppointmentWait(run: {
   id: string; organization_id: string; current_step: number; step_data: Record<string, Record<string, unknown>>;
-}): Promise<'go' | 'stop'> {
+}, steps: StepDef[], startIdx: number): Promise<number | 'stop'> {
   const w = run.step_data?.['__appt_wait__'] as ApptWait | undefined;
-  if (!w?.appointment_id || run.current_step !== w.resume_step) return 'go';
+  if (!w?.appointment_id || run.current_step !== w.resume_step) return startIdx;
   const appt = (await pool.query<{ status: string; start_at: Date; timezone: string }>(
     APPT_SQL, [w.appointment_id, run.organization_id],
   )).rows[0];
@@ -266,12 +268,13 @@ async function checkAppointmentWait(run: {
   const start = new Date(appt.start_at);
   const now = new Date();
   if (start <= now) {
-    // La cita ya empezó: un recordatorio a destiempo confunde más de lo que ayuda
-    run.current_step = (w.resume_step ?? run.current_step) + 1;
-    await pool.query(`UPDATE automation_runs SET current_step = $1, updated_at = NOW() WHERE id = $2`, [run.current_step, run.id]);
-    return 'go';
+    // La cita ya empezó: un recordatorio a destiempo confunde más de lo que ayuda (se salta el paso que seguía a la espera)
+    const next = startIdx + 1;
+    await pool.query(`UPDATE automation_runs SET current_step = $1, step_data = $2, updated_at = NOW() WHERE id = $3`,
+      [next, withCursor(run.step_data, steps, next), run.id]);
+    return next;
   }
-  if (!prev?.start_at || new Date(prev.start_at as string).getTime() === start.getTime()) return 'go';
+  if (!prev?.start_at || new Date(prev.start_at as string).getTime() === start.getTime()) return startIdx;
 
   // Reagendada: actualizar fecha/hora para los mensajes y recalcular cuándo toca el recordatorio
   run.step_data['__appointment__'] = { ...prev, ...appointmentTimeFields(start, appt.timezone) };
@@ -284,7 +287,7 @@ async function checkAppointmentWait(run: {
     return 'stop';
   }
   await pool.query(`UPDATE automation_runs SET step_data = $1, updated_at = NOW() WHERE id = $2`, [JSON.stringify(run.step_data), run.id]);
-  return 'go';
+  return startIdx;
 }
 
 /**
@@ -319,6 +322,63 @@ export async function rescheduleAppointmentWaits(orgId: string, appointmentId: s
   }
 }
 
+// ── Progreso y garantías de ejecución ───────────────────────────────────────
+// Cada paso, al terminar, guarda en UNA sola UPDATE el índice siguiente (current_step), los datos
+// (step_data) y el cursor `__cursor__.next_step_id` = id del paso por el que seguir. Al reanudar se
+// busca ese id en la versión ACTUAL de la regla: si alguien insertó, movió o borró pasos mientras el
+// run esperaba, se sigue por el mismo paso y no se repite ni se salta un mensaje. Si ese paso ya no
+// existe, el run termina como completado con una nota (`__note__`).
+// Un reinicio a mitad de un paso (corte de luz) solo puede repetir ESE paso, y nunca un envío de
+// WhatsApp: antes de llamar a Evolution se guarda la marca `{sending: true}` del paso; si al reanudar
+// la marca sigue ahí, no se sabe si el mensaje salió y se prefiere no duplicarlo (se marca
+// `sent: 'unknown'` y se sigue). Un timeout de Evolution, en cambio, se reintenta (el mensaje podría
+// llegar dos veces si Evolution lo envió pero respondió tarde: preferible a perderlo).
+
+type StepData = Record<string, Record<string, unknown>>;
+
+// Serializa step_data con el cursor apuntando al paso `idx` de `steps`
+function withCursor(stepData: StepData, steps: StepDef[], idx: number): string {
+  stepData['__cursor__'] = { next_step_id: steps[idx]?.id ?? null, done: idx >= steps.length };
+  return JSON.stringify(stepData);
+}
+
+// Paso por el que reanudar un run: por el id del cursor; sin cursor (runs anteriores a este cambio,
+// o pasos sin id) por el índice guardado. 'gone' = el paso pendiente se borró de la regla.
+function resolveStart(run: { current_step: number; step_data: StepData }, steps: StepDef[]): number | 'gone' {
+  const cur = run.step_data?.['__cursor__'] as { next_step_id?: string | null; done?: boolean } | undefined;
+  if (!cur) return run.current_step;
+  if (cur.done) return steps.length;
+  if (!cur.next_step_id) return run.current_step;
+  if (steps[run.current_step]?.id === cur.next_step_id) return run.current_step;   // sin cambios (o ids repetidos)
+  const idx = steps.findIndex(s => s.id === cur.next_step_id);
+  return idx >= 0 ? idx : 'gone';
+}
+
+// WhatsApp no disponible: cada cuánto se reintenta un envío y cuántas veces (12 × 5 min = 1 hora)
+const WA_RETRY_MINUTES = 5;
+const WA_MAX_RETRIES = 12;
+
+// Aviso en la campanita a owner/admin cuando una automatización no pudo enviar un WhatsApp
+async function notifySendFailure(orgId: string, runId: string, automationId: string, contact: Record<string, unknown>, phone: string, reason: string) {
+  const rule = (await pool.query<{ name: string }>(`SELECT name FROM automation_rules WHERE id = $1`, [automationId])).rows[0];
+  const who = [contact.first_name, contact.last_name].filter(Boolean).join(' ');
+  const to = who ? `${who} (+${phone})` : `+${phone}`;
+  const { rows } = await pool.query<{ id: string }>(
+    `SELECT id FROM users WHERE organization_id = $1 AND role IN ('owner','admin')`, [orgId],
+  );
+  for (const u of rows) {
+    await pool.query(
+      `INSERT INTO notifications (organization_id, user_id, type, title, body, entity_type, entity_id)
+       VALUES ($1, $2, 'automation', $3, $4, 'automation_run', $5)`,
+      [orgId, u.id, 'Mensaje de automatización no enviado',
+       `No se pudo enviar el mensaje de la automatización «${rule?.name ?? 'sin nombre'}» a ${to}: ${reason}. ` +
+       `Se reintentó durante ${WA_RETRY_MINUTES * WA_MAX_RETRIES} minutos. Revisa la conexión en Configuración → WhatsApp y envíalo a mano.`,
+       runId],
+    );
+    broadcast(orgId, 'notification:new', { userId: u.id });
+  }
+}
+
 export async function executeRun(runId: string): Promise<void> {
   // Cargar el run
   const runRes = await pool.query<{
@@ -329,14 +389,14 @@ export async function executeRun(runId: string): Promise<void> {
     contact_phone: string | null;
     status: string;
     current_step: number;
-    step_data: Record<string, Record<string, unknown>>;
+    step_data: StepData;
   }>(
     `SELECT * FROM automation_runs WHERE id = $1`,
     [runId],
   );
   const run = runRes.rows[0];
   if (!run || run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') return;
-  if ((await checkAppointmentWait(run)) === 'stop') return;
+  run.step_data ??= {};
 
   // Cargar la automatización
   const autoRes = await pool.query<{ config: { steps: StepDef[] } }>(
@@ -346,8 +406,22 @@ export async function executeRun(runId: string): Promise<void> {
   const autoRule = autoRes.rows[0];
   if (!autoRule) return;
 
-  const steps: StepDef[] = autoRule.config.steps ?? [];
+  const steps: StepDef[] = autoRule.config?.steps ?? [];
   const orgId = run.organization_id;
+
+  // Paso por el que seguir (por id, ver arriba)
+  const resolved = resolveStart(run, steps);
+  if (resolved === 'gone') {
+    const missing = (run.step_data['__cursor__'] as { next_step_id?: string }).next_step_id;
+    run.step_data['__note__'] = { message: `El paso ${missing} se eliminó de la automatización mientras el run esperaba: se dio por terminado.` };
+    await pool.query(
+      `UPDATE automation_runs SET status = 'completed', step_data = $1, completed_at = NOW(), updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(run.step_data), runId],
+    );
+    return;
+  }
+  const start = await checkAppointmentWait(run, steps, resolved);
+  if (start === 'stop') return;
 
   // Cargar contacto
   let contact: Record<string, unknown> = {};
@@ -359,8 +433,8 @@ export async function executeRun(runId: string): Promise<void> {
     contact = cRes.rows[0] ?? {};
   }
 
-  const stepData: Record<string, Record<string, unknown>> = run.step_data ?? {};
-  let currentStep = run.current_step;
+  const stepData: StepData = run.step_data;
+  let currentStep = start;
 
   for (let i = currentStep; i < steps.length; i++) {
     const step = steps[i];
@@ -371,7 +445,7 @@ export async function executeRun(runId: string): Promise<void> {
         const state = detectUsState(phone);
         stepData[step.id] = { state };
         currentStep = i + 1;
-        await persistRunProgress(runId, currentStep, stepData);
+        await persistRunProgress(runId, steps, currentStep, stepData);
 
       } else if (step.type === 'create_opportunity') {
         // Usar pipeline/stage del config si están definidos, si no tomar el primero
@@ -383,7 +457,7 @@ export async function executeRun(runId: string): Promise<void> {
             `SELECT id FROM pipelines WHERE organization_id = $1 ORDER BY created_at LIMIT 1`,
             [orgId],
           );
-          if (!pipeRes.rows[0]) { currentStep = i + 1; await persistRunProgress(runId, currentStep, stepData); continue; }
+          if (!pipeRes.rows[0]) { currentStep = i + 1; await persistRunProgress(runId, steps, currentStep, stepData); continue; }
           pipelineId = pipeRes.rows[0].id;
         }
 
@@ -392,7 +466,7 @@ export async function executeRun(runId: string): Promise<void> {
             `SELECT id FROM pipeline_stages WHERE pipeline_id = $1 ORDER BY position LIMIT 1`,
             [pipelineId],
           );
-          if (!stageRes.rows[0]) { currentStep = i + 1; await persistRunProgress(runId, currentStep, stepData); continue; }
+          if (!stageRes.rows[0]) { currentStep = i + 1; await persistRunProgress(runId, steps, currentStep, stepData); continue; }
           stageId = stageRes.rows[0].id;
         }
 
@@ -408,7 +482,7 @@ export async function executeRun(runId: string): Promise<void> {
         stepData[step.id] = { opportunity_id: oppRes.rows[0].id };
         broadcast(orgId, 'opportunity:new', { id: oppRes.rows[0].id });
         currentStep = i + 1;
-        await persistRunProgress(runId, currentStep, stepData);
+        await persistRunProgress(runId, steps, currentStep, stepData);
 
       } else if (step.type === 'send_notification') {
         const notifTitle = interpolate(step.notification_title ?? '', contact, stepData);
@@ -428,7 +502,7 @@ export async function executeRun(runId: string): Promise<void> {
         }
         stepData[step.id] = { sent: true };
         currentStep = i + 1;
-        await persistRunProgress(runId, currentStep, stepData);
+        await persistRunProgress(runId, steps, currentStep, stepData);
 
       } else if (step.type === 'wait_minutes') {
         // Espera N minutos desde ahora antes de continuar con el siguiente paso
@@ -440,7 +514,7 @@ export async function executeRun(runId: string): Promise<void> {
            SET status = 'waiting_timed', current_step = $1, step_data = $2,
                resume_at = $3, updated_at = NOW()
            WHERE id = $4`,
-          [currentStep, JSON.stringify(stepData), resumeAt.toISOString(), runId],
+          [currentStep, withCursor(stepData, steps, currentStep), resumeAt.toISOString(), runId],
         );
         return;
 
@@ -449,65 +523,81 @@ export async function executeRun(runId: string): Promise<void> {
         const phone = (step.to_phone as string | undefined)
           ? (step.to_phone as string).replace(/\D/g, '')
           : normalizeContactPhone(contact, run);
-        if (phone) {
+        const retry = stepData['__wa_retry__'] as { step_id?: string; count?: number } | undefined;
+
+        if (!phone) {
+          stepData[step.id] = { sent: false, reason: 'sin_telefono' };
+        } else if (stepData[step.id]?.sending) {
+          // Se reinició el servidor en pleno envío: no se sabe si salió → no se repite (ver garantías arriba)
+          console.warn(`[automation-engine] run ${runId} ${step.id}: envío interrumpido por un reinicio; no se repite`);
+          stepData[step.id] = { sent: 'unknown' };
+        } else {
+          const message = interpolate(step.message ?? '', contact, stepData);
           const client = await getWaClient(orgId);
+          let outcome: 'sent' | 'no_wa' | 'retry' = 'retry';
+          let reason = 'WhatsApp desconectado';
           if (client) {
-            const message = interpolate(step.message ?? '', contact, stepData);
-            let messageSent = false;
+            // Marca de "enviando" ANTES de llamar a Evolution (si el proceso muere aquí, no se duplica)
+            stepData[step.id] = { sending: true };
+            await persistRunProgress(runId, steps, i, stepData);
             try {
               await client.sendText(phone, message);
-              messageSent = true;
+              outcome = 'sent';
             } catch (sendErr: unknown) {
-              // Si el número no está registrado en WA, continuar sin fallar la automatización
-              const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
-              if (msg.includes('exists":false') || msg.includes('400')) {
-                console.warn(`[automation-engine] ${step.id}: número ${phone} sin WA, continuando`);
+              if (isNotOnWhatsapp(sendErr)) {
+                outcome = 'no_wa';
               } else {
-                throw sendErr;
-              }
-            }
-
-            // Insertar mensaje outbound en el chat solo si el envío fue exitoso
-            if (messageSent) {
-              const chatJid = `${phone}@s.whatsapp.net`;
-              const convRes = await pool.query<{ id: string }>(
-                `SELECT id FROM conversations WHERE organization_id = $1 AND wa_chat_id = $2 LIMIT 1`,
-                [orgId, chatJid],
-              );
-              if (convRes.rows[0]) {
-                const convId = convRes.rows[0].id;
-                const inserted = await pool.query<{ id: string }>(
-                  `INSERT INTO conv_messages (conversation_id, organization_id, direction, msg_type, body, status)
-                   VALUES ($1, $2, 'outbound', 'text', $3, 'sent')
-                   RETURNING id`,
-                  [convId, orgId, message],
-                );
-                if (inserted.rows[0]) {
-                  await pool.query(
-                    `UPDATE conversations SET last_message_at = NOW(), last_message_preview = $1, updated_at = NOW() WHERE id = $2`,
-                    [message.slice(0, 100), convId],
-                  );
-                  broadcast(orgId, 'message:new', {
-                    conversationId: convId,
-                    message: {
-                      id: inserted.rows[0].id, conversation_id: convId, wa_message_id: null,
-                      direction: 'outbound', msg_type: 'text', body: message,
-                      media_url: null, media_mime: null, sender_name: null,
-                      status: 'sent', created_at: new Date().toISOString(),
-                    },
-                  });
-                }
+                // 5xx, instancia caída, sin red, timeout…: pasajero, se reintenta
+                const msg = !(sendErr instanceof Error) ? String(sendErr)
+                  : sendErr.name === 'TimeoutError' ? 'Evolution no respondió a tiempo' : sendErr.message;
+                reason = `error al enviar (${msg.slice(0, 160)})`;
               }
             }
           }
+
+          if (outcome === 'retry') {
+            const count = (retry?.step_id === step.id ? retry.count ?? 0 : 0) + 1;
+            if (count > WA_MAX_RETRIES) {
+              stepData[step.id] = { sent: false, error: reason };
+              delete stepData['__wa_retry__'];
+              console.warn(`[automation-engine] run ${runId} ${step.id}: sin enviar tras ${WA_MAX_RETRIES} reintentos (${reason})`);
+              await pool.query(
+                `UPDATE automation_runs SET status = 'failed', current_step = $1, step_data = $2, updated_at = NOW() WHERE id = $3`,
+                [i, withCursor(stepData, steps, i), runId],
+              );
+              await notifySendFailure(orgId, runId, run.automation_id, contact, phone, reason);
+              return;
+            }
+            // Mismo paso dentro de 5 min (resumeTimedRuns lo retoma)
+            delete stepData[step.id];
+            stepData['__wa_retry__'] = { step_id: step.id, count, last_error: reason };
+            await pool.query(
+              `UPDATE automation_runs
+               SET status = 'waiting_timed', current_step = $1, step_data = $2,
+                   resume_at = NOW() + make_interval(mins => $3), updated_at = NOW()
+               WHERE id = $4`,
+              [i, withCursor(stepData, steps, i), WA_RETRY_MINUTES, runId],
+            );
+            return;
+          }
+
+          if (outcome === 'no_wa') {
+            // El número no tiene WhatsApp: se sigue con la automatización sin reintentar
+            console.warn(`[automation-engine] ${step.id}: número ${phone} sin WA, continuando`);
+            stepData[step.id] = { sent: false, reason: 'sin_whatsapp' };
+          } else {
+            stepData[step.id] = { sent: true };
+            await logOutboundWa(orgId, phone, message);
+          }
+          if (retry?.step_id === step.id) delete stepData['__wa_retry__'];
         }
-        stepData[step.id] = { sent: true };
         currentStep = i + 1;
-        await persistRunProgress(runId, currentStep, stepData);
+        await persistRunProgress(runId, steps, currentStep, stepData);
 
       } else if (step.type === 'wait_for_reply') {
         // Avanzar current_step al siguiente para que al retomar empiece después de este
         currentStep = i + 1;
+        withCursor(stepData, steps, currentStep);
         const phone = normalizeContactPhone(contact, run);
         await pool.query(
           `UPDATE automation_runs
@@ -535,7 +625,7 @@ export async function executeRun(runId: string): Promise<void> {
         }
         stepData[step.id] = { replied: true };
         currentStep = i + 1;
-        await persistRunProgress(runId, currentStep, stepData);
+        await persistRunProgress(runId, steps, currentStep, stepData);
 
       } else if (step.type === 'ig_send_dm') {
         // Envía un DM al usuario que comentó
@@ -560,7 +650,7 @@ export async function executeRun(runId: string): Promise<void> {
         if (result.message_id) await logIgInbox(orgId, ig, contact, message, result.message_id, 'outbound');
         stepData[step.id] = { sent: Boolean(result.message_id), ...(result.error ? { error: result.error } : {}) };
         currentStep = i + 1;
-        await persistRunProgress(runId, currentStep, stepData);
+        await persistRunProgress(runId, steps, currentStep, stepData);
 
       } else if (step.type === 'wait_before_appointment') {
         const minutesBefore = (step.minutes_before as number) ?? 120;
@@ -569,7 +659,7 @@ export async function executeRun(runId: string): Promise<void> {
         if (!apptData?.start_at) {
           // Sin datos de cita, saltar este paso
           currentStep = i + 1;
-          await persistRunProgress(runId, currentStep, stepData);
+          await persistRunProgress(runId, steps, currentStep, stepData);
           continue;
         }
 
@@ -579,14 +669,14 @@ export async function executeRun(runId: string): Promise<void> {
           // La cita ya empezó: saltar la espera y el recordatorio que la sigue
           currentStep = i + 2;
           i++;
-          await persistRunProgress(runId, currentStep, stepData);
+          await persistRunProgress(runId, steps, currentStep, stepData);
           continue;
         }
 
         if (resumeAt <= new Date()) {
           // El tiempo ya pasó, continuar de inmediato
           currentStep = i + 1;
-          await persistRunProgress(runId, currentStep, stepData);
+          await persistRunProgress(runId, steps, currentStep, stepData);
           continue;
         }
 
@@ -598,7 +688,7 @@ export async function executeRun(runId: string): Promise<void> {
            SET status = 'waiting_timed', current_step = $1, step_data = $2,
                resume_at = $3, updated_at = NOW()
            WHERE id = $4`,
-          [currentStep, JSON.stringify(stepData), resumeAt.toISOString(), runId],
+          [currentStep, withCursor(stepData, steps, currentStep), resumeAt.toISOString(), runId],
         );
         return; // parar hasta que el scheduler lo reanude
       }
@@ -619,7 +709,7 @@ export async function executeRun(runId: string): Promise<void> {
      SET status = 'completed', current_step = $1, step_data = $2,
          completed_at = NOW(), updated_at = NOW()
      WHERE id = $3`,
-    [currentStep, JSON.stringify(stepData), runId],
+    [currentStep, withCursor(stepData, steps, currentStep), runId],
   );
 }
 
@@ -627,13 +717,45 @@ export async function executeRun(runId: string): Promise<void> {
 
 async function persistRunProgress(
   runId: string,
+  steps: StepDef[],
   currentStep: number,
-  stepData: Record<string, Record<string, unknown>>,
+  stepData: StepData,
 ): Promise<void> {
   await pool.query(
     `UPDATE automation_runs SET current_step = $1, step_data = $2, updated_at = NOW() WHERE id = $3`,
-    [currentStep, JSON.stringify(stepData), runId],
+    [currentStep, withCursor(stepData, steps, currentStep), runId],
   );
+}
+
+// Registra en la conversación del chat (si existe) el mensaje que envió la automatización
+async function logOutboundWa(orgId: string, phone: string, message: string): Promise<void> {
+  const chatJid = `${phone}@s.whatsapp.net`;
+  const convRes = await pool.query<{ id: string }>(
+    `SELECT id FROM conversations WHERE organization_id = $1 AND wa_chat_id = $2 LIMIT 1`,
+    [orgId, chatJid],
+  );
+  if (!convRes.rows[0]) return;
+  const convId = convRes.rows[0].id;
+  const inserted = await pool.query<{ id: string }>(
+    `INSERT INTO conv_messages (conversation_id, organization_id, direction, msg_type, body, status)
+     VALUES ($1, $2, 'outbound', 'text', $3, 'sent')
+     RETURNING id`,
+    [convId, orgId, message],
+  );
+  if (!inserted.rows[0]) return;
+  await pool.query(
+    `UPDATE conversations SET last_message_at = NOW(), last_message_preview = $1, updated_at = NOW() WHERE id = $2`,
+    [message.slice(0, 100), convId],
+  );
+  broadcast(orgId, 'message:new', {
+    conversationId: convId,
+    message: {
+      id: inserted.rows[0].id, conversation_id: convId, wa_message_id: null,
+      direction: 'outbound', msg_type: 'text', body: message,
+      media_url: null, media_mime: null, sender_name: null,
+      status: 'sent', created_at: new Date().toISOString(),
+    },
+  });
 }
 
 function normalizeContactPhone(
@@ -699,7 +821,11 @@ async function startAutomation(
   const runRes = await pool.query<{ id: string }>(
     `INSERT INTO automation_runs
        (organization_id, automation_id, contact_id, contact_phone, status, current_step, step_data)
-     VALUES ($1, $2, $3, $4, 'running', 0, $5)
+     VALUES ($1, $2, $3, $4, 'running', 0,
+       -- cursor al primer paso de la regla tal como está ahora (se reanuda por id, no por índice)
+       $5::jsonb || jsonb_build_object('__cursor__', jsonb_build_object(
+         'next_step_id', (SELECT config->'steps'->0->>'id' FROM automation_rules WHERE id = $2),
+         'done', COALESCE((SELECT jsonb_array_length(config->'steps') = 0 FROM automation_rules WHERE id = $2), true))))
      RETURNING id`,
     [orgId, ruleId, contactId, phone, initialStepData],
   );
@@ -817,13 +943,16 @@ export async function fireAppointmentBookedTrigger(
 
 // ── Scheduler: reanudar esperas por tiempo ───────────────────────────────────
 
-export async function resumeTimedRuns(): Promise<void> {
+// `onlyOrgId` limita a una organización (lo usan los tests: la BD local es compartida).
+export async function resumeTimedRuns(onlyOrgId?: string): Promise<void> {
   try {
     const runsRes = await pool.query<{ id: string }>(
       `UPDATE automation_runs
        SET status = 'running', updated_at = NOW()
        WHERE status = 'waiting_timed' AND resume_at <= NOW()
+         AND ($1::uuid IS NULL OR organization_id = $1)
        RETURNING id`,
+      [onlyOrgId ?? null],
     );
     for (const row of runsRes.rows) {
       executeRun(row.id).catch(e => console.error('[automation-engine] timed resume error:', e));
@@ -831,6 +960,31 @@ export async function resumeTimedRuns(): Promise<void> {
   } catch (e) {
     console.error('[automation-engine] resumeTimedRuns error:', e);
   }
+}
+
+// ── Recuperar runs atascados ─────────────────────────────────────────────────
+// Un run en 'running' solo dura lo que tarda un paso (segundos; cada paso actualiza updated_at). Si
+// lleva más de 10 min sin moverse, el proceso murió a mitad (reinicio, corte de luz): se pasa a
+// 'waiting_timed' para que resumeTimedRuns lo retome por el paso guardado (ver garantías en executeRun).
+// Los que llevan más de 24 h atascados (p. ej. de antes de este arreglo) no se reanudan: un mensaje
+// automático con días de retraso confunde al lead; se marcan 'failed' con una nota.
+export async function recoverStuckRuns(onlyOrgId?: string): Promise<number> {
+  await pool.query(
+    `UPDATE automation_runs
+     SET status = 'failed', updated_at = NOW(),
+         step_data = step_data || '{"__note__":{"message":"Quedó atascado más de 24 h (reinicio del servidor): no se reanudó."}}'::jsonb
+     WHERE status = 'running' AND updated_at < NOW() - INTERVAL '24 hours'
+       AND ($1::uuid IS NULL OR organization_id = $1)`,
+    [onlyOrgId ?? null],
+  );
+  const { rowCount } = await pool.query(
+    `UPDATE automation_runs SET status = 'waiting_timed', resume_at = NOW(), updated_at = NOW()
+     WHERE status = 'running' AND updated_at < NOW() - INTERVAL '10 minutes'
+       AND ($1::uuid IS NULL OR organization_id = $1)`,
+    [onlyOrgId ?? null],
+  );
+  if (rowCount) console.warn(`[automation-engine] ${rowCount} run(s) atascados en 'running' se reanudarán`);
+  return rowCount ?? 0;
 }
 
 // ── Manejar mensaje WA entrante ──────────────────────────────────────────────

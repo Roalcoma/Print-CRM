@@ -2,6 +2,8 @@
 // Los tokens de "Instagram Login" (prefijo IGAA) solo funcionan en graph.instagram.com;
 // los de páginas de Facebook (EAA…) en graph.facebook.com.
 
+import { fetchWithTimeout } from '../http.ts';
+
 // META_GRAPH_URL / IG_GRAPH_URL: overrides solo para los tests (Meta simulado)
 const FB_BASE = `${process.env.META_GRAPH_URL ?? 'https://graph.facebook.com'}/v21.0`;
 const IG_BASE = `${process.env.IG_GRAPH_URL ?? 'https://graph.instagram.com'}/v21.0`;
@@ -11,7 +13,7 @@ export function igBase(accessToken: string): string {
 }
 
 async function post(url: string, body: Record<string, unknown>, label: string) {
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -78,7 +80,7 @@ export async function replyToIgComment(
 export async function getIgUsername(accessToken: string, igsid: string): Promise<string | null> {
   try {
     const url = `${igBase(accessToken)}/${igsid}?fields=username,name&access_token=${encodeURIComponent(accessToken)}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    const res = await fetchWithTimeout(url, {}, 5000);
     const json = await res.json() as { username?: string; name?: string; error?: unknown };
     if (json.error) { console.warn(`[instagram] getIgUsername ${igsid}:`, JSON.stringify(json.error)); return null; }
     return json.username ?? json.name ?? null;

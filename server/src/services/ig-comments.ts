@@ -5,6 +5,7 @@ import { pool } from '../db.ts';
 import { igBase } from './instagram.ts';
 import { fireIgCommentTrigger } from './automation-engine.ts';
 import { broadcast } from './ws-manager.ts';
+import { fetchWithTimeout } from '../http.ts';
 
 type Conn = {
   id: string;
@@ -68,10 +69,10 @@ export async function handleIgComment(conn: Conn, c: IgComment, mediaId?: string
 // La conexión a Meta desde el servidor tiene cortes intermitentes (ETIMEDOUT): un reintento.
 const get = async <T>(url: string): Promise<T & { error?: { message: string; code?: number } }> => {
   try {
-    return await (await fetch(url)).json();
+    return await (await fetchWithTimeout(url)).json();
   } catch {
     await new Promise(r => setTimeout(r, 3000));
-    return (await fetch(url)).json();
+    return (await fetchWithTimeout(url)).json();
   }
 };
 
@@ -84,6 +85,11 @@ const backoff = new Map<string, { skip: number; strikes: number }>();
 export function isRateLimitError(err: { code?: number } | undefined | null): boolean {
   return !!err && RATE_LIMIT_CODES.has(Number(err.code));
 }
+
+// Comentarios más viejos que esto no se procesan por polling: Meta solo deja mandar la respuesta privada
+// (el DM) hasta 7 días después del comentario, y la marca de "procesado" (ig_processed_comments) se
+// borra a los 30 días (retention.ts). Debe ser menor que esa retención o un comentario viejo se repetiría.
+export const IG_COMMENT_MAX_AGE_DAYS = 14;
 
 // Filtra por organización (tests); sin argumento recorre todas las conexiones activas.
 export async function pollIgComments(orgId?: string): Promise<void> {
@@ -138,6 +144,7 @@ export async function pollIgComments(orgId?: string): Promise<void> {
         if (comments.error) { console.error(`[ig-comments] comments error media ${m.id}:`, comments.error.message); continue; }
         for (const c of comments.data ?? []) {
           if (new Date(c.timestamp) <= conn.comments_polled_at) continue;
+          if (Date.now() - new Date(c.timestamp).getTime() > IG_COMMENT_MAX_AGE_DAYS * 24 * 60 * 60_000) continue;
           const author = c.from?.username ?? c.username;
           if (author && author === me.username) continue; // respuestas propias
           if (await handleIgComment(conn, c, m.id)) fired++;

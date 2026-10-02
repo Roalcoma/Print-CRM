@@ -9,6 +9,7 @@ import { env } from './env.ts';
 import { installErrorAlerts } from './services/alerts.ts';
 import { checkWhatsappConnections } from './services/wa-monitor.ts';
 import { resolveEvo } from './services/evolution.ts';
+import { fetchWithTimeout, externalTimeoutMs } from './http.ts';
 import { requireAuth } from './auth/middleware.ts';
 import { requireModule } from './auth/perms.ts';
 import { authRouter } from './routes/auth.ts';
@@ -35,7 +36,8 @@ import { pollIgComments } from './services/ig-comments.ts';
 import { leadAdsRouter } from './routes/lead-ads.ts';
 import { agencyRouter } from './routes/agency.ts';
 import { automationsRouter } from './routes/automations.ts';
-import { resumeTimedRuns } from './services/automation-engine.ts';
+import { resumeTimedRuns, recoverStuckRuns } from './services/automation-engine.ts';
+import { runRetention } from './services/retention.ts';
 import { initWS } from './services/ws-manager.ts';
 import { verifyToken } from './auth/tokens.ts';
 import { pool } from './db.ts';
@@ -160,9 +162,9 @@ app.get('/api/media/:msgId', async (req, res) => {
 
     // Camino 2: URL HTTP directa (por si Evolution entrega URL pública)
     if (r.media_url?.startsWith('http')) {
-      const upstream = await fetch(r.media_url, {
+      const upstream = await fetchWithTimeout(r.media_url, {
         headers: evo.apiKey ? { 'apikey': evo.apiKey } : {},
-      }).catch(() => null);
+      }, Math.max(externalTimeoutMs(), 30_000)).catch(() => null);
       if (upstream?.ok) {
         const mime = r.media_mime || upstream.headers.get('content-type') || 'application/octet-stream';
         res.setHeader('Content-Type', mime);
@@ -174,13 +176,14 @@ app.get('/api/media/:msgId', async (req, res) => {
     // Camino 3: descargar via Evolution API getBase64FromMediaMessage
     if (!r.wa_message_id || !evo.url || !evo.apiKey) return res.status(404).end();
 
-    const evoRes = await fetch(
+    const evoRes = await fetchWithTimeout(
       `${evo.url}/message/getBase64FromMediaMessage/${r.instance_name}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': evo.apiKey },
         body: JSON.stringify({ message: { key: { id: r.wa_message_id } }, convertToMp4: false }),
       },
+      Math.max(externalTimeoutMs(), 30_000),   // la media puede pesar varios MB
     ).catch(() => null);
 
     if (!evoRes?.ok) return res.status(404).end();
@@ -266,7 +269,11 @@ server.listen(env.port, () => {
   // Los tests arrancan sin tareas periódicas: recorren TODAS las orgs de la BD (compartida en local)
   if (process.env.DISABLE_BACKGROUND_JOBS === 'true') return;
   // Revisar cada 60s si hay esperas temporizadas listas para reanudar
-  every('resumeTimedRuns', resumeTimedRuns, 60_000);
+  every('resumeTimedRuns', () => resumeTimedRuns(), 60_000);
+  // Runs que quedaron en 'running' por un reinicio/corte de luz: al arrancar y cada 5 min
+  every('recoverStuckRuns', () => recoverStuckRuns(), 5 * 60_000, true);
+  // Limpieza diaria de tablas que crecen sin límite (notificaciones, runs, actividad…)
+  every('retention', () => runRetention(), 24 * 60 * 60_000, true);
   // Refrescar tokens de Instagram cada 30 días; también al arrancar para renovar de inmediato si toca
   every('refreshInstagramTokens', refreshInstagramTokens, 24 * 60 * 60_000, true); // la query filtra los que toca renovar
   // Polling de comentarios IG: con Standard Access Meta no envía webhooks de `comments`.

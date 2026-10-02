@@ -1,6 +1,8 @@
 // Cliente HTTP para Evolution API v2.
 // Cada org tiene su propia instancia configurada en wa_settings.
 
+import { fetchWithTimeout, externalTimeoutMs } from '../http.ts';
+
 export interface EvoConfig {
   url: string;          // e.g. "http://localhost:8080"
   apiKey: string;       // clave global de Evolution API
@@ -28,6 +30,25 @@ export interface EvoQRResult {
   base64: string; // "data:image/png;base64,..."
 }
 
+// Respuesta no-2xx de Evolution: guarda el status y el cuerpo para distinguir errores definitivos
+// (número sin WhatsApp) de los pasajeros (5xx, instancia caída). El mensaje se mantiene igual que antes.
+export class EvolutionError extends Error {
+  readonly status: number;
+  readonly body: string;
+  constructor(status: number, body: string) {
+    super(`Evolution API ${status}: ${body}`);
+    this.name = 'EvolutionError';
+    this.status = status;
+    this.body = body;
+  }
+}
+
+// El número no tiene WhatsApp: Evolution responde 400 con {"response":{"message":[{"exists":false,...}]}}.
+// Es el único error de envío que no tiene sentido reintentar.
+export function isNotOnWhatsapp(err: unknown): boolean {
+  return err instanceof EvolutionError && err.status === 400 && /"exists"\s*:\s*false/.test(err.body);
+}
+
 export class EvolutionClient {
   private base: string;
   private headers: Record<string, string>;
@@ -42,14 +63,14 @@ export class EvolutionClient {
     };
   }
 
-  private async req<T>(path: string, opts: RequestInit = {}): Promise<T> {
-    const res = await fetch(`${this.base}${path}`, {
+  private async req<T>(path: string, opts: RequestInit = {}, timeoutMs = externalTimeoutMs()): Promise<T> {
+    const res = await fetchWithTimeout(`${this.base}${path}`, {
       ...opts,
       headers: { ...this.headers, ...(opts.headers as Record<string, string> ?? {}) },
-    });
+    }, timeoutMs);
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      throw new Error(`Evolution API ${res.status}: ${body}`);
+      throw new EvolutionError(res.status, body);
     }
     return res.json() as Promise<T>;
   }
@@ -115,6 +136,7 @@ export class EvolutionClient {
     return this.req<{ base64: string; mimetype: string }>(
       `/message/getBase64FromMediaMessage/${this.instanceName}`,
       { method: 'POST', body: JSON.stringify({ message: messageData, convertToMp4: false }) },
+      Math.max(externalTimeoutMs(), 30_000),   // la media puede pesar varios MB
     ).catch(() => null);
   }
 }

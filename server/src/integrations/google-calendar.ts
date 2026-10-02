@@ -1,5 +1,6 @@
 import { query } from '../db.ts';
 import { broadcast } from '../services/ws-manager.ts';
+import { fetchWithTimeout } from '../http.ts';
 
 // Overrides por entorno solo para los tests (apuntan a un Google simulado)
 const GOOGLE_TOKEN_URL = process.env.GOOGLE_TOKEN_URL ?? 'https://oauth2.googleapis.com/token';
@@ -48,7 +49,7 @@ async function markGoogleDisconnected(refreshToken: string): Promise<void> {
 
 export async function refreshGoogleToken(refreshToken: string): Promise<string> {
   const { clientId, clientSecret } = getCredentials();
-  const res = await fetch(GOOGLE_TOKEN_URL, {
+  const res = await fetchWithTimeout(GOOGLE_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -113,7 +114,7 @@ export async function createGoogleEvent(opts: {
   const calendarId = encodeURIComponent(opts.calendarId);
   // conferenceDataVersion=1 es necesario para que Google cree el Meet
   const url = `${GOOGLE_CALENDAR_URL}/calendars/${calendarId}/events?conferenceDataVersion=1&sendUpdates=all`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -167,7 +168,7 @@ export async function updateGoogleEvent(opts: {
     }
   }
   if (Object.keys(body).length === 0) return;
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${GOOGLE_CALENDAR_URL}/calendars/${calId}/events/${opts.eventId}?sendUpdates=all`,
     {
       method: 'PATCH',
@@ -204,7 +205,7 @@ export async function getGoogleEvents(opts: {
     orderBy: 'startTime',
     maxResults: '500',
   });
-  const res = await fetch(`${GOOGLE_CALENDAR_URL}/calendars/${calId}/events?${params}`, {
+  const res = await fetchWithTimeout(`${GOOGLE_CALENDAR_URL}/calendars/${calId}/events?${params}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) return [];
@@ -239,7 +240,7 @@ export async function deleteGoogleEvent(opts: {
 }): Promise<void> {
   const accessToken = await refreshGoogleToken(opts.refreshToken);
   const calendarId = encodeURIComponent(opts.calendarId);
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${GOOGLE_CALENDAR_URL}/calendars/${calendarId}/events/${opts.eventId}`,
     {
       method: 'DELETE',
@@ -278,7 +279,7 @@ export async function getGoogleFreebusy(opts: {
   timeMax: Date;
 }): Promise<Array<{ start: string; end: string }>> {
   const accessToken = await refreshGoogleToken(opts.refreshToken);
-  const res = await fetch(`${GOOGLE_CALENDAR_URL}/freeBusy`, {
+  const res = await fetchWithTimeout(`${GOOGLE_CALENDAR_URL}/freeBusy`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -302,7 +303,7 @@ export async function exchangeGoogleCode(
   redirectUri: string,
 ): Promise<{ access_token: string; refresh_token: string; expiry_date: number }> {
   const { clientId, clientSecret } = getCredentials();
-  const res = await fetch(GOOGLE_TOKEN_URL, {
+  const res = await fetchWithTimeout(GOOGLE_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({

@@ -4,6 +4,7 @@
 import { Router } from 'express';
 import { pool } from '../db.ts';
 import { requireAdmin } from '../auth/perms.ts';
+import { fetchWithTimeout } from '../http.ts';
 
 export const leadAdsRouter = Router();
 
@@ -24,7 +25,7 @@ leadAdsRouter.get('/forms/:connectionId', requireAdmin, async (req, res) => {
     if (!connRes.rows[0]) return res.status(404).json({ error: 'Conexión no encontrada' });
 
     const { page_id, access_token } = connRes.rows[0];
-    const metaRes = await fetch(
+    const metaRes = await fetchWithTimeout(
       `${META_BASE}/${page_id}/leadgen_forms?fields=id,name,status,leads_count&access_token=${access_token}`,
     );
     const json = await metaRes.json() as { data?: Array<{ id: string; name: string; status: string; leads_count?: number }>; error?: { message: string } };

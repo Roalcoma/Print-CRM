@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../http.ts';
+
 const ZOOM_TOKEN_URL = 'https://zoom.us/oauth/token';
 const ZOOM_API_URL = 'https://api.zoom.us/v2';
 
@@ -16,7 +18,7 @@ function basicAuth(clientId: string, clientSecret: string): string {
 
 export async function refreshZoomToken(refreshToken: string): Promise<string> {
   const { clientId, clientSecret } = getCredentials();
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${ZOOM_TOKEN_URL}?grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`,
     {
       method: 'POST',
@@ -42,7 +44,7 @@ export async function createZoomMeeting(opts: {
   timezone: string;
 }): Promise<{ meetingId: string; joinUrl: string; hostUrl: string }> {
   const accessToken = await refreshZoomToken(opts.refreshToken);
-  const res = await fetch(`${ZOOM_API_URL}/users/me/meetings`, {
+  const res = await fetchWithTimeout(`${ZOOM_API_URL}/users/me/meetings`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -77,7 +79,7 @@ export async function deleteZoomMeeting(opts: {
   meetingId: string;
 }): Promise<void> {
   const accessToken = await refreshZoomToken(opts.refreshToken);
-  const res = await fetch(`${ZOOM_API_URL}/meetings/${opts.meetingId}`, {
+  const res = await fetchWithTimeout(`${ZOOM_API_URL}/meetings/${opts.meetingId}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -103,7 +105,7 @@ export async function exchangeZoomCode(
   redirectUri: string,
 ): Promise<{ access_token: string; refresh_token: string; zoom_user_id: string }> {
   const { clientId, clientSecret } = getCredentials();
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${ZOOM_TOKEN_URL}?grant_type=authorization_code&code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(redirectUri)}`,
     {
       method: 'POST',
@@ -120,7 +122,7 @@ export async function exchangeZoomCode(
   const data = await res.json() as { access_token: string; refresh_token: string };
 
   // Fetch user ID
-  const userRes = await fetch(`${ZOOM_API_URL}/users/me`, {
+  const userRes = await fetchWithTimeout(`${ZOOM_API_URL}/users/me`, {
     headers: { Authorization: `Bearer ${data.access_token}` },
   });
   const userData = userRes.ok
