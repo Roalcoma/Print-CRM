@@ -12,7 +12,7 @@ import { env } from '../env.ts';
 import { broadcast } from '../services/ws-manager.ts';
 import { handleIgComment, captureIgPhone, findIgContact } from '../services/ig-comments.ts';
 import { upsertSocialConversation } from '../services/social-inbox.ts';
-import { describeIgMessage, getIgUsername, type IgDmMessage } from '../services/instagram.ts';
+import { describeIgMessage, getIgUsername, getFbName, type IgDmMessage } from '../services/instagram.ts';
 import { fireContactCreatedTrigger } from '../services/automation-engine.ts';
 import { contactPhoneMatch, lockPhone, phoneMatchKey, withTransaction } from '../phone.ts';
 
@@ -284,7 +284,7 @@ socialPublicRouter.get('/facebook/callback', async (req, res) => {
 
     // 3. Listar páginas del usuario
     const pagesRes = await fetch(
-      `${META_BASE}/me/accounts?access_token=${longToken}&fields=id,name,picture,access_token,instagram_business_account`,
+      `${META_BASE}/me/accounts?access_token=${longToken}&fields=id,name,picture,access_token`,
     );
     const pagesJson = await pagesRes.json() as {
       data?: Array<{
@@ -313,41 +313,16 @@ socialPublicRouter.get('/facebook/callback', async (req, res) => {
            token_expires_at = EXCLUDED.token_expires_at,
            status = 'active',
            updated_at = NOW()`,
-        [orgId, page.id, page.name, picture, encryptSecret(pageToken), expiresAt],
+        // El token de página obtenido de un token de usuario de larga duración no caduca
+        [orgId, page.id, page.name, picture, encryptSecret(pageToken), null],
       );
 
-      // Suscribir la página: Messenger, comentarios (feed) y Lead Ads. Los eventos de la
-      // cuenta IG vinculada llegan por la suscripción de la página.
+      // Suscribir la página: Messenger y Lead Ads. Instagram se conecta aparte con su propio login.
       await subscribeApps(
-        `${META_BASE}/${page.id}/subscribed_apps?subscribed_fields=messages%2Cfeed%2Cleadgen&access_token=${pageToken}`,
+        `${META_BASE}/${page.id}/subscribed_apps?subscribed_fields=messages%2Cleadgen&access_token=${pageToken}`,
         `page ${page.id}`,
       );
 
-      // Si la page tiene Instagram Business vinculado
-      if (page.instagram_business_account?.id) {
-        const igId = page.instagram_business_account.id;
-
-        // Obtener nombre de la cuenta IG
-        const igRes = await fetch(
-          `${META_BASE}/${igId}?fields=name,profile_picture_url&access_token=${pageToken}`,
-        ).catch(() => null);
-        const igJson = igRes ? await igRes.json() as { name?: string; profile_picture_url?: string } : {};
-
-        await pool.query(
-          `INSERT INTO social_connections
-             (organization_id, platform, page_id, page_name, page_picture, access_token, token_expires_at, instagram_business_id, status)
-           VALUES ($1, 'instagram', $2, $3, $4, $5, $6, $7, 'active')
-           ON CONFLICT (organization_id, platform, page_id) DO UPDATE SET
-             page_name = EXCLUDED.page_name,
-             page_picture = EXCLUDED.page_picture,
-             access_token = EXCLUDED.access_token,
-             token_expires_at = EXCLUDED.token_expires_at,
-             instagram_business_id = EXCLUDED.instagram_business_id,
-             status = 'active',
-             updated_at = NOW()`,
-          [orgId, igId, igJson.name ?? page.name, igJson.profile_picture_url ?? picture, encryptSecret(pageToken), expiresAt, igId],
-        );
-      }
     }
 
     res.redirect(`${frontendBase}/settings/social?connected=facebook`);
@@ -450,7 +425,7 @@ metaWebhookRouter.post('/webhook', verifyMetaSignature, async (req, res) => {
         const igContact = dmChannel === 'instagram_dm' ? await findIgContact(orgId, peerId) : null;
         const displayName = igContact
           ? [igContact.first_name, igContact.last_name].filter(Boolean).join(' ') || peerId
-          : (dmChannel === 'instagram_dm' ? await igDisplayName(orgId, conn.access_token, peerId) : peerId);
+          : await socialDisplayName(orgId, dmChannel, conn.access_token, peerId);
         await upsertSocialConversation({
           orgId, socialAccountId: conn.id, channel: dmChannel, chatId: `${dmPrefix}_${peerId}`,
           displayName, text, mid, direction: isEcho ? 'outbound' : 'inbound', contactId: igContact?.id,
@@ -477,7 +452,7 @@ metaWebhookRouter.post('/webhook', verifyMetaSignature, async (req, res) => {
           const igContact = await findIgContact(orgId, senderId);
           const displayName = igContact
             ? [igContact.first_name, igContact.last_name].filter(Boolean).join(' ') || senderId
-            : await igDisplayName(orgId, conn.access_token, senderId);
+            : await socialDisplayName(orgId, 'instagram_dm', conn.access_token, senderId);
           await upsertSocialConversation({
             orgId, socialAccountId: conn.id, channel: 'instagram_dm', chatId: `ig_${senderId}`,
             displayName, text, mid, direction: 'inbound', contactId: igContact?.id,
@@ -537,15 +512,17 @@ function verifyMetaSignature(req: express.Request & { rawBody?: Buffer }, res: e
   next();
 }
 
-// Nombre a mostrar de un DM de Instagram sin contacto: el guardado en la conversación o, si solo
-// hay el id numérico, el usuario que devuelva Instagram (una consulta por conversación nueva)
-async function igDisplayName(orgId: string, accessToken: string, igsid: string): Promise<string> {
+// Nombre a mostrar de un DM sin contacto: el guardado en la conversación o, si solo hay el id
+// numérico, el que devuelva Meta (usuario de Instagram / nombre en Messenger). Una consulta por conversación nueva.
+async function socialDisplayName(orgId: string, channel: 'instagram_dm' | 'facebook_dm', accessToken: string, peerId: string): Promise<string> {
+  const chatId = `${channel === 'instagram_dm' ? 'ig' : 'fb'}_${peerId}`;
   const prev = (await pool.query<{ display_name: string | null }>(
     `SELECT display_name FROM conversations WHERE organization_id = $1 AND wa_chat_id = $2`,
-    [orgId, `ig_${igsid}`],
+    [orgId, chatId],
   )).rows[0]?.display_name;
   if (prev && !/^\d+$/.test(prev)) return prev;
-  return (await getIgUsername(accessToken, igsid)) ?? igsid;
+  const name = channel === 'instagram_dm' ? await getIgUsername(accessToken, peerId) : await getFbName(accessToken, peerId);
+  return name ?? peerId;
 }
 
 // ─── Tipos Meta Webhook ─────────────────────────────────────────────────────

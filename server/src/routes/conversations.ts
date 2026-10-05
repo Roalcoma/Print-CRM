@@ -5,7 +5,7 @@ import { pool } from '../db.ts';
 import { belongsToOrg } from '../tenant.ts';
 import { evolutionFor } from '../services/evolution.ts';
 import { broadcast } from '../services/ws-manager.ts';
-import { sendIgDm, isOutsideWindow } from '../services/instagram.ts';
+import { sendIgDm, sendFbMessage, isOutsideWindow } from '../services/instagram.ts';
 import { normalizePhone } from '../phone.ts';
 
 export const conversationsRouter = Router();
@@ -139,6 +139,27 @@ conversationsRouter.post('/:id/messages', async (req, res) => {
         return res.status(422).json({ error });
       }
       waId = result.message_id;
+    } else if (channel === 'facebook_dm') {
+      // Responder por Messenger con el token de la página
+      if (type !== 'text' || !body) return res.status(400).json({ error: 'Messenger solo soporta texto por ahora' });
+      if (!social_account_id) return res.status(503).json({ error: 'Página de Facebook no configurada' });
+
+      const scRes = await pool.query<{ access_token: string }>(
+        `SELECT access_token FROM social_connections WHERE id = $1 AND organization_id = $2 AND status = 'active'`,
+        [social_account_id, orgId],
+      );
+      if (!scRes.rows[0]?.access_token) return res.status(503).json({ error: 'La página de Facebook está desconectada' });
+
+      const result = await sendFbMessage(scRes.rows[0].access_token, chatId.replace(/^fb_/, ''), body);
+      if (result.error || !result.message_id) {
+        const error = isOutsideWindow(result.error)
+          ? 'Messenger no permite escribirle todavía: solo puedes responder dentro de las 24 h siguientes a su último mensaje.'
+          : `Facebook rechazó el mensaje: ${(result.error as { message?: string } | undefined)?.message ?? 'error desconocido'}`;
+        return res.status(422).json({ error });
+      }
+      waId = result.message_id;
+    } else if (channel && channel !== 'whatsapp') {
+      return res.status(400).json({ error: 'Canal no soportado para enviar mensajes' });
     } else {
       // Enviar vía WhatsApp / Evolution API
       const cfg = await getWACfg(orgId);

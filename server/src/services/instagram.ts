@@ -124,3 +124,33 @@ export function describeIgMessage(msg: IgDmMessage): string | null {
   if (!parts.length && msg.is_unsupported) return '📎 Contenido que Instagram no deja ver aquí (ábrelo en la app)';
   return parts.length ? parts.join('\n') : null;
 }
+
+// ─── Facebook Messenger (token de página) ───────────────────────────────────
+
+// Responde a quien escribió a la página. messaging_type RESPONSE: solo dentro de las 24 h
+// siguientes a su último mensaje (mismos códigos de error que Instagram, ver isOutsideWindow).
+export async function sendFbMessage(
+  pageToken: string,
+  psid: string,
+  text: string,
+): Promise<{ message_id?: string; error?: unknown }> {
+  return post(`${FB_BASE}/me/messages`, {
+    recipient: { id: psid },
+    messaging_type: 'RESPONSE',
+    message: { text },
+    access_token: pageToken,
+  }, 'sendFbMessage');
+}
+
+// Nombre de quien escribe por Messenger (User Profile API de la página)
+export async function getFbName(pageToken: string, psid: string): Promise<string | null> {
+  try {
+    const url = `${FB_BASE}/${psid}?fields=name,first_name,last_name&access_token=${encodeURIComponent(pageToken)}`;
+    const res = await fetchWithTimeout(url);
+    const json = await res.json() as { name?: string; first_name?: string; last_name?: string; error?: unknown };
+    if (json.error) { console.warn(`[facebook] getFbName ${psid}:`, JSON.stringify(json.error)); return null; }
+    return json.name ?? ([json.first_name, json.last_name].filter(Boolean).join(' ') || null);
+  } catch {
+    return null;
+  }
+}

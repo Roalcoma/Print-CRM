@@ -54,6 +54,10 @@ function fakeReply(c: Call): [number, unknown] {
   }
   if (p.startsWith('/ig/v21.0/me?fields=username')) return [200, { id: 'me', username: 'cuenta_prueba' }];
   if (p.startsWith('/ig/v21.0/me/media?')) return [200, { data: [] }];
+  // Messenger (token de página): envío y nombre de quien escribe
+  if (p.startsWith('/fb/v21.0/me/messages')) return [200, { recipient_id: c.body.recipient?.id, message_id: `m_fb_${rnd()}` }];
+  const fbProf = p.match(/^\/fb\/v21\.0\/(fb-psid-[\w-]+)\?fields=name/);
+  if (fbProf) return [200, { id: fbProf[1], name: 'Carla Messenger' }];
   // User Profile API: usuario de quien escribe por DM
   const prof = p.match(/^\/ig\/v21\.0\/(ig-att-[\w-]+)\?fields=username/);
   if (prof) return [200, { id: prof[1], username: `usuario_${prof[1].slice(-4)}` }];
@@ -813,4 +817,34 @@ test('Bandeja: DM de Instagram con adjunto se describe y muestra el usuario, no 
   });
   await until('segundo mensaje', () => one(`SELECT 1 FROM conv_messages WHERE conversation_id = $1 AND body LIKE '📷 Foto%'`, [conv.id]));
   assert.equal(callsTo(`/ig/v21.0/${peer}?fields=username`).length, before);
+});
+
+test('Messenger: DM a la página muestra el nombre y la respuesta sale por Messenger, no por WhatsApp', async () => {
+  const pageId = `9000${rnd()}`.replace(/\D/g, '').slice(0, 15);
+  const pageToken = `EAApage${rnd()}`;
+  const conn = await one(
+    `INSERT INTO social_connections (organization_id, platform, page_id, page_name, access_token, status)
+     VALUES ($1, 'facebook', $2, 'Página de prueba', $3, 'active') RETURNING id`,
+    [org.orgId, pageId, encryptSecret(pageToken)],
+  );
+  const psid = `fb-psid-${rnd()}`;
+  await metaWebhook({
+    object: 'page',
+    entry: [{ id: pageId, time: Date.now(), messaging: [{ sender: { id: psid }, recipient: { id: pageId }, timestamp: Date.now(), message: { mid: `mfb-${rnd()}`, text: 'Hola, quiero información' } }] }],
+  });
+  const conv = await until('conversación de Messenger', () => one(
+    'SELECT * FROM conversations WHERE organization_id = $1 AND wa_chat_id = $2', [org.orgId, `fb_${psid}`]));
+  assert.equal(conv.channel, 'facebook_dm');
+  assert.equal(conv.display_name, 'Carla Messenger');
+  assert.equal(conv.social_account_id, conn.id);
+
+  const evoBefore = callsTo('/evo/message/sendText').length;
+  const r = await api(org.token, 'POST', `/conversations/${conv.id}/messages`, { body: 'Con gusto te ayudo' });
+  assert.equal(r.status, 201, JSON.stringify(r.data));
+  const sent = callsTo('/fb/v21.0/me/messages').find(c => c.body.recipient?.id === psid)!;
+  assert.ok(sent, 'se llamó a la API de Messenger');
+  assert.equal(sent.body.message.text, 'Con gusto te ayudo');
+  assert.equal(sent.body.messaging_type, 'RESPONSE');
+  assert.equal(sent.body.access_token, pageToken);
+  assert.equal(callsTo('/evo/message/sendText').length, evoBefore, 'no se intentó enviar por WhatsApp');
 });
