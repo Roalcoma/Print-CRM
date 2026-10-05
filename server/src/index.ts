@@ -1,3 +1,4 @@
+import './net-setup.ts';   // antes que nada: conexiones salientes solo por IPv4
 import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
