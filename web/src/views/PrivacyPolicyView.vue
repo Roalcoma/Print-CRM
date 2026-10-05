@@ -358,6 +358,54 @@
             <a href="https://developers.google.com/terms/api-services-user-data-policy" class="text-primary hover:underline" target="_blank" rel="noopener">Google API Services User Data Policy</a>,
             including the Limited Use requirements.</strong>
           </p>
+
+          <!-- 6.2 Datos de Meta / Instagram (requisito de la App Review de Meta) -->
+          <h3 id="meta" class="mt-10">6.2 Datos de Instagram y Facebook (Meta)</h3>
+          <p>Cuando una organización conecta su cuenta profesional de Instagram a Rocco CRM, solicitamos únicamente estos permisos:</p>
+          <ul>
+            <li><strong>instagram_business_basic</strong> — leer el nombre de usuario y el identificador de la cuenta conectada, y el nombre de usuario de las personas que escriben o comentan, para mostrarlos en la bandeja del CRM.</li>
+            <li><strong>instagram_business_manage_messages</strong> — recibir los mensajes directos que llegan a la cuenta y responderlos desde la bandeja del CRM, a mano o con las respuestas automáticas que la propia organización configura.</li>
+            <li><strong>instagram_business_manage_comments</strong> — leer los comentarios en las publicaciones de la cuenta y responderlos (en público o por mensaje privado) según las reglas que configura la organización.</li>
+          </ul>
+          <p>
+            Si la organización conecta una página de Facebook, se usan solo los permisos necesarios para recibir y responder
+            mensajes de Messenger y para importar los contactos de sus formularios de Lead Ads.
+          </p>
+          <p>
+            <strong>Uso:</strong> estos datos se usan exclusivamente para que la organización atienda a sus contactos desde el CRM.
+            No se venden, no se usan para publicidad, no se comparten con otras organizaciones ni con terceros (salvo lo
+            necesario para prestar el servicio o cuando lo exija la ley) y no se usan para entrenar modelos de inteligencia artificial.
+          </p>
+          <p>
+            <strong>Almacenamiento y eliminación:</strong> el token de acceso se guarda cifrado. Si la organización desconecta la
+            cuenta en <em>Ajustes → Redes sociales</em>, el token se borra y se revoca el permiso en Meta; también puede retirarlo
+            desde la configuración de Instagram (<em>Configuración → Apps y sitios web</em>).
+          </p>
+
+          <h3 id="eliminacion-datos" class="mt-10">6.3 Cómo solicitar la eliminación de tus datos</h3>
+          <p>
+            Cualquier persona puede pedir que se eliminen los datos que Rocco CRM guarda sobre ella (por ejemplo, mensajes o
+            comentarios de Instagram recibidos por una organización cliente):
+          </p>
+          <ol>
+            <li>Escribe a <a href="mailto:rodrigoalfonzo97@gmail.com" class="text-primary hover:underline">rodrigoalfonzo97@gmail.com</a> con el asunto <em>"Eliminación de datos"</em>.</li>
+            <li>Indica tu nombre de usuario de Instagram o Facebook (o tu teléfono o correo) y, si la conoces, la empresa con la que hablaste.</li>
+            <li>Eliminamos tus datos de contacto, mensajes y comentarios en un plazo máximo de 30 días y te confirmamos por correo cuando esté hecho.</li>
+          </ol>
+          <p>Si eres una organización cliente, al desconectar Instagram o Facebook el token se borra de inmediato; para eliminar todos los datos de la cuenta, escríbenos al mismo correo.</p>
+
+          <p lang="en" class="rounded-md border border-gray-200 bg-gray-50 p-4 text-sm">
+            <strong>Meta platform data (English).</strong> When an organization connects its Instagram professional account, Rocco CRM requests only
+            <em>instagram_business_basic</em> (account username/ID and the usernames of people who message or comment, shown in the CRM inbox),
+            <em>instagram_business_manage_messages</em> (receive and reply to the account's direct messages from the CRM inbox, manually or with
+            auto-replies configured by the organization) and <em>instagram_business_manage_comments</em> (read and reply to comments on the account's
+            posts, publicly or via private reply, following rules configured by the organization). Data is used only to let the organization
+            serve its own contacts; it is not sold, not used for advertising, not shared with other organizations or third parties except as needed
+            to provide the service or to comply with law, and not used to train AI models. Access tokens are stored encrypted and deleted when the
+            organization disconnects the account.
+            <strong>Data deletion:</strong> anyone can request deletion of their data by emailing rodrigoalfonzo97@gmail.com with the subject
+            "Data deletion" and their Instagram/Facebook username; we delete it within 30 days and confirm by email.
+          </p>
         </div>
       </section>
 

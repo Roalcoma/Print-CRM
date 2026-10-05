@@ -122,12 +122,13 @@ socialRouter.get('/facebook/auth-url', requireAdmin, async (req, res) => {
   }
   const orgId = req.auth!.organizationId;
   const redirectUri = `${env.publicUrl}/api/social/facebook/callback`;
+  // Solo lo que usa el CRM con páginas de Facebook (Messenger y Lead Ads); Instagram va por su propio login
   const scopes = [
     'pages_show_list',
+    'pages_manage_metadata',   // suscribir la página al webhook
+    'pages_read_engagement',
     'pages_messaging',
-    'instagram_business_basic',
-    'instagram_business_manage_messages',
-    'instagram_business_manage_comments',
+    'pages_manage_ads',        // listar formularios de Lead Ads
     'leads_retrieval',
     'public_profile',
   ].join(',');
@@ -153,7 +154,6 @@ socialRouter.get('/instagram/auth-url', requireAdmin, async (req, res) => {
     'instagram_business_basic',
     'instagram_business_manage_messages',
     'instagram_business_manage_comments',
-    'instagram_business_content_publish',
   ].join(',');
 
   const url = new URL('https://www.instagram.com/oauth/authorize');
@@ -375,7 +375,8 @@ socialRouter.delete('/connections/:id', requireAdmin, async (req, res) => {
     }
 
     await pool.query(
-      `UPDATE social_connections SET status = 'disconnected', updated_at = NOW() WHERE id = $1`,
+      // El token se borra al desconectar (política de privacidad y requisitos de Meta)
+      `UPDATE social_connections SET status = 'disconnected', access_token = '', updated_at = NOW() WHERE id = $1`,
       [id],
     );
     res.json({ ok: true });
