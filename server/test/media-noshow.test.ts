@@ -5,6 +5,7 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { executeRun } from '../src/services/automation-engine.ts';
 import http from 'node:http';
 import pg from 'pg';
 import jwt from 'jsonwebtoken';
@@ -238,13 +239,48 @@ test('no_show: envía el video con caption interpolado, una sola vez, y cancela 
   });
   assert.deepEqual(run.step_data.s1, { sent: true, media_id: media.id });
 
-  // Marcar otra vez no_show (igual, o tras corregirla) no repite
-  assert.equal((await setStatus(A, appt.id, 'no_show')).status, 200);
-  assert.equal((await setStatus(A, appt.id, 'scheduled')).status, 200);
+  // Volver a marcarla no_show sin cambiarla antes no repite
   assert.equal((await setStatus(A, appt.id, 'no_show')).status, 200);
   await sleep(500);
   assert.equal(sentTo(phone).filter(s => s.path.startsWith('/message/sendMedia/')).length, 1);
   assert.equal((await one(`SELECT count(*)::int AS n FROM automation_runs WHERE automation_id = $1`, [noShow])).n, 1);
+
+  // Si se corrige a programada y luego vuelve a faltar, es una falta nueva: sí avisa otra vez
+  assert.equal((await setStatus(A, appt.id, 'scheduled')).status, 200);
+  assert.equal((await setStatus(A, appt.id, 'no_show')).status, 200);
+  await until('segundo aviso', async () => sentTo(phone).filter(s => s.path.startsWith('/message/sendMedia/')).length === 2);
+});
+
+test('no_show con espera de 5 min: si la corrigen dentro de la espera, no se envía nada', async () => {
+  await db.query(`UPDATE automation_rules SET enabled = false WHERE organization_id = $1`, [B.id]);   // reglas de otras pruebas
+  const rule = await noShowRule(B, [
+    { id: 'w', type: 'wait_minutes', minutes: 5 },
+    { id: 's', type: 'send_whatsapp', message: 'Reagenda: {{appointment.reschedule_link}}' },
+  ]);
+  const phone = phoneN();
+  const appt = await createAppt(B, await contact(B.id, phone));
+
+  assert.equal((await setStatus(B, appt.id, 'no_show')).status, 200);
+  const first = await until('run esperando', async () => {
+    const r = await one(`SELECT id, status FROM automation_runs WHERE automation_id = $1`, [rule]);
+    return r?.status === 'waiting_timed' ? r : null;
+  });
+  // Elizabeth se equivocó: la vuelve a poner como programada → el aviso pendiente se cancela
+  assert.equal((await setStatus(B, appt.id, 'scheduled')).status, 200);
+  assert.equal((await one(`SELECT status FROM automation_runs WHERE id = $1`, [first.id])).status, 'cancelled');
+
+  // Defensa en el motor: aunque el run despierte, si la cita ya no está en no_show no envía
+  assert.equal((await setStatus(B, appt.id, 'no_show')).status, 200);
+  const second = await until('segundo run', async () => {
+    const r = await one(`SELECT id, status FROM automation_runs WHERE automation_id = $1 AND id <> $2`, [rule, first.id]);
+    return r?.status === 'waiting_timed' ? r : null;
+  });
+  await db.query(`UPDATE appointments SET status = 'completed' WHERE id = $1`, [appt.id]);   // cambio sin pasar por la API
+  await db.query(`UPDATE automation_runs SET status = 'running', resume_at = now() WHERE id = $1`, [second.id]);
+  await executeRun(second.id);
+  assert.equal((await one(`SELECT status FROM automation_runs WHERE id = $1`, [second.id])).status, 'cancelled');
+  await sleep(300);
+  assert.deepEqual(sentTo(phone).map(s => s.path), [], 'no salió ningún mensaje');
 });
 
 test('no_show de una cita manual sin calendario: el enlace es la página de reservas del calendario por defecto', async () => {

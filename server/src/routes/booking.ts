@@ -6,7 +6,7 @@ import { pool, query, queryOne } from '../db.ts';
 import { findContactByPhone, lockPhone, withTransaction } from '../phone.ts';
 import { getGoogleFreebusy } from '../integrations/google-calendar.ts';
 import { ensureGoogleMeet } from '../services/google-meet.ts';
-import { fireAppointmentBookedTrigger, fireContactCreatedTrigger, rescheduleAppointmentWaits, appointmentTimeFields } from '../services/automation-engine.ts';
+import { fireAppointmentBookedTrigger, fireContactCreatedTrigger, rescheduleAppointmentWaits, appointmentTimeFields, clearAppointmentNoShow } from '../services/automation-engine.ts';
 
 export const bookingRouter = Router();
 
@@ -532,6 +532,7 @@ bookingRouter.post('/:slug/reschedule/:token', publicBookingLimiter, async (req,
     return true;
   });
   if (!moved) return res.status(409).json({ error: SLOT_TAKEN });
+  if (appt.status === 'no_show') await clearAppointmentNoShow(cal.organization_id, appt.id);
   // Recordatorios pendientes ("X min antes") pasan a la hora nueva
   await rescheduleAppointmentWaits(appt.organization_id, appt.id);
 

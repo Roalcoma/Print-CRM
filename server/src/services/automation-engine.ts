@@ -426,6 +426,17 @@ export async function executeRun(runId: string): Promise<void> {
   const start = await checkAppointmentWait(run, steps, resolved);
   if (start === 'stop') return;
 
+  // Flujo de "No asistió": si mientras esperaba la cita dejó de estar en no_show (la corrigieron
+  // o el lead reagendó), no se envía nada
+  const noShow = (run.step_data as Record<string, unknown>).__no_show__ as { appointment_id?: string } | undefined;
+  if (noShow?.appointment_id) {
+    const st = (await pool.query<{ status: string }>('SELECT status FROM appointments WHERE id = $1', [noShow.appointment_id])).rows[0]?.status;
+    if (st !== 'no_show') {
+      await pool.query(`UPDATE automation_runs SET status = 'cancelled', updated_at = NOW() WHERE id = $1`, [runId]);
+      return;
+    }
+  }
+
   // Cargar contacto
   let contact: Record<string, unknown> = {};
   if (run.contact_id) {
@@ -1004,6 +1015,21 @@ async function appointmentRescheduleUrl(orgId: string, calendarSlug: string | nu
   return def ? `${base}/book/${def.slug}` : '';
 }
 
+// La cita dejó de estar en "No asistió" (corrección o el lead reagendó): se cancelan los mensajes
+// pendientes de ese flujo y se quita la marca, para que una nueva falta sí vuelva a avisar.
+export async function clearAppointmentNoShow(orgId: string, appointmentId: string): Promise<void> {
+  await pool.query(
+    `UPDATE automation_runs SET status = 'cancelled', updated_at = NOW()
+     WHERE organization_id = $1 AND status IN ('waiting_timed', 'waiting', 'running')
+       AND step_data->'__no_show__'->>'appointment_id' = $2`,
+    [orgId, appointmentId],
+  );
+  await pool.query(
+    `UPDATE appointments SET no_show_notified_at = NULL WHERE id = $1 AND organization_id = $2 AND status <> 'no_show'`,
+    [appointmentId, orgId],
+  );
+}
+
 export async function fireAppointmentNoShowTrigger(orgId: string, appointmentId: string): Promise<void> {
   try {
     const rulesRes = await pool.query<{ id: string }>(
@@ -1037,6 +1063,7 @@ export async function fireAppointmentNoShowTrigger(orgId: string, appointmentId:
         reschedule_link: rescheduleUrl,
         reschedule_url:  rescheduleUrl,
       },
+      __no_show__: { appointment_id: appointmentId },
     };
     for (const rule of rulesRes.rows) {
       await startAutomation(orgId, rule.id, appt.contact_id, extraStepData);
