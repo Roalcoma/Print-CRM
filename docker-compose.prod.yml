@@ -39,8 +39,13 @@ services:
       SECRETS_KEY:               ${SECRETS_KEY:-}
       # Videos/imágenes de las automatizaciones (se sirven en /m/:token); persistente en el volumen crm_media
       MEDIA_DIR:                 /crm/server/data/media
+      # Push de la app móvil (FCM): JSON del service account en ./secrets/fcm.json (opcional;
+      # sin él el push queda desactivado). Se monta el directorio, no el archivo: si no existe,
+      # Docker no crea un directorio con nombre de archivo.
+      FCM_SERVICE_ACCOUNT_FILE:  /run/secrets-fcm/fcm.json
     volumes:
       - crm_media:/crm/server/data/media
+      - ./secrets:/run/secrets-fcm:ro
     depends_on:
       db:
         condition: service_healthy

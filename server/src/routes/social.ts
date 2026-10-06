@@ -10,6 +10,7 @@ import { requireAdmin } from '../auth/perms.ts';
 import { signOAuthState, verifyOAuthState } from '../auth/oauth-state.ts';
 import { env } from '../env.ts';
 import { broadcast } from '../services/ws-manager.ts';
+import { notifyNewLead } from '../services/notify.ts';
 import { handleIgComment, captureIgPhone, findIgContact } from '../services/ig-comments.ts';
 import { upsertSocialConversation } from '../services/social-inbox.ts';
 import { describeIgMessage, getIgUsername, getFbName, type IgDmMessage } from '../services/instagram.ts';
@@ -689,7 +690,10 @@ async function handleLeadgen(orgId: string, accessToken: string, event: LeadgenC
       `INSERT INTO opportunities (organization_id, title, pipeline_id, stage_id, contact_id)
        VALUES ($1, $2, $3, $4, $5) RETURNING id`,
       [orgId, `Lead: ${firstName}`, cfg.pipeline_id, cfg.stage_id, contactId],
-    ).then(r => broadcast(orgId, 'opportunity:new', { id: r.rows[0].id }))
+    ).then(r => {
+      broadcast(orgId, 'opportunity:new', { id: r.rows[0].id });
+      notifyNewLead(orgId, r.rows[0].id, contactId, `Lead: ${firstName}`, 'Formulario de Facebook');
+    })
      .catch(e => console.error('handleLeadgen: error creando oportunidad', e));
   }
 

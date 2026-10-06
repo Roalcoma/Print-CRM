@@ -4,6 +4,7 @@
 import { Router } from 'express';
 import { pool } from '../db.ts';
 import { broadcast } from '../services/ws-manager.ts';
+import { notifyBg, leadAudience, messagePreview } from '../services/notify.ts';
 import { handleIncomingWaMessage, fireWaNewMessageTrigger, fireContactCreatedTrigger } from '../services/automation-engine.ts';
 import { findContactByPhone, lockPhone, phoneMatchKey, withTransaction } from '../phone.ts';
 
@@ -166,6 +167,17 @@ waWebhookRouter.post('/:secret', async (req, res) => {
       });
       const convFull = await pool.query('SELECT * FROM conversations WHERE id = $1', [convId]);
       broadcast(orgId, 'conversation:update', convFull.rows[0]);
+
+      // Push de mensaje entrante (aquí solo llegan mensajes nuevos: los duplicados salieron antes)
+      if (direction === 'inbound') {
+        const cid = contactId ?? convFull.rows[0]?.contact_id ?? null;
+        leadAudience(orgId, cid).then(audience => notifyBg({
+          orgId, audience, type: 'new_message',
+          title: convFull.rows[0]?.display_name || displayName || 'WhatsApp',
+          body: messagePreview(msgType, body),
+          data: { conversationId: convId, contactId: cid },
+        })).catch(e => console.error('[notify] new_message:', e));
+      }
     }
 
     // ── Actualización de estado de mensaje (ACK) ────────────────────────────

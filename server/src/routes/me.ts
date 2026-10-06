@@ -3,6 +3,8 @@ import { query, queryOne } from '../db.ts';
 import { hashPassword, verifyPassword } from '../auth/password.ts';
 import { signToken } from '../auth/tokens.ts';
 import { invalidateUser } from '../auth/session.ts';
+import { z } from 'zod';
+import { PREF_KEYS, type PrefKey } from '../services/notify.ts';
 
 export const meRouter = Router();
 
@@ -123,4 +125,63 @@ meRouter.put('/preferences', async (req, res) => {
     [JSON.stringify(patch), req.auth!.userId],
   );
   res.json(u.preferences);
+});
+
+// ── Notificaciones push (app móvil) ─────────────────────────────────────────
+
+// Registra el token FCM del dispositivo. Upsert por token: si estaba con otro usuario (otra
+// sesión en el mismo teléfono) pasa al actual.
+const pushTokenSchema = z.object({
+  token: z.string().trim().min(10).max(4096),
+  platform: z.enum(['android', 'ios']),
+  device_name: z.string().trim().max(200).optional().nullable(),
+});
+meRouter.post('/push-tokens', async (req, res) => {
+  const parsed = pushTokenSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+  const { token, platform, device_name } = parsed.data;
+  await query(
+    `INSERT INTO push_tokens (user_id, organization_id, token, platform, device_name)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (token) DO UPDATE SET
+       user_id = EXCLUDED.user_id, organization_id = EXCLUDED.organization_id,
+       platform = EXCLUDED.platform, device_name = EXCLUDED.device_name, last_used_at = now()`,
+    [req.auth!.userId, req.auth!.organizationId, token, platform, device_name || null],
+  );
+  res.status(201).json({ ok: true });
+});
+
+// Al cerrar sesión en la app: deja de recibir push en ese dispositivo (solo tokens propios)
+meRouter.delete('/push-tokens', async (req, res) => {
+  const parsed = z.object({ token: z.string().min(1) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+  await query('DELETE FROM push_tokens WHERE token = $1 AND user_id = $2', [parsed.data.token, req.auth!.userId]);
+  res.status(204).end();
+});
+
+// Preferencias de push del usuario en la org activa (por defecto todo activado)
+const fullPrefs = (stored: Record<string, unknown> | undefined) =>
+  Object.fromEntries(PREF_KEYS.map(k => [k, stored?.[k] !== false])) as Record<PrefKey, boolean>;
+
+meRouter.get('/notification-prefs', async (req, res) => {
+  const row = await queryOne<{ prefs: Record<string, unknown> }>(
+    'SELECT prefs FROM notification_prefs WHERE user_id = $1 AND organization_id = $2',
+    [req.auth!.userId, req.auth!.organizationId],
+  );
+  res.json({ prefs: fullPrefs(row?.prefs) });
+});
+
+// Acepta {prefs: {...}} o las claves sueltas; las que no vengan se mantienen
+const prefsSchema = z.object(Object.fromEntries(PREF_KEYS.map(k => [k, z.boolean().optional()]))).strict();
+meRouter.put('/notification-prefs', async (req, res) => {
+  const parsed = prefsSchema.safeParse(req.body?.prefs ?? req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+  const patch = Object.fromEntries(Object.entries(parsed.data).filter(([, v]) => typeof v === 'boolean'));
+  const [row] = await query<{ prefs: Record<string, unknown> }>(
+    `INSERT INTO notification_prefs (user_id, organization_id, prefs) VALUES ($1, $2, $3::jsonb)
+     ON CONFLICT (user_id, organization_id) DO UPDATE SET prefs = notification_prefs.prefs || EXCLUDED.prefs, updated_at = now()
+     RETURNING prefs`,
+    [req.auth!.userId, req.auth!.organizationId, JSON.stringify(patch)],
+  );
+  res.json({ prefs: fullPrefs(row.prefs) });
 });
