@@ -5,13 +5,15 @@
 
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { readdirSync } from 'node:fs';
+import { readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const PORT = process.env.TEST_PORT ?? '3202';
 const FAKE = process.env.TEST_FAKE_URL ?? 'http://localhost:4202';
 const BASE = `http://localhost:${PORT}`;
+// FCM falso de push.test.ts: puerto de TEST_FAKE_URL + 103
+const FCM_FAKE = `http://localhost:${Number(new URL(FAKE).port) + 103}`;
 
 // Variables de entorno compartidas por el servidor y los tests (las del proceso ganan al .env)
 const testEnv: Record<string, string> = {
@@ -39,7 +41,14 @@ const testEnv: Record<string, string> = {
   TEST_FAKE_URL: FAKE,
   // Medios de automatizaciones subidos en los tests: fuera del repo
   MEDIA_DIR: process.env.TEST_MEDIA_DIR ?? join(tmpdir(), 'rocco-test-media'),
+  // Push (FCM) contra el FCM FALSO de push.test.ts. El archivo de credenciales solo existe mientras
+  // corre ese test (lo crea y lo borra): el resto de tests corre con el push desactivado.
+  FCM_SERVICE_ACCOUNT_FILE: join(tmpdir(), `rocco-test-fcm-${PORT}.json`),
+  FCM_SERVICE_ACCOUNT_JSON: '',
+  FCM_API_URL: FCM_FAKE,
+  FCM_TOKEN_URL: `${FCM_FAKE}/token`,
 };
+rmSync(testEnv.FCM_SERVICE_ACCOUNT_FILE, { force: true });
 
 const env = { ...process.env, ...testEnv };
 const server = spawn(process.execPath, ['--env-file=.env', 'src/index.ts'], { env, stdio: ['ignore', 'pipe', 'pipe'] });

@@ -7,6 +7,7 @@ import { pool } from '../db.ts';
 import { evolutionFor } from './evolution.ts';
 import { alert } from './alerts.ts';
 import { broadcast } from './ws-manager.ts';
+import { notify } from './notify.ts';
 
 type State = 'open' | 'close' | 'connecting' | 'unreachable';
 const last = new Map<string, { state: State; fails: number; alerted: boolean }>();
@@ -15,17 +16,10 @@ const DOWN_TITLE = 'WhatsApp desconectado';
 const UP_TITLE = 'WhatsApp reconectado';
 
 async function notifyAdmins(orgId: string, instanceId: string, title: string, body: string): Promise<void> {
-  const { rows } = await pool.query<{ id: string }>(
-    `SELECT id FROM users WHERE organization_id = $1 AND role IN ('owner','admin')`, [orgId],
-  );
-  for (const u of rows) {
-    await pool.query(
-      `INSERT INTO notifications (organization_id, user_id, type, title, body, entity_type, entity_id)
-       VALUES ($1, $2, 'system', $3, $4, 'wa_instance', $5)`,
-      [orgId, u.id, title, body, instanceId],
-    );
-    broadcast(orgId, 'notification:new', { userId: u.id });
-  }
+  await notify({
+    orgId, audience: 'admins', type: title === DOWN_TITLE ? 'wa_down' : 'system', bellType: 'system',
+    title, body, entityType: 'wa_instance', entityId: instanceId,
+  });
 }
 
 async function setStatus(orgId: string, instanceId: string, status: string): Promise<void> {

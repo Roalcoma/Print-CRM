@@ -4,6 +4,7 @@
 
 import { pool } from '../db.ts';
 import { broadcast } from './ws-manager.ts';
+import { notify, notifyNewLead } from './notify.ts';
 import { evolutionFor, isNotOnWhatsapp, type EvolutionClient } from './evolution.ts';
 import { sendIgDm, sendIgPrivateReply, replyToIgComment } from './instagram.ts';
 import { upsertSocialConversation } from './social-inbox.ts';
@@ -366,20 +367,14 @@ async function notifySendFailure(orgId: string, runId: string, automationId: str
   const rule = (await pool.query<{ name: string }>(`SELECT name FROM automation_rules WHERE id = $1`, [automationId])).rows[0];
   const who = [contact.first_name, contact.last_name].filter(Boolean).join(' ');
   const to = who ? `${who} (+${phone})` : `+${phone}`;
-  const { rows } = await pool.query<{ id: string }>(
-    `SELECT id FROM users WHERE organization_id = $1 AND role IN ('owner','admin')`, [orgId],
-  );
-  for (const u of rows) {
-    await pool.query(
-      `INSERT INTO notifications (organization_id, user_id, type, title, body, entity_type, entity_id)
-       VALUES ($1, $2, 'automation', $3, $4, 'automation_run', $5)`,
-      [orgId, u.id, 'Mensaje de automatización no enviado',
-       `No se pudo enviar el mensaje de la automatización «${rule?.name ?? 'sin nombre'}» a ${to}: ${reason}. ` +
-       `Se reintentó durante ${WA_RETRY_MINUTES * WA_MAX_RETRIES} minutos. Revisa la conexión en Configuración → WhatsApp y envíalo a mano.`,
-       runId],
-    );
-    broadcast(orgId, 'notification:new', { userId: u.id });
-  }
+  await notify({
+    orgId, audience: 'admins', type: 'system', bellType: 'automation',
+    title: 'Mensaje de automatización no enviado',
+    body: `No se pudo enviar el mensaje de la automatización «${rule?.name ?? 'sin nombre'}» a ${to}: ${reason}. ` +
+      `Se reintentó durante ${WA_RETRY_MINUTES * WA_MAX_RETRIES} minutos. Revisa la conexión en Configuración → WhatsApp y envíalo a mano.`,
+    entityType: 'automation_run', entityId: runId,
+    data: { contactId: typeof contact.id === 'string' ? contact.id : undefined },
+  });
 }
 
 export async function executeRun(runId: string): Promise<void> {
@@ -495,6 +490,8 @@ export async function executeRun(runId: string): Promise<void> {
         );
         stepData[step.id] = { opportunity_id: oppRes.rows[0].id };
         broadcast(orgId, 'opportunity:new', { id: oppRes.rows[0].id });
+        // Lead nuevo (WhatsApp, Instagram, reserva… todos entran por aquí): aviso + push
+        notifyNewLead(orgId, oppRes.rows[0].id, run.contact_id ?? null, title, source);
         currentStep = i + 1;
         await persistRunProgress(runId, steps, currentStep, stepData);
 
@@ -502,18 +499,11 @@ export async function executeRun(runId: string): Promise<void> {
         const notifTitle = interpolate(step.notification_title ?? '', contact, stepData);
         const notifBody  = interpolate(step.notification_body  ?? '', contact, stepData);
 
-        const usersRes = await pool.query<{ id: string }>(
-          `SELECT id FROM users WHERE organization_id = $1`,
-          [orgId],
-        );
-        for (const u of usersRes.rows) {
-          await pool.query(
-            `INSERT INTO notifications (organization_id, user_id, type, title, body, entity_type, entity_id)
-             VALUES ($1, $2, 'automation', $3, $4, 'automation_run', $5)`,
-            [orgId, u.id, notifTitle, notifBody, runId],
-          );
-          broadcast(orgId, 'notification:new', { userId: u.id });
-        }
+        await notify({
+          orgId, audience: 'all', type: 'system', bellType: 'automation',
+          title: notifTitle, body: notifBody, entityType: 'automation_run', entityId: runId,
+          data: { contactId: run.contact_id },
+        });
         stepData[step.id] = { sent: true };
         currentStep = i + 1;
         await persistRunProgress(runId, steps, currentStep, stepData);

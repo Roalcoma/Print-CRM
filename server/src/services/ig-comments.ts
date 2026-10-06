@@ -4,7 +4,7 @@
 import { pool } from '../db.ts';
 import { igBase } from './instagram.ts';
 import { fireIgCommentTrigger } from './automation-engine.ts';
-import { broadcast } from './ws-manager.ts';
+import { notify, leadAudience } from './notify.ts';
 import { fetchWithTimeout } from '../http.ts';
 
 type Conn = {
@@ -204,14 +204,12 @@ export async function captureIgPhone(orgId: string, igsid: string, text: string)
     );
   }
 
-  const users = await pool.query<{ id: string }>(`SELECT id FROM users WHERE organization_id = $1`, [orgId]);
-  for (const u of users.rows) {
-    await pool.query(
-      `INSERT INTO notifications (organization_id, user_id, type, title, body, entity_type, entity_id)
-       VALUES ($1, $2, 'automation', $3, $4, 'contact', $5)`,
-      [orgId, u.id, `${name} dejó su teléfono`, `Por DM de Instagram: ${phone}. Contáctalo lo antes posible.`, contact.id],
-    );
-    broadcast(orgId, 'notification:new', { userId: u.id });
-  }
+  // Es un lead caliente: al responsable de su oportunidad (+ admins) o a todos si no tiene
+  await notify({
+    orgId, audience: await leadAudience(orgId, contact.id, opp.rows[0]?.id), type: 'new_lead', bellType: 'automation',
+    title: `${name} dejó su teléfono`, body: `Por DM de Instagram: ${phone}. Contáctalo lo antes posible.`,
+    entityType: 'contact', entityId: contact.id,
+    data: { contactId: contact.id, opportunityId: opp.rows[0]?.id },
+  });
   console.log(`[ig-comments] teléfono capturado para contacto ${contact.id}`);
 }

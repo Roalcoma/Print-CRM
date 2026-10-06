@@ -6,3 +6,4 @@ dist/
 .gstack/
 *.tsbuildinfo
 server/data/
+secrets/

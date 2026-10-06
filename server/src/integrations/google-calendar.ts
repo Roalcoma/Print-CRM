@@ -1,5 +1,5 @@
 import { query } from '../db.ts';
-import { broadcast } from '../services/ws-manager.ts';
+import { notify } from '../services/notify.ts';
 import { fetchWithTimeout } from '../http.ts';
 
 // Overrides por entorno solo para los tests (apuntan a un Google simulado)
@@ -32,19 +32,11 @@ async function markGoogleDisconnected(refreshToken: string): Promise<void> {
   );
   if (!row) return;
   console.error(`[google] permiso revocado/caducado para ${row.email}: Google Calendar marcado como desconectado`);
-  const admins = await query<{ id: string }>(
-    `SELECT id FROM users WHERE organization_id = $1 AND (role IN ('owner','admin') OR id = $2)`,
-    [row.organization_id, row.user_id],
-  );
-  for (const a of admins) {
-    await query(
-      `INSERT INTO notifications (organization_id, user_id, type, title, body)
-       VALUES ($1, $2, 'system', $3, $4)`,
-      [row.organization_id, a.id, 'Google Calendar se desconectó',
-       `Google rechazó el permiso de ${row.name} (${row.email}). Las citas nuevas no tendrán enlace de Meet hasta que se reconecte en Mi Perfil → Conexiones → Google Calendar. Al reconectar, las citas pendientes recibirán su Meet automáticamente.`],
-    );
-    broadcast(row.organization_id, 'notification:new', { userId: a.id });
-  }
+  await notify({
+    orgId: row.organization_id, audience: { userIds: [row.user_id], includeAdmins: true }, type: 'system',
+    title: 'Google Calendar se desconectó',
+    body: `Google rechazó el permiso de ${row.name} (${row.email}). Las citas nuevas no tendrán enlace de Meet hasta que se reconecte en Mi Perfil → Conexiones → Google Calendar. Al reconectar, las citas pendientes recibirán su Meet automáticamente.`,
+  });
 }
 
 export async function refreshGoogleToken(refreshToken: string): Promise<string> {

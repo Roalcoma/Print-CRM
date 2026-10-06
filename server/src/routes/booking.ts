@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type pg from 'pg';
 import { pool, query, queryOne } from '../db.ts';
 import { findContactByPhone, lockPhone, withTransaction } from '../phone.ts';
+import { notifyBg } from '../services/notify.ts';
 import { getGoogleFreebusy } from '../integrations/google-calendar.ts';
 import { ensureGoogleMeet } from '../services/google-meet.ts';
 import { fireAppointmentBookedTrigger, fireContactCreatedTrigger, rescheduleAppointmentWaits, appointmentTimeFields, clearAppointmentNoShow } from '../services/automation-engine.ts';
@@ -420,6 +421,15 @@ bookingRouter.post('/:slug', publicBookingLimiter, async (req, res) => {
     }).catch(console.error);
   }
 
+  // Aviso al dueño del calendario + admins (campanita y push)
+  const when = `${startAt.toLocaleDateString('es', { timeZone: cal.timezone, weekday: 'long', day: 'numeric', month: 'long' })} a las ${formatTime(startAt, cal.timezone)}`;
+  notifyBg({
+    orgId: cal.organization_id, audience: { userIds: [cal.user_id], includeAdmins: true }, type: 'appointment_booked',
+    title: 'Nueva cita agendada', body: `${d.name} reservó «${cal.name}» para el ${when}.`,
+    entityType: 'appointment', entityId: appt.id,
+    data: { appointmentId: appt.id, contactId: contact.id },
+  });
+
   res.status(201).json({
     success: true,
     appointment: appt,
@@ -451,8 +461,10 @@ bookingRouter.post('/:slug/cancel/:token', async (req, res) => {
   const appt = await queryOne<{
     id: string; status: string; provider: string; provider_event_id: string | null;
     user_id: string; organization_id: string;
+    title: string; start_at: string; contact_id: string | null; timezone: string;
   }>(
-    `SELECT a.id, a.status, a.provider, a.provider_event_id, a.user_id, c.organization_id
+    `SELECT a.id, a.status, a.provider, a.provider_event_id, a.user_id, c.organization_id,
+            a.title, a.start_at, a.contact_id, c.timezone
      FROM appointments a
      JOIN calendars c ON c.id = a.calendar_id
      WHERE c.slug=$1 AND a.cancel_token=$2`,
@@ -462,6 +474,14 @@ bookingRouter.post('/:slug/cancel/:token', async (req, res) => {
   if (appt.status === 'cancelled') return res.json({ success: true, message: 'La cita ya estaba cancelada' });
 
   await query("UPDATE appointments SET status='cancelled', updated_at=now() WHERE id=$1", [appt.id]);
+  const start = new Date(appt.start_at);
+  notifyBg({
+    orgId: appt.organization_id, audience: { userIds: [appt.user_id], includeAdmins: true }, type: 'appointment_cancelled',
+    title: 'Cita cancelada',
+    body: `Se canceló «${appt.title}» del ${start.toLocaleDateString('es', { timeZone: appt.timezone, weekday: 'long', day: 'numeric', month: 'long' })} a las ${formatTime(start, appt.timezone)}.`,
+    entityType: 'appointment', entityId: appt.id,
+    data: { appointmentId: appt.id, contactId: appt.contact_id },
+  });
   // Sin recordatorios para una cita cancelada
   await rescheduleAppointmentWaits(appt.organization_id, appt.id);
 
