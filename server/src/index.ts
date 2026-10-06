@@ -72,15 +72,26 @@ const allowedOrigins = new Set([
   'http://localhost:5175',
   'http://localhost:5176',
 ].filter(Boolean) as string[]);
+// Origen ajeno: se bloquea con un 403 limpio (no es un error del servidor, no debe alertar) y se
+// registra de dónde vino. Las peticiones del mismo origen (la página servida por este mismo host,
+// p. ej. por el dominio o por la IP de Tailscale) siempre pasan.
+const corsWarned = new Map<string, number>();
+app.use((req, res, next) => {
+  const origin = req.get('origin');
+  if (!origin || origin.startsWith('http://localhost') || allowedOrigins.has(origin)) return next();
+  let sameHost = false;
+  try { sameHost = new URL(origin).host === req.get('host'); } catch { /* origen mal formado */ }
+  if (sameHost) return next();
+  const now = Date.now();
+  if ((corsWarned.get(origin) ?? 0) < now - 3600_000) {   // como mucho un aviso por origen y hora
+    corsWarned.set(origin, now);
+    console.warn(`[cors] origen bloqueado: ${origin} → ${req.method} ${req.originalUrl.split('?')[0]}`);
+  }
+  res.status(403).json({ error: 'Origen no permitido' });
+});
 app.use(cors({
-  origin: (origin, cb) => {
-    // Sin Origin: Tailscale, curl, apps nativas, webhooks → siempre OK
-    if (!origin) return cb(null, true);
-    // localhost siempre permitido en dev
-    if (origin.startsWith('http://localhost')) return cb(null, true);
-    if (allowedOrigins.has(origin)) return cb(null, true);
-    cb(new Error('Origen no permitido por CORS'));
-  },
+  // Lo que llega aquí ya pasó el filtro de arriba: se refleja el origen para las respuestas CORS
+  origin: true,
   credentials: true,
 }));
 
