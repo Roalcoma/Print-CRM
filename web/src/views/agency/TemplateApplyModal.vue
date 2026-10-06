@@ -54,6 +54,7 @@ const TIMEZONES = [
 const TRIGGERS: Record<string, string> = {
   whatsapp_new_message: 'Nuevo chat de WhatsApp',
   appointment_booked: 'Cita agendada',
+  appointment_no_show: 'Cita: no asistió',
   tag_added: 'Etiqueta añadida',
   ig_comment_received: 'Comentario en Instagram',
 };

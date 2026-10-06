@@ -523,7 +523,10 @@ bookingRouter.post('/:slug/reschedule/:token', publicBookingLimiter, async (req,
   const moved = await withTransaction(pool, async tx => {
     if (!(await lockCalendarAndCheck(tx, cal, newStart, newEnd, appt.id))) return false;
     await tx.query(
-      "UPDATE appointments SET start_at=$1, end_at=$2, updated_at=now() WHERE id=$3",
+      // Una cita marcada "No asistió" que el lead reagenda desde el enlace vuelve a estar programada
+      `UPDATE appointments SET start_at=$1, end_at=$2, updated_at=now(),
+         status = CASE WHEN status = 'no_show' THEN 'scheduled' ELSE status END
+       WHERE id=$3`,
       [newStart.toISOString(), newEnd.toISOString(), appt.id],
     );
     return true;

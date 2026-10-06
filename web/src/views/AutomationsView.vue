@@ -3,7 +3,7 @@ import { ref, onMounted, computed } from 'vue';
 import {
   Zap, MessageCircle, Tag, Briefcase, Bell, Clock, Play, Pause,
   ToggleLeft, ToggleRight, Settings2, Activity, MessageSquare,
-  Timer, Search, CheckCircle2, ChevronDown, CalendarCheck, Instagram, Plus, Pencil, UserPlus, ListTodo,
+  Timer, Search, CheckCircle2, ChevronDown, CalendarCheck, CalendarX, Instagram, Plus, Pencil, UserPlus, ListTodo,
 } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
@@ -88,6 +88,7 @@ const TRIGGER_META: Record<string, { label: string; icon: typeof MessageCircle; 
   tag_added:            { label: 'Etiqueta añadida al contacto',icon: Tag,            color: 'text-violet-600',  bg: 'bg-violet-50'  },
   contact_created:      { label: 'Contacto creado',             icon: Zap,            color: 'text-blue-600',    bg: 'bg-blue-50'    },
   appointment_booked:   { label: 'Cita agendada',               icon: CalendarCheck,  color: 'text-sky-600',     bg: 'bg-sky-50'     },
+  appointment_no_show:  { label: 'Cita: no asistió',            icon: CalendarX,      color: 'text-rose-600',    bg: 'bg-rose-50'    },
   ig_comment_received:  { label: 'Comentario en Instagram',     icon: Instagram,      color: 'text-pink-600',    bg: 'bg-pink-50'    },
 };
 
@@ -147,6 +148,7 @@ function triggerSubtitle(rule: AutomationRule): string {
   if (tag) return `Cuando se añade la etiqueta "${tag}"`;
   if (rule.trigger_type === 'whatsapp_new_message') return 'Primer mensaje de WhatsApp de un número nuevo';
   if (rule.trigger_type === 'appointment_booked') return 'Cuando alguien agenda una cita en el calendario';
+  if (rule.trigger_type === 'appointment_no_show') return 'Cuando una cita se marca como «No asistió»';
   if (rule.trigger_type === 'ig_comment_received') return 'Cuando alguien comenta en un post de Instagram';
   return rule.trigger_type;
 }

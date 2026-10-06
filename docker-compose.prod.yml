@@ -37,6 +37,10 @@ services:
       TELEGRAM_BOT_TOKEN:        ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID:          ${TELEGRAM_CHAT_ID:-}
       SECRETS_KEY:               ${SECRETS_KEY:-}
+      # Videos/imágenes de las automatizaciones (se sirven en /m/:token); persistente en el volumen crm_media
+      MEDIA_DIR:                 /crm/server/data/media
+    volumes:
+      - crm_media:/crm/server/data/media
     depends_on:
       db:
         condition: service_healthy
@@ -84,3 +88,4 @@ networks:
 
 volumes:
   crm_pgdata:
+  crm_media:

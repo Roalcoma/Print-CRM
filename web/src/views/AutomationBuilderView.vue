@@ -4,9 +4,10 @@ import { useRoute, useRouter } from 'vue-router';
 import {
   ArrowLeft, Save, Zap, MessageCircle, Tag, Briefcase, Bell, Clock,
   MessageSquare, Timer, Instagram, Search, Plus, Trash2, X,
-  ChevronUp, ChevronDown, CalendarCheck, ToggleLeft, ToggleRight,
+  ChevronUp, ChevronDown, CalendarCheck, CalendarX, ToggleLeft, ToggleRight,
+  Paperclip, Film, Image as ImageIcon, Upload,
 } from 'lucide-vue-next';
-import { api } from '../api';
+import { api, getToken } from '../api';
 import LoadingState from '../components/LoadingState.vue';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -25,6 +26,8 @@ interface Step {
   minutes?: number;
   minutes_before?: number;
   messages?: string[];
+  media_id?: string | null;
+  media_type?: 'video' | 'image';
   [k: string]: unknown;
 }
 
@@ -41,6 +44,7 @@ const TRIGGER_META = {
   whatsapp_new_message: { label: 'Nuevo mensaje de WhatsApp', icon: MessageCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
   contact_created:      { label: 'Contacto creado',           icon: Zap,           color: 'text-blue-600',    bg: 'bg-blue-50'    },
   appointment_booked:   { label: 'Cita agendada',             icon: CalendarCheck, color: 'text-sky-600',     bg: 'bg-sky-50'     },
+  appointment_no_show:  { label: 'Cita: no asistió',          icon: CalendarX,     color: 'text-rose-600',    bg: 'bg-rose-50'    },
   ig_comment_received:  { label: 'Comentario en Instagram',   icon: Instagram,     color: 'text-pink-600',    bg: 'bg-pink-50'    },
 } as const;
 
@@ -72,7 +76,66 @@ const APPOINTMENT_VARS = [
   { label: 'Hora de cita',     value: '{{appointment.start_time}}' },
   { label: 'Enlace reunión',   value: '{{appointment.meeting_url}}' },
   { label: 'Reagendar',        value: '{{appointment.reschedule_link}}' },
+  // Alias del anterior (mismo enlace) en "Cita agendada" y "Cita: no asistió"
+  { label: 'Reagendar (URL)',  value: '{{appointment.reschedule_url}}' },
 ];
+
+// ── Adjuntos de WhatsApp (almacén de medios de la org) ─────────────────────────
+interface MediaItem { id: string; file_name: string; mime: string; size: number; media_type: 'video' | 'image'; url: string }
+const MEDIA_ACCEPT = 'video/mp4,video/quicktime,image/jpeg,image/png';
+const MAX_MEDIA_MB = 40;
+const mediaLibrary = ref<MediaItem[]>([]);
+const uploadProgress = ref<number | null>(null);   // null = sin subida en curso
+const uploadError = ref('');
+const showLibrary = ref(false);
+
+function mediaById(id: string | null | undefined) {
+  return id ? mediaLibrary.value.find(m => m.id === id) ?? null : null;
+}
+function formatSize(bytes: number) {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+function attachMedia(step: Step, m: MediaItem) {
+  step.media_id = m.id;
+  step.media_type = m.media_type;
+  showLibrary.value = false;
+}
+function removeMedia(step: Step) {
+  delete step.media_id;
+  delete step.media_type;
+}
+
+// Sube con XMLHttpRequest para tener progreso (fetch no lo da en la subida). Cuerpo binario, nombre por query.
+function uploadMedia(step: Step, ev: Event) {
+  const input = ev.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  uploadError.value = '';
+  if (!MEDIA_ACCEPT.split(',').includes(file.type)) { uploadError.value = 'Solo videos MP4/MOV o imágenes JPG/PNG.'; return; }
+  if (file.size > MAX_MEDIA_MB * 1024 * 1024) { uploadError.value = `El archivo supera ${MAX_MEDIA_MB} MB.`; return; }
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', `/api/automation-media?name=${encodeURIComponent(file.name)}`);
+  xhr.setRequestHeader('Content-Type', file.type);
+  const token = getToken();
+  if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+  uploadProgress.value = 0;
+  xhr.upload.onprogress = e => { if (e.lengthComputable) uploadProgress.value = Math.round((e.loaded / e.total) * 100); };
+  xhr.onload = () => {
+    uploadProgress.value = null;
+    let data: { error?: unknown } & Partial<MediaItem> = {};
+    try { data = JSON.parse(xhr.responseText); } catch { /* respuesta no JSON */ }
+    if (xhr.status !== 201) {
+      uploadError.value = typeof data.error === 'string' ? data.error : `No se pudo subir (error ${xhr.status}).`;
+      return;
+    }
+    const item = data as MediaItem;
+    mediaLibrary.value = [item, ...mediaLibrary.value];
+    attachMedia(step, item);
+  };
+  xhr.onerror = () => { uploadProgress.value = null; uploadError.value = 'Error de red al subir el archivo.'; };
+  xhr.send(file);
+}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -143,6 +206,7 @@ function stepMeta(type: string) {
 
 onMounted(async () => {
   try { pipelines.value = await api.get<Pipeline[]>('/pipelines'); } catch {}
+  try { mediaLibrary.value = await api.get<MediaItem[]>('/automation-media'); } catch {}
 
   if (isEdit.value && ruleId.value) {
     loading.value = true;
@@ -263,7 +327,10 @@ async function save() {
 }
 
 function stepPreview(step: Step): string {
-  if (step.type === 'send_whatsapp') return step.message ? String(step.message).slice(0, 65) : 'Sin mensaje configurado';
+  if (step.type === 'send_whatsapp') {
+    const clip = step.media_id ? (step.media_type === 'image' ? '📷 ' : '🎥 ') : '';
+    return clip + (step.message ? String(step.message).slice(0, 65) : 'Sin mensaje configurado');
+  }
   if (step.type === 'send_notification') return step.notification_title ? String(step.notification_title).slice(0, 65) : 'Sin título';
   if (step.type === 'create_opportunity') return `Título: ${step.title ?? '{{contact.name}}'}`;
   if (step.type === 'wait_minutes') { const m = step.minutes ?? 30; return `${m} minuto${m !== 1 ? 's' : ''}`; }
@@ -521,6 +588,15 @@ function stepPreview(step: Step): string {
                 </span>
               </button>
 
+              <!-- Cita: no asistió -->
+              <div v-if="triggerType === 'appointment_no_show'" class="rounded-xl bg-rose-50 p-4">
+                <p class="text-[13px] font-semibold text-rose-700">Cuando una cita se marca como «No asistió»</p>
+                <p class="mt-1 text-[12px] leading-relaxed text-rose-600">
+                  Se dispara al cambiar el estado de una cita a «No asistió» en el Calendario, solo si la cita tiene un contacto y una sola vez por cita.
+                  Los recordatorios pendientes de esa cita se cancelan solos. Usa la variable «Reagendar» para que el lead elija otra hora.
+                </p>
+              </div>
+
               <!-- Filtros del comentario de Instagram -->
               <div v-if="triggerType === 'ig_comment_received'" class="space-y-4">
                 <button
@@ -620,6 +696,61 @@ function stepPreview(step: Step): string {
                       @click="appendVar(selectedStep, 'message', v.value)"
                     >{{ v.label }}</button>
                   </div>
+                </div>
+
+                <!-- Adjunto: video o imagen; el mensaje va como texto del adjunto -->
+                <div>
+                  <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Adjunto (opcional)</label>
+                  <div v-if="selectedStep.media_id" class="flex items-center gap-3 rounded-lg border border-slate-200 p-2.5">
+                    <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <component :is="selectedStep.media_type === 'image' ? ImageIcon : Film" class="h-4 w-4" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <template v-if="mediaById(selectedStep.media_id)">
+                        <a :href="mediaById(selectedStep.media_id)!.url" target="_blank" rel="noopener"
+                           class="block truncate text-[12px] font-medium text-slate-800 hover:text-primary">{{ mediaById(selectedStep.media_id)!.file_name }}</a>
+                        <p class="text-[11px] text-slate-400">{{ formatSize(mediaById(selectedStep.media_id)!.size) }} · {{ selectedStep.media_type === 'image' ? 'Imagen' : 'Video' }}</p>
+                      </template>
+                      <p v-else class="text-[12px] text-amber-600">El archivo ya no existe: se enviará solo el texto.</p>
+                    </div>
+                    <button class="rounded-md p-1 text-slate-300 transition-colors hover:text-red-500" title="Quitar adjunto" @click="removeMedia(selectedStep)">
+                      <X class="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div v-else-if="uploadProgress !== null" class="rounded-lg border border-slate-200 p-3">
+                    <p class="text-[12px] font-medium text-slate-600">Subiendo… {{ uploadProgress }}%</p>
+                    <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                      <div class="h-full rounded-full bg-primary transition-all" :style="{ width: uploadProgress + '%' }" />
+                    </div>
+                  </div>
+                  <div v-else class="flex flex-wrap gap-2">
+                    <label class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-[12px] font-medium text-slate-600 transition-colors hover:border-primary hover:text-primary">
+                      <Upload class="h-3.5 w-3.5" />
+                      Subir video o imagen
+                      <input type="file" class="hidden" :accept="MEDIA_ACCEPT" @change="uploadMedia(selectedStep, $event)" />
+                    </label>
+                    <button
+                      v-if="mediaLibrary.length"
+                      class="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-[12px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                      @click="showLibrary = !showLibrary"
+                    >
+                      <Paperclip class="h-3.5 w-3.5" />
+                      Usar uno ya subido
+                    </button>
+                  </div>
+                  <div v-if="showLibrary && !selectedStep.media_id && uploadProgress === null" class="mt-2 max-h-48 space-y-1 overflow-y-auto">
+                    <button
+                      v-for="m in mediaLibrary" :key="m.id"
+                      class="flex w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left text-[12px] transition-colors hover:bg-slate-50"
+                      @click="attachMedia(selectedStep, m)"
+                    >
+                      <component :is="m.media_type === 'image' ? ImageIcon : Film" class="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+                      <span class="min-w-0 flex-1 truncate text-slate-700">{{ m.file_name }}</span>
+                      <span class="flex-shrink-0 text-slate-400">{{ formatSize(m.size) }}</span>
+                    </button>
+                  </div>
+                  <p v-if="uploadError" class="mt-1.5 text-[11px] text-red-500">{{ uploadError }}</p>
+                  <p class="mt-1.5 text-[11px] text-slate-400">MP4/MOV o JPG/PNG, máximo {{ MAX_MEDIA_MB }} MB. El mensaje se envía como texto del video o la imagen.</p>
                 </div>
               </template>
 

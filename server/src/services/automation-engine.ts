@@ -9,6 +9,8 @@ import { sendIgDm, sendIgPrivateReply, replyToIgComment } from './instagram.ts';
 import { upsertSocialConversation } from './social-inbox.ts';
 import { wantsInfo, captionKeywords, matchesKeyword } from './ig-intent.ts';
 import { phoneMatchKey } from '../phone.ts';
+import { env } from '../env.ts';
+import { mediaPublicUrl } from '../routes/automation-media.ts';
 
 // ── Mapa de códigos de área de EE.UU. → Estado ──────────────────────────────
 
@@ -534,6 +536,8 @@ export async function executeRun(runId: string): Promise<void> {
           stepData[step.id] = { sent: 'unknown' };
         } else {
           const message = interpolate(step.message ?? '', contact, stepData);
+          // Adjunto opcional (video/imagen del almacén de medios de la org): el mensaje va como caption
+          const media = await resolveStepMedia(orgId, step, runId);
           const client = await getWaClient(orgId);
           let outcome: 'sent' | 'no_wa' | 'retry' = 'retry';
           let reason = 'WhatsApp desconectado';
@@ -542,7 +546,14 @@ export async function executeRun(runId: string): Promise<void> {
             stepData[step.id] = { sending: true };
             await persistRunProgress(runId, steps, i, stepData);
             try {
-              await client.sendText(phone, message);
+              if (media) {
+                await client.sendMedia(phone, {
+                  mediatype: media.type, media: media.url, caption: message,
+                  fileName: media.file_name, mimetype: media.mime,
+                });
+              } else {
+                await client.sendText(phone, message);
+              }
               outcome = 'sent';
             } catch (sendErr: unknown) {
               if (isNotOnWhatsapp(sendErr)) {
@@ -587,8 +598,8 @@ export async function executeRun(runId: string): Promise<void> {
             console.warn(`[automation-engine] ${step.id}: número ${phone} sin WA, continuando`);
             stepData[step.id] = { sent: false, reason: 'sin_whatsapp' };
           } else {
-            stepData[step.id] = { sent: true };
-            await logOutboundWa(orgId, phone, message);
+            stepData[step.id] = media ? { sent: true, media_id: media.id } : { sent: true };
+            await logOutboundWa(orgId, phone, message, media);
           }
           if (retry?.step_id === step.id) delete stepData['__wa_retry__'];
         }
@@ -729,7 +740,7 @@ async function persistRunProgress(
 }
 
 // Registra en la conversación del chat (si existe) el mensaje que envió la automatización
-async function logOutboundWa(orgId: string, phone: string, message: string): Promise<void> {
+async function logOutboundWa(orgId: string, phone: string, message: string, media?: StepMedia | null): Promise<void> {
   const chatJid = `${phone}@s.whatsapp.net`;
   const convRes = await pool.query<{ id: string }>(
     `SELECT id FROM conversations WHERE organization_id = $1 AND wa_chat_id = $2 LIMIT 1`,
@@ -737,26 +748,53 @@ async function logOutboundWa(orgId: string, phone: string, message: string): Pro
   );
   if (!convRes.rows[0]) return;
   const convId = convRes.rows[0].id;
+  const msgType = media?.type ?? 'text';
   const inserted = await pool.query<{ id: string }>(
     `INSERT INTO conv_messages (conversation_id, organization_id, direction, msg_type, body, status)
-     VALUES ($1, $2, 'outbound', 'text', $3, 'sent')
+     VALUES ($1, $2, 'outbound', $3, $4, 'sent')
      RETURNING id`,
-    [convId, orgId, message],
+    [convId, orgId, msgType, message],
   );
+  if (inserted.rows[0] && media) {
+    await pool.query(`UPDATE conv_messages SET media_url = $1, media_mime = $2 WHERE id = $3`, [media.url, media.mime, inserted.rows[0].id]);
+  }
   if (!inserted.rows[0]) return;
   await pool.query(
     `UPDATE conversations SET last_message_at = NOW(), last_message_preview = $1, updated_at = NOW() WHERE id = $2`,
-    [message.slice(0, 100), convId],
+    [(message || (media?.type === 'video' ? '🎥 Video' : media ? '📷 Imagen' : '')).slice(0, 100), convId],
   );
   broadcast(orgId, 'message:new', {
     conversationId: convId,
     message: {
       id: inserted.rows[0].id, conversation_id: convId, wa_message_id: null,
-      direction: 'outbound', msg_type: 'text', body: message,
-      media_url: null, media_mime: null, sender_name: null,
+      direction: 'outbound', msg_type: msgType, body: message,
+      media_url: media?.url ?? null, media_mime: media?.mime ?? null, sender_name: null,
       status: 'sent', created_at: new Date().toISOString(),
     },
   });
+}
+
+// Adjunto de un paso send_whatsapp: `media_id` de automation_media de la MISMA org. Si no existe (borrado,
+// de otra org, id inválido) se envía solo el texto y queda un aviso en el log.
+type StepMedia = { id: string; type: 'video' | 'image'; url: string; mime: string; file_name: string };
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function resolveStepMedia(orgId: string, step: StepDef, runId: string): Promise<StepMedia | null> {
+  const mediaId = step.media_id;
+  if (!mediaId) return null;
+  const row = UUID_RE.test(mediaId)
+    ? (await pool.query<{ id: string; token: string; mime: string; file_name: string }>(
+        `SELECT id, token, mime, file_name FROM automation_media WHERE id = $1 AND organization_id = $2`,
+        [mediaId, orgId],
+      )).rows[0]
+    : undefined;
+  if (!row) {
+    console.warn(`[automation-engine] run ${runId} ${step.id}: el adjunto ${mediaId} no existe en la organización; se envía solo el texto`);
+    return null;
+  }
+  const type = step.media_type === 'video' || step.media_type === 'image' ? step.media_type
+    : row.mime.startsWith('video/') ? 'video' : 'image';
+  return { id: row.id, type, url: mediaPublicUrl(row.token), mime: row.mime, file_name: row.file_name };
 }
 
 function normalizeContactPhone(
@@ -791,6 +829,8 @@ interface StepDef {
   notification_body?: string;
   // send_whatsapp
   message?: string;
+  media_id?: string | null;          // adjunto (automation_media) enviado con el mensaje como caption
+  media_type?: 'video' | 'image';    // opcional: se deduce del mime
   // wait_for_reply — sin campos extra
   to_phone?: string;
   // wait_before_appointment
@@ -932,13 +972,77 @@ export async function fireAppointmentBookedTrigger(
       [orgId, source],
     );
     const extraStepData: Record<string, Record<string, unknown>> = {
-      __appointment__: { ...appointmentData },
+      // reschedule_url: mismo enlace que reschedule_link (nombre que usa también "Cita: no asistió")
+      __appointment__: { ...appointmentData, reschedule_url: appointmentData.reschedule_link },
     };
     for (const rule of rulesRes.rows) {
       await startAutomation(orgId, rule.id, contactId, extraStepData);
     }
   } catch (e) {
     console.error('[automation-engine] fireAppointmentBookedTrigger error:', e);
+  }
+}
+
+// ── Disparador: cita marcada como "No asistió" ───────────────────────────────
+// Se llama tras guardar appointments.status = 'no_show'. Solo citas con contacto y UNA sola vez por cita
+// (marca appointments.no_show_notified_at, tomada de forma atómica): si la corrigen y la vuelven a marcar,
+// no se repite. Datos para las plantillas: los mismos que "cita agendada" + {{appointment.reschedule_url}}.
+// Nunca lanza.
+
+// Enlace para reagendar: la página de gestión de la cita (/book/<slug>/manage/<token>) si tiene calendario
+// y token; si no, la página de reservas del calendario de la cita o, sin calendario, la del calendario
+// por defecto de la org (el primero activo, preferiblemente con reservas públicas).
+async function appointmentRescheduleUrl(orgId: string, calendarSlug: string | null, token: string | null): Promise<string> {
+  const base = env.publicUrl.replace(/\/$/, '');
+  if (calendarSlug && token) return `${base}/book/${calendarSlug}/manage/${token}`;
+  if (calendarSlug) return `${base}/book/${calendarSlug}`;
+  const def = (await pool.query<{ slug: string }>(
+    `SELECT slug FROM calendars WHERE organization_id = $1 AND is_active = true
+     ORDER BY booking_enabled DESC, created_at ASC LIMIT 1`,
+    [orgId],
+  )).rows[0];
+  return def ? `${base}/book/${def.slug}` : '';
+}
+
+export async function fireAppointmentNoShowTrigger(orgId: string, appointmentId: string): Promise<void> {
+  try {
+    const rulesRes = await pool.query<{ id: string }>(
+      `SELECT id FROM automation_rules
+       WHERE organization_id = $1 AND trigger_type = 'appointment_no_show' AND enabled = true`,
+      [orgId],
+    );
+    if (!rulesRes.rows.length) return;   // sin reglas no se marca: una regla creada después aún puede dispararse
+
+    // Marca atómica: dos PATCH simultáneos no disparan dos veces
+    const appt = (await pool.query<{
+      contact_id: string; start_at: Date; timezone: string; meeting_url: string | null; location: string | null;
+      cancel_token: string | null; slug: string | null; cal_location: string | null;
+    }>(
+      `UPDATE appointments a SET no_show_notified_at = NOW()
+       FROM appointments x LEFT JOIN calendars c ON c.id = x.calendar_id
+       WHERE a.id = x.id AND a.id = $1 AND a.organization_id = $2
+         AND a.status = 'no_show' AND a.contact_id IS NOT NULL AND a.no_show_notified_at IS NULL
+       RETURNING a.contact_id, a.start_at, COALESCE(c.timezone, a.timezone) AS timezone, a.meeting_url, a.location,
+                 a.cancel_token, c.slug, c.location AS cal_location`,
+      [appointmentId, orgId],
+    )).rows[0];
+    if (!appt) return;
+
+    const rescheduleUrl = await appointmentRescheduleUrl(orgId, appt.slug, appt.cancel_token);
+    const extraStepData: Record<string, Record<string, unknown>> = {
+      __appointment__: {
+        appointment_id:  appointmentId,
+        ...appointmentTimeFields(new Date(appt.start_at), appt.timezone),
+        meeting_url:     appt.meeting_url ?? appt.location ?? appt.cal_location ?? '',
+        reschedule_link: rescheduleUrl,
+        reschedule_url:  rescheduleUrl,
+      },
+    };
+    for (const rule of rulesRes.rows) {
+      await startAutomation(orgId, rule.id, appt.contact_id, extraStepData);
+    }
+  } catch (e) {
+    console.error('[automation-engine] fireAppointmentNoShowTrigger error:', e);
   }
 }
 

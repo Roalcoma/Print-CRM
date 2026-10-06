@@ -37,6 +37,7 @@ import { pollIgComments } from './services/ig-comments.ts';
 import { leadAdsRouter } from './routes/lead-ads.ts';
 import { agencyRouter } from './routes/agency.ts';
 import { automationsRouter } from './routes/automations.ts';
+import { automationMediaRouter, servePublicMedia } from './routes/automation-media.ts';
 import { resumeTimedRuns, recoverStuckRuns } from './services/automation-engine.ts';
 import { runRetention } from './services/retention.ts';
 import { initWS, issueWsTicket } from './services/ws-manager.ts';
@@ -112,6 +113,8 @@ app.use('/api/public/book', bookingRouter);
 app.use('/api/wa/webhook', waWebhookRouter);  // autenticado por webhook_secret en URL
 app.use('/api/meta', metaWebhookRouter);      // webhook Meta (FB/IG); verificado por verify_token
 app.use('/api/social', socialPublicRouter);  // callback OAuth Facebook (sin auth)
+// Medios de automatizaciones (videos/imágenes de los WhatsApp): públicos por token aleatorio, Evolution los descarga por URL
+app.get('/m/:token', servePublicMedia);
 
 app.use('/api/auth/login',    authLimiter);
 app.use('/api/auth/register', authLimiter);
@@ -243,6 +246,7 @@ app.use('/api/calendars', requireAuth, requireModule('calendar'), calendarsRoute
 app.use('/api/conversations', requireAuth, requireModule('conversations'), conversationsRouter);
 app.use('/api/wa', requireAuth, waSettingsRouter);
 app.use('/api/automations', requireAuth, requireModule('automations'), automationsRouter);
+app.use('/api/automation-media', requireAuth, requireModule('automations'), automationMediaRouter);
 app.use('/api/social', requireAuth, socialRouter);
 app.use('/api/lead-ads', requireAuth, leadAdsRouter);
 

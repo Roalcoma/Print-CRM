@@ -118,10 +118,26 @@ export class EvolutionClient {
   }
 
   async sendImage(number: string, media: string, caption?: string): Promise<EvoSendResult> {
+    return this.sendMedia(number, { mediatype: 'image', media, caption });
+  }
+
+  async sendVideo(number: string, media: string, caption?: string, fileName?: string, mimetype = 'video/mp4'): Promise<EvoSendResult> {
+    return this.sendMedia(number, { mediatype: 'video', media, caption, fileName, mimetype });
+  }
+
+  // Envío genérico de un adjunto: `media` es una URL pública (Evolution la descarga) o base64.
+  // Timeout más largo que un texto: Evolution descarga el archivo antes de responder.
+  async sendMedia(number: string, opts: {
+    mediatype: 'image' | 'video' | 'document'; media: string; caption?: string; fileName?: string; mimetype?: string;
+  }): Promise<EvoSendResult> {
+    const { mediatype, media, caption, fileName, mimetype } = opts;
     return this.req<EvoSendResult>(`/message/sendMedia/${this.instanceName}`, {
       method: 'POST',
-      body: JSON.stringify({ number, mediatype: 'image', media, caption: caption ?? '' }),
-    });
+      body: JSON.stringify({
+        number, mediatype, media, caption: caption ?? '',
+        ...(fileName ? { fileName } : {}), ...(mimetype ? { mimetype } : {}),
+      }),
+    }, mediatype === 'image' ? externalTimeoutMs() : Math.max(externalTimeoutMs(), 60_000));
   }
 
   async requestPairingCode(number: string): Promise<{ pairingCode: string }> {

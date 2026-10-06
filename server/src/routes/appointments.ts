@@ -11,7 +11,7 @@ import {
   getGoogleEvents,
 } from '../integrations/google-calendar.ts';
 import { createZoomMeeting, deleteZoomMeeting } from '../integrations/zoom.ts';
-import { fireAppointmentBookedTrigger, rescheduleAppointmentWaits, appointmentTimeFields } from '../services/automation-engine.ts';
+import { fireAppointmentBookedTrigger, fireAppointmentNoShowTrigger, rescheduleAppointmentWaits, appointmentTimeFields } from '../services/automation-engine.ts';
 
 export const appointmentsRouter = Router();
 
@@ -522,6 +522,11 @@ appointmentsRouter.patch('/:id', async (req, res) => {
   const moved = d.start_at !== undefined && new Date(d.start_at).getTime() !== new Date(existing.start_at).getTime();
   if (moved || ('status' in d && d.status !== existing.status) || 'timezone' in d) {
     await rescheduleAppointmentWaits(orgId, req.params.id as string);
+  }
+
+  // "No asistió": dispara las reglas appointment_no_show (una sola vez por cita; la marca la gestiona el motor)
+  if (d.status === 'no_show' && existing.status !== 'no_show') {
+    await fireAppointmentNoShowTrigger(orgId, req.params.id as string);
   }
 
   // Log status change

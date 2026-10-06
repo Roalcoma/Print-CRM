@@ -6,6 +6,8 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const PORT = process.env.TEST_PORT ?? '3202';
 const FAKE = process.env.TEST_FAKE_URL ?? 'http://localhost:4202';
@@ -35,6 +37,8 @@ const testEnv: Record<string, string> = {
   TELEGRAM_CHAT_ID: '',
   TEST_BASE_URL: BASE,
   TEST_FAKE_URL: FAKE,
+  // Medios de automatizaciones subidos en los tests: fuera del repo
+  MEDIA_DIR: process.env.TEST_MEDIA_DIR ?? join(tmpdir(), 'rocco-test-media'),
 };
 
 const env = { ...process.env, ...testEnv };
