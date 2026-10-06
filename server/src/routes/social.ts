@@ -122,14 +122,14 @@ socialRouter.get('/facebook/auth-url', requireAdmin, async (req, res) => {
   }
   const orgId = req.auth!.organizationId;
   const redirectUri = `${env.publicUrl}/api/social/facebook/callback`;
-  // Solo lo que usa el CRM con páginas de Facebook (Messenger y Lead Ads); Instagram va por su propio login
+  // Solo lo que usa el CRM con páginas de Facebook (Messenger y comentarios); Instagram va por su propio login.
+  // Lead Ads (leads_retrieval, pages_manage_ads) queda para cuando haga falta: exige su propio caso de uso en Meta.
   const scopes = [
     'pages_show_list',
     'pages_manage_metadata',   // suscribir la página al webhook
     'pages_read_engagement',
-    'pages_messaging',
-    'pages_manage_ads',        // listar formularios de Lead Ads
-    'leads_retrieval',
+    'pages_read_user_content', // comentarios de la gente en las publicaciones
+    'pages_messaging',         // Messenger y respuesta privada a comentarios
     'public_profile',
   ].join(',');
 
@@ -317,9 +317,9 @@ socialPublicRouter.get('/facebook/callback', async (req, res) => {
         [orgId, page.id, page.name, picture, encryptSecret(pageToken), null],
       );
 
-      // Suscribir la página: Messenger y Lead Ads. Instagram se conecta aparte con su propio login.
+      // Suscribir la página: Messenger y comentarios (feed). Instagram se conecta aparte con su propio login.
       await subscribeApps(
-        `${META_BASE}/${page.id}/subscribed_apps?subscribed_fields=messages%2Cleadgen&access_token=${pageToken}`,
+        `${META_BASE}/${page.id}/subscribed_apps?subscribed_fields=messages%2Cfeed&access_token=${pageToken}`,
         `page ${page.id}`,
       );
 
@@ -460,6 +460,21 @@ metaWebhookRouter.post('/webhook', verifyMetaSignature, async (req, res) => {
           if (text) captureIgPhone(orgId, senderId, text).catch(e => console.error('captureIgPhone error:', e));
         }
 
+        // Facebook: comentario nuevo en una publicación de la página → a la bandeja
+        if (change.field === 'feed' && body.object === 'page') {
+          const v = change.value as FbFeedChange | undefined;
+          if (v?.item !== 'comment' || v.verb !== 'add' || !v.comment_id || !v.from?.id) continue;
+          if (v.from.id === pageId) continue;   // respuestas de la propia página
+          const link = v.post_id ? `\nhttps://www.facebook.com/${v.post_id}` : '';
+          await upsertSocialConversation({
+            orgId, socialAccountId: conn.id, channel: 'facebook_dm', chatId: `fb_${v.from.id}`,
+            displayName: v.from.name || await socialDisplayName(orgId, 'facebook_dm', conn.access_token, v.from.id),
+            text: `💬 Comentó en tu publicación: "${v.message ?? ''}"${link}`,
+            mid: `fbc_${v.comment_id}`, direction: 'inbound',
+          });
+          continue;
+        }
+
         // Instagram Comentario en post
         if (change.field === 'comments') {
           const comment = change.value as IgCommentChange | undefined;
@@ -547,6 +562,15 @@ interface IgMessageChange {
   sender?: { id: string };
   message?: IgDmMessage & { mid: string };
   timestamp?: number;
+}
+
+interface FbFeedChange {
+  item?: string;          // 'comment', 'reaction', 'post'…
+  verb?: string;          // 'add', 'edited', 'remove'
+  comment_id?: string;
+  post_id?: string;
+  message?: string;
+  from?: { id: string; name?: string };
 }
 
 interface IgCommentChange {

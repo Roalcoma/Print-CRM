@@ -5,7 +5,7 @@ import { pool } from '../db.ts';
 import { belongsToOrg } from '../tenant.ts';
 import { evolutionFor } from '../services/evolution.ts';
 import { broadcast } from '../services/ws-manager.ts';
-import { sendIgDm, sendFbMessage, isOutsideWindow } from '../services/instagram.ts';
+import { sendIgDm, sendFbMessage, sendFbPrivateReply, isOutsideWindow } from '../services/instagram.ts';
 import { normalizePhone } from '../phone.ts';
 
 export const conversationsRouter = Router();
@@ -150,7 +150,14 @@ conversationsRouter.post('/:id/messages', async (req, res) => {
       );
       if (!scRes.rows[0]?.access_token) return res.status(503).json({ error: 'La página de Facebook está desconectada' });
 
-      const result = await sendFbMessage(scRes.rows[0].access_token, chatId.replace(/^fb_/, ''), body);
+      // Si lo último que llegó es un comentario de una publicación (y no un mensaje de Messenger), se
+      // responde con la respuesta privada a ese comentario: es la única forma de escribirle por Messenger
+      const lastIn = (await pool.query<{ wa_message_id: string | null }>(
+        `SELECT wa_message_id FROM conv_messages WHERE conversation_id = $1 AND direction = 'inbound'
+         ORDER BY created_at DESC LIMIT 1`, [id])).rows[0]?.wa_message_id ?? '';
+      const result = lastIn.startsWith('fbc_')
+        ? await sendFbPrivateReply(scRes.rows[0].access_token, lastIn.slice(4), body)
+        : await sendFbMessage(scRes.rows[0].access_token, chatId.replace(/^fb_/, ''), body);
       if (result.error || !result.message_id) {
         const error = isOutsideWindow(result.error)
           ? 'Messenger no permite escribirle todavía: solo puedes responder dentro de las 24 h siguientes a su último mensaje.'

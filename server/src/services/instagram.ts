@@ -142,6 +142,19 @@ export async function sendFbMessage(
   }, 'sendFbMessage');
 }
 
+// Respuesta privada por Messenger a un comentario de la página (una por comentario, hasta 7 días después)
+export async function sendFbPrivateReply(
+  pageToken: string,
+  commentId: string,
+  text: string,
+): Promise<{ message_id?: string; error?: unknown }> {
+  return post(`${FB_BASE}/me/messages`, {
+    recipient: { comment_id: commentId },
+    message: { text },
+    access_token: pageToken,
+  }, 'sendFbPrivateReply');
+}
+
 // Nombre de quien escribe por Messenger (User Profile API de la página)
 export async function getFbName(pageToken: string, psid: string): Promise<string | null> {
   try {

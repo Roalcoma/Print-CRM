@@ -848,3 +848,36 @@ test('Messenger: DM a la página muestra el nombre y la respuesta sale por Messe
   assert.equal(sent.body.access_token, pageToken);
   assert.equal(callsTo('/evo/message/sendText').length, evoBefore, 'no se intentó enviar por WhatsApp');
 });
+
+test('Facebook: comentario en la página entra a la bandeja y la respuesta sale como respuesta privada', async () => {
+  const pageId = `9100${rnd()}`.replace(/\D/g, '').slice(0, 15);
+  const pageToken = `EAApage${rnd()}`;
+  await one(
+    `INSERT INTO social_connections (organization_id, platform, page_id, page_name, access_token, status)
+     VALUES ($1, 'facebook', $2, 'Página comentarios', $3, 'active') RETURNING id`,
+    [org.orgId, pageId, encryptSecret(pageToken)],
+  );
+  const userId = `fbu${rnd()}`.replace(/\W/g, '');
+  const commentId = `${pageId}_c${rnd()}`.replace(/[^\w]/g, '');
+  const change = (cid: string, fromId: string) => ({
+    object: 'page',
+    entry: [{ id: pageId, time: Date.now(), changes: [{ field: 'feed', value: {
+      item: 'comment', verb: 'add', comment_id: cid, post_id: `${pageId}_p1`, message: 'Me interesa, ¿cómo empiezo?',
+      from: { id: fromId, name: 'Pedro Comenta' } } }] }],
+  });
+  await metaWebhook(change(commentId, userId));
+  // La propia página respondiendo en público no debe entrar
+  await metaWebhook(change(`${commentId}x`, pageId));
+  const conv = await until('conversación del comentario', () => one(
+    'SELECT * FROM conversations WHERE organization_id = $1 AND wa_chat_id = $2', [org.orgId, `fb_${userId}`]));
+  assert.equal(conv.display_name, 'Pedro Comenta');
+  assert.match(conv.last_message_preview, /Comentó en tu publicación: "Me interesa/);
+  const own = await one('SELECT count(*)::int AS n FROM conv_messages WHERE wa_message_id = $1', [`fbc_${commentId}x`]);
+  assert.equal(own.n, 0);
+
+  const r = await api(org.token, 'POST', `/conversations/${conv.id}/messages`, { body: 'Te escribo por aquí 👋' });
+  assert.equal(r.status, 201, JSON.stringify(r.data));
+  const sent = callsTo('/fb/v21.0/me/messages').find(c => c.body.recipient?.comment_id === commentId)!;
+  assert.ok(sent, 'respuesta privada al comentario');
+  assert.equal(sent.body.access_token, pageToken);
+});
